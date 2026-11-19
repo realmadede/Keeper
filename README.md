@@ -2,38 +2,86 @@
 
 **One household, one shared budget, complete transparency.**
 
-Keeper is a private shared household management web app built for roommates and friends sharing a rental house, denominated in **TZS (Tanzanian Shillings)**, powered by **Supabase** (Auth, PostgreSQL, Row-Level Security, Realtime) and **[Glisse](https://github.com/0kzh/glisse)** Liquid Glass UI effects.
+Keeper is a private shared household ledger built for roommates and friends sharing a house, denominated in **TZS (Tanzanian Shillings)**, powered by **React 19**, **TypeScript**, **Tailwind CSS v4**, **[Glisse](https://github.com/0kzh/glisse)** Liquid Glass controls, and **Supabase** (Auth, PostgreSQL, Row-Level Security, and Realtime).
 
-## Features
+---
 
-- **User Accounts & Private Households**: Sign up, create a household or join an existing one with a private 6-character invite code.
-- **Weekly Budget & Member Shares (TZS)**: Agree on a shared weekly pool target and per-member weekly share.
-- **Contributions & Household Spending**: Record pooled contributions and shared expenses (Food & Groceries, Electricity & Water, House Rent, Security & Wi-Fi, Home Supplies, Errands & Transport).
-- **Real-Time Sync**: Changes appear immediately across every roommate's device via Supabase Realtime.
-- **Complete Transparency**: Every transaction records who logged it, what it was for, category, date, and TZS amount.
+## Complete Feature Overview
 
-## Free Hosting Setup (Supabase + Vercel)
+- **Private Households & 8-Character Invite Keys**: Create a household or join an existing one using an 8-character alphanumeric invite key or a direct `?join=CODE` invite link (both clicking the link and pasting the full URL work automatically).
+- **Email & Google OAuth Sign-In**: Instant account creation with email/password or 1-tap Google OAuth, plus custom branded password recovery emails ([`supabase/templates/recovery.html`](./supabase/templates/recovery.html)).
+- **Weekly & Monthly Views (`W1–W5`)**: Switch between `This Week`, `Last Week`, `2 Weeks Ago`, `This Month`, and `Last Month`, with automatic Monday–Sunday daily bars or `W1–W5` weekly buckets.
+- **All-Time Carry-Over Cash on Hand Pool**: Tracks both the active period's remaining balance and the all-time carry-over house pool (`Total All-Time Contributions - Total All-Time Expenses`).
+- **Contributions & Paid-By Attribution**: Log pooled contributions (including treasurers recording a contribution on behalf of another roommate) and categorized household expenses (`Food & Groceries`, `Electricity & Water`, `House Rent`, `Security & Internet`, `House Supplies`, `Transport & Gas`).
+- **Recurring Bills Due-Date Tracker**: Track monthly house bills (rent, fiber Wi-Fi, water, security) with automatic `Due in Xd`, `Overdue`, and `Paid this month` badges, plus 1-tap **Record payment** expense prefill.
+- **Shared House Needs Checklist**: Roommates can add items the house needs to restock and tap **Buy & log** to convert a needed item directly into a recorded expense.
+- **Multi-Field Ledger Search, WhatsApp Summary & CSV Export**: Search hundreds of transactions by description, roommate, category, date, or TZS amount; copy a formatted weekly/monthly WhatsApp summary in one tap; or export filtered records to CSV.
+- **Admin & Account Controls**: Household admins can rename the house, rotate the invite key (revoking old codes), promote members to admin, or remove a roommate. Every member can customize their display name and avatar color, leave a household, or permanently delete their account.
 
-### 1. Create a Free Supabase Project
-1. Go to [supabase.com](https://supabase.com) and create a new free project.
-2. Open **SQL Editor** in your Supabase dashboard, paste the contents of [`supabase/schema.sql`](./supabase/schema.sql), and click **Run**.
-3. Go to **Project Settings → API** and copy your **Project URL** and **anon public key**.
+---
 
-### 2. Run Locally
+## 5-Minute Setup & Self-Hosting Guide
+
+### Option A: Run Locally in Demo Mode (Zero Backend Setup)
+
+You can run and test every screen of Keeper immediately without configuring Supabase:
+
 ```bash
-cp .env.example .env
-# Paste VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY into .env
 npm install
 npm run dev
 ```
-*(You can also click **Preview Demo Household (TZS)** on the sign-in screen to test the app immediately before adding Supabase keys.)*
 
-### 3. Deploy Free on Vercel
-1. Push this repo to GitHub (`https://github.com/realmadede/Keeper.git`).
-2. Import the repository at [vercel.com/new](https://vercel.com/new).
-3. Add the environment variables `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
-4. Click **Deploy**.
+Open `http://localhost:5173` and click **Preview demo household** on the welcome or sign-in screen. Demo Mode loads a realistic Dar es Salaam shared household in TZS and persists your local changes in `localStorage`.
 
-## Engineering Rules
+### Option B: Connect Supabase & Deploy on Vercel
 
-This project uses [Skarp](https://github.com/realmadede/Skarp) coding guidelines (`AGENTS.md`, `GEMINI.md`, `EXAMPLES.md`).
+#### 1. Configure Supabase
+1. Create a project at [supabase.com](https://supabase.com).
+2. Apply the database schema using **either** method:
+   - **Automatic Git Migrations**: Connect this repository to your Supabase project; Supabase automatically detects [`supabase/config.toml`](./supabase/config.toml) and applies the timestamped SQL migrations in [`supabase/migrations/`](./supabase/migrations/).
+   - **Manual SQL Editor**: Open **SQL Editor** in the Supabase Dashboard, paste the contents of [`supabase/schema.sql`](./supabase/schema.sql), and click **Run**.
+3. In **Authentication → Providers → Email**, turn off **Confirm email** if you want new accounts to enter Keeper immediately after sign-up.
+4. *(Optional)* In **Authentication → Providers → Google**, enable Google OAuth with your Google Cloud OAuth Client ID and Secret, and set your **Site URL** under **Authentication → URL Configuration**.
+5. Copy your **Project URL** and **anon public key** from **Project Settings → API**.
+
+#### 2. Configure Local Environment
+```bash
+cp .env.example .env
+```
+Add your keys to `.env`:
+```env
+VITE_SUPABASE_URL=https://your-project-id.supabase.co
+VITE_SUPABASE_ANON_KEY=your-public-anon-key
+```
+*(Once real Supabase credentials are set, the Demo Mode button automatically hides itself.)*
+
+#### 3. Deploy on Vercel
+1. Import the repository at [vercel.com/new](https://vercel.com/new) (leave **Root Directory** as `./`).
+2. Add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` under **Environment Variables**.
+3. Click **Deploy**. Security headers and SPA routing are pre-configured in [`vercel.json`](./vercel.json).
+
+---
+
+## Architecture & Security Overview
+
+- **Strict Multi-Tenant Row-Level Security (RLS)**: Every table (`profiles`, `households`, `household_members`, `transactions`, `household_needs`, `recurring_bills`, `invite_join_attempts`) has RLS enabled. Helper functions `is_household_member()` and `is_user_in_household()` enforce complete isolation so a user can only read or write data belonging to their own household.
+- **Brute-Force & Write Rate Limiting**:
+  - `join_household_by_code()` logs failed invite code guesses in `invite_join_attempts` and blocks brute-force guessing after **5 failed attempts within 15 minutes** (using an 8-character unambiguous alphabet with $32^8 \approx 1.1\times 10^{12}$ combinations).
+  - `guard_transaction_insert()` enforces a database-level write limit of **30 transactions per 10 minutes per user** and verifies that any `paid_by` user is a member of the same household.
+- **Immutable Server-Side Audit Triggers**: `guard_transaction_update()` locks `id`, `household_id`, `recorded_by`, and `created_at` on the server and forces `updated_at = now()`, ensuring no client can spoof authorship or hide edits.
+- **Hardened Client & Transport Layer**:
+  - Supabase Auth uses the **PKCE** flow (`flowType: "pkce"`).
+  - CSV exports neutralize spreadsheet formula-injection payloads (`=`, `+`, `-`, `@`, `\t`, `\r`).
+  - [`vercel.json`](./vercel.json) enforces a strict Content-Security-Policy (CSP), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, and `Referrer-Policy: strict-origin-when-cross-origin`.
+
+---
+
+## Verification & Engineering Guidelines
+
+```bash
+npm run typecheck   # TypeScript strict check
+npm test            # Vitest unit test suite (analytics, export, security)
+npm run build       # Production bundle build
+```
+
+This repository follows the [Skarp](https://github.com/realmadede/Skarp) engineering guidelines in [`AGENTS.md`](./AGENTS.md), [`GEMINI.md`](./GEMINI.md), and [`EXAMPLES.md`](./EXAMPLES.md).
