@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Button, Glass } from "glisse";
 import { X } from "lucide-react";
 
@@ -9,6 +10,15 @@ interface LegalModalProps {
 }
 
 export function LegalModal({ doc, onClose }: LegalModalProps) {
+  useEffect(() => {
+    if (!doc) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [doc, onClose]);
+
   if (!doc) return null;
 
   const isTerms = doc === "terms";

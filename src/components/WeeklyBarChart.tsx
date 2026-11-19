@@ -31,94 +31,108 @@ export function WeeklyBarChart({ dailySeries, spentDeltaPct }: WeeklyBarChartPro
   }, [defaultIndex]);
 
   const activeDay = dailySeries[activeIndex] ?? dailySeries[0];
+  const hasActivity = dailySeries.some((d) => d.contributed > 0 || d.spent > 0);
 
   return (
     <section className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-[0_2px_16px_rgba(15,23,42,0.04)]">
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-[15px] font-semibold text-slate-900">Expense Overview</h2>
-        <span className="text-[11px] font-medium text-slate-400">Tap any day</span>
+        <span className="text-[11px] font-medium text-slate-400">
+          {hasActivity ? "Tap any day" : "Mon - Sun"}
+        </span>
       </div>
 
-      {/* Floating Glisse Liquid Glass Callout Chips for Selected Day */}
-      {activeDay && (
-        <div className="mb-3 flex flex-wrap gap-2">
-          <Glass className="rounded-xl px-2.5 py-1.5 flex-1 min-w-[130px]">
-            <div className="text-[12px] font-bold text-emerald-600 tabular-nums">
-              {formatTZS(activeDay.contributed)}
-            </div>
-            <div className="text-[10px] text-slate-500 truncate">
-              Pooled · {formatFullDayLabel(activeDay.iso)}
-            </div>
-          </Glass>
-          <Glass className="rounded-xl px-2.5 py-1.5 flex-1 min-w-[130px]">
-            <div className="text-[12px] font-bold text-rose-600 tabular-nums">
-              {formatTZS(activeDay.spent)}
-            </div>
-            <div className="text-[10px] text-slate-500 truncate">
-              Spent · {formatFullDayLabel(activeDay.iso)}
-            </div>
-          </Glass>
+      {!hasActivity ? (
+        <div className="my-4 rounded-2xl bg-slate-50 py-10 px-4 text-center">
+          <p className="text-sm font-medium text-slate-600">No activity recorded for this week</p>
+          <p className="mt-1 text-xs text-slate-400">
+            Tap the + button below to log a contribution or household purchase.
+          </p>
         </div>
-      )}
+      ) : (
+        <>
+          {/* Floating Glisse Liquid Glass Callout Chips for Selected Day */}
+          {activeDay && (
+            <div className="mb-3 flex flex-wrap gap-2">
+              <Glass className="rounded-xl px-2.5 py-1.5 flex-1 min-w-[130px]">
+                <div className="text-[12px] font-bold text-emerald-600 tabular-nums">
+                  {formatTZS(activeDay.contributed)}
+                </div>
+                <div className="text-[10px] text-slate-500 truncate">
+                  Pooled · {formatFullDayLabel(activeDay.iso)}
+                </div>
+              </Glass>
+              <Glass className="rounded-xl px-2.5 py-1.5 flex-1 min-w-[130px]">
+                <div className="text-[12px] font-bold text-rose-600 tabular-nums">
+                  {formatTZS(activeDay.spent)}
+                </div>
+                <div className="text-[10px] text-slate-500 truncate">
+                  Spent · {formatFullDayLabel(activeDay.iso)}
+                </div>
+              </Glass>
+            </div>
+          )}
 
-      <div className="h-[195px] w-full">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart
-            data={dailySeries}
-            margin={{ top: 8, right: 4, left: -18, bottom: 0 }}
-            barGap={3}
-            barCategoryGap="24%"
-            onClick={(state) => {
-              if (typeof state?.activeTooltipIndex === "number") {
-                setActiveIndex(state.activeTooltipIndex);
-              }
-            }}
-          >
-            <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#F1F5F9" />
-            <XAxis
-              dataKey="dayShort"
-              axisLine={false}
-              tickLine={false}
-              tick={{ fill: "#64748B", fontSize: 11, fontWeight: 500 }}
-            />
-            <YAxis
-              axisLine={false}
-              tickLine={false}
-              tickFormatter={(v: number) => (v === 0 ? "0" : formatCompactTZS(v))}
-              tick={{ fill: "#94A3B8", fontSize: 10 }}
-              width={44}
-            />
-            <Bar
-              dataKey="contributed"
-              radius={[6, 6, 4, 4]}
-              maxBarSize={14}
-              cursor="pointer"
-              onClick={(_data, idx) => setActiveIndex(idx)}
-            >
-              {dailySeries.map((entry, idx) => (
-                <Cell
-                  key={`c-${entry.iso}`}
-                  fill={idx === activeIndex ? "#16A34A" : "#E5E7EB"}
+          <div className="h-[195px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={dailySeries}
+                margin={{ top: 8, right: 4, left: -18, bottom: 0 }}
+                barGap={3}
+                barCategoryGap="24%"
+                onClick={(state) => {
+                  if (typeof state?.activeTooltipIndex === "number") {
+                    setActiveIndex(state.activeTooltipIndex);
+                  }
+                }}
+              >
+                <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#F1F5F9" />
+                <XAxis
+                  dataKey="dayShort"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fill: "#64748B", fontSize: 11, fontWeight: 500 }}
                 />
-              ))}
-            </Bar>
-            <Bar
-              dataKey="spent"
-              radius={[6, 6, 4, 4]}
-              maxBarSize={14}
-              cursor="pointer"
-              onClick={(_data, idx) => setActiveIndex(idx)}
-            >
-              {dailySeries.map((entry, idx) => (
-                <Cell
-                  key={`s-${entry.iso}`}
-                  fill={idx === activeIndex ? "#DC2626" : "#EDF0F4"}
+                <YAxis
+                  axisLine={false}
+                  tickLine={false}
+                  tickFormatter={(v: number) => (v === 0 ? "0" : formatCompactTZS(v))}
+                  tick={{ fill: "#94A3B8", fontSize: 10 }}
+                  width={44}
                 />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
+                <Bar
+                  dataKey="contributed"
+                  radius={[6, 6, 4, 4]}
+                  maxBarSize={14}
+                  cursor="pointer"
+                  onClick={(_data, idx) => setActiveIndex(idx)}
+                >
+                  {dailySeries.map((entry, idx) => (
+                    <Cell
+                      key={`c-${entry.iso}`}
+                      fill={idx === activeIndex ? "#16A34A" : "#E5E7EB"}
+                    />
+                  ))}
+                </Bar>
+                <Bar
+                  dataKey="spent"
+                  radius={[6, 6, 4, 4]}
+                  maxBarSize={14}
+                  cursor="pointer"
+                  onClick={(_data, idx) => setActiveIndex(idx)}
+                >
+                  {dailySeries.map((entry, idx) => (
+                    <Cell
+                      key={`s-${entry.iso}`}
+                      fill={idx === activeIndex ? "#DC2626" : "#EDF0F4"}
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </>
+      )}
 
       {/* Footer Legend & Delta */}
       <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-2.5 text-xs">

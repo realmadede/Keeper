@@ -1,6 +1,15 @@
-import { useEffect, useMemo, useRef, useState, type TouchEvent } from "react";
-import { Menu } from "glisse";
-import { Calendar, Check, ChevronLeft, WifiOff } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type TouchEvent } from "react";
+import { Button, Glass, Menu } from "glisse";
+import {
+  Calendar,
+  Check,
+  CheckCircle2,
+  ChevronLeft,
+  Copy,
+  Plus,
+  RotateCw,
+  WifiOff,
+} from "lucide-react";
 import { AddTransactionModal } from "./components/AddTransactionModal";
 import { AuthScreen } from "./components/AuthScreen";
 import { BottomDock } from "./components/BottomDock";
@@ -11,12 +20,14 @@ import { HouseholdView } from "./components/HouseholdView";
 import { KeeperLogo } from "./components/KeeperLogo";
 import { KpiCards } from "./components/KpiCards";
 import { LedgerView } from "./components/LedgerView";
+import { LoadingSkeleton } from "./components/LoadingSkeleton";
 import { TransactionList } from "./components/TransactionList";
 import { WeeklyBarChart } from "./components/WeeklyBarChart";
-import { useKeeperStore } from "./hooks/useKeeperStore";
+import { useKeeperStore, type TransactionInput } from "./hooks/useKeeperStore";
 import { computeWeeklySummary, getWeekWindow } from "./lib/analytics";
+import { formatTZS } from "./lib/format";
 import { sanitizeInviteCode } from "./lib/security";
-import type { ActiveTab, Transaction } from "./types";
+import type { ActiveTab, Transaction, TransactionType } from "./types";
 
 const TAB_ORDER: ActiveTab[] = ["overview", "ledger", "budget", "household"];
 const PENDING_JOIN_KEY = "keeper_pending_join_code";
@@ -53,14 +64,39 @@ export function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>("overview");
   const [weekOffset, setWeekOffset] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
+  const [modalInitialType, setModalInitialType] = useState<TransactionType>("expense");
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
-  const [pendingJoinCode, setPendingJoinCode] = useState<string | null>(() => readInitialJoinCode());
+  const [pendingJoinCode, setPendingJoinCode] = useState<string | null>(() =>
+    readInitialJoinCode(),
+  );
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
   const [isOffline, setIsOffline] = useState(() =>
     typeof navigator !== "undefined" ? !navigator.onLine : false,
   );
 
+  const paneRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const touchStart = useRef<{ x: number; y: number; blocked: boolean } | null>(null);
+
+  const showToast = useCallback((message: string) => {
+    setToastMessage(message);
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => {
+      setToastMessage(null);
+    }, 2600);
+  }, []);
+
   useEffect(() => {
-    const goOnline = () => setIsOffline(false);
+    return () => {
+      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    const goOnline = () => {
+      setIsOffline(false);
+      void store.refresh();
+    };
     const goOffline = () => setIsOffline(true);
     window.addEventListener("online", goOnline);
     window.addEventListener("offline", goOffline);
@@ -68,10 +104,7 @@ export function App() {
       window.removeEventListener("online", goOnline);
       window.removeEventListener("offline", goOffline);
     };
-  }, []);
-
-  const paneRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const touchStart = useRef<{ x: number; y: number; blocked: boolean } | null>(null);
+  }, [store.refresh]);
 
   const activeIndex = TAB_ORDER.indexOf(activeTab);
   const weekWindow = useMemo(() => getWeekWindow(weekOffset), [weekOffset]);
@@ -104,19 +137,51 @@ export function App() {
     paneRefs.current[idx]?.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const handleOpenAdd = () => {
+  const handleOpenAdd = (initialType: TransactionType = "expense") => {
     setEditingTx(null);
+    setModalInitialType(initialType);
     setModalOpen(true);
   };
 
   const handleOpenEdit = (tx: Transaction) => {
     setEditingTx(tx);
+    setModalInitialType(tx.type);
     setModalOpen(true);
   };
 
   const handleCloseModal = () => {
     setModalOpen(false);
     setEditingTx(null);
+  };
+
+  const handleAddTransaction = async (input: TransactionInput) => {
+    await store.addTransaction(input);
+    const verb = input.type === "contribution" ? "contribution" : "expense";
+    showToast(`Recorded ${formatTZS(input.amount)} ${verb}`);
+  };
+
+  const handleUpdateTransaction = async (id: string, input: TransactionInput) => {
+    await store.updateTransaction(id, input);
+    showToast("Transaction updated");
+  };
+
+  const handleDeleteTransaction = async (id: string) => {
+    await store.deleteTransaction(id);
+    showToast("Transaction removed");
+  };
+
+  const handleManualSync = async () => {
+    await store.refresh();
+    showToast("Household synced");
+  };
+
+  const handleCopyInviteQuick = async (code: string) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      showToast(`Invite code ${code} copied`);
+    } catch {
+      showToast(`Invite code: ${code}`);
+    }
   };
 
   const handleTouchStart = (e: TouchEvent<HTMLDivElement>) => {
@@ -144,14 +209,7 @@ export function App() {
   };
 
   if (store.loading) {
-    return (
-      <div className="min-h-dvh flex items-center justify-center">
-        <div className="text-center space-y-2">
-          <div className="mx-auto h-9 w-9 animate-spin rounded-full border-2 border-slate-300 border-t-slate-900" />
-          <p className="text-xs font-medium text-slate-500">Syncing Keeper...</p>
-        </div>
-      </div>
-    );
+    return <LoadingSkeleton onRetry={() => void store.refresh()} />;
   }
 
   if (!store.profile || store.passwordRecoveryMode) {
@@ -197,6 +255,8 @@ export function App() {
     };
   });
 
+  const isBrandNewHouse = store.transactions.length === 0;
+
   return (
     <div className="h-dvh overflow-hidden flex flex-col">
       <div className="mx-auto flex h-full w-full max-w-[440px] flex-col">
@@ -225,9 +285,20 @@ export function App() {
             </div>
           </div>
 
-          {/* Week Switcher with Glisse Liquid Glass Menu */}
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="max-w-[106px] truncate rounded-full border border-slate-200/80 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 shadow-2xs">
+          {/* Manual Sync + Week Switcher with Glisse Liquid Glass Menu */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {!store.isDemoMode && (
+              <button
+                type="button"
+                aria-label="Sync household now"
+                disabled={store.refreshing}
+                onClick={() => void handleManualSync()}
+                className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200/80 bg-white text-slate-600 shadow-2xs hover:bg-slate-50 disabled:opacity-60 cursor-pointer"
+              >
+                <RotateCw className={`h-3.5 w-3.5 ${store.refreshing ? "animate-spin" : ""}`} />
+              </button>
+            )}
+            <span className="max-w-[96px] truncate rounded-full border border-slate-200/80 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 shadow-2xs">
               {weekWindow.label}
             </span>
             <Menu
@@ -247,15 +318,26 @@ export function App() {
         )}
 
         {store.error && (
-          <div className="mx-4 mb-2 shrink-0 flex items-center justify-between rounded-2xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs font-medium text-rose-700">
-            <span>{store.error}</span>
-            <button
-              type="button"
-              onClick={store.clearError}
-              className="ml-2 font-bold underline cursor-pointer"
-            >
-              Dismiss
-            </button>
+          <div className="mx-4 mb-2 shrink-0 flex items-center justify-between gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs font-medium text-rose-700">
+            <span className="min-w-0">{store.error}</span>
+            <div className="flex shrink-0 items-center gap-2">
+              {!store.isDemoMode && (
+                <button
+                  type="button"
+                  onClick={() => void handleManualSync()}
+                  className="font-bold underline cursor-pointer"
+                >
+                  Retry
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={store.clearError}
+                className="font-bold underline cursor-pointer"
+              >
+                Dismiss
+              </button>
+            </div>
           </div>
         )}
 
@@ -277,6 +359,37 @@ export function App() {
               aria-hidden={activeTab !== "overview"}
               className="h-full w-full shrink-0 overflow-y-auto no-scrollbar px-4 pb-28 space-y-4"
             >
+              {/* Actionable First-Time Household Guide */}
+              {isBrandNewHouse && (
+                <section className="rounded-[24px] border border-[#E5D3B3] bg-[#FBF8F1] p-4 shadow-xs space-y-3">
+                  <div>
+                    <h2 className="text-sm font-bold text-slate-900">
+                      Welcome to {store.household.name}
+                    </h2>
+                    <p className="mt-0.5 text-xs text-slate-600">
+                      Start by logging your first weekly contribution or inviting your roommates.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      variant="filled"
+                      onClick={() => handleOpenAdd("contribution")}
+                      icon={<Plus className="h-3.5 w-3.5" />}
+                      className="w-full justify-center !h-9 text-xs font-semibold"
+                    >
+                      First Contribution
+                    </Button>
+                    <Button
+                      onClick={() => void handleCopyInviteQuick(store.household!.invite_code)}
+                      icon={<Copy className="h-3.5 w-3.5" />}
+                      className="w-full justify-center !h-9 text-xs font-semibold"
+                    >
+                      Copy Invite Code
+                    </Button>
+                  </div>
+                </section>
+              )}
+
               <KpiCards
                 totalSpent={summary.totalSpent}
                 totalContributed={summary.totalContributed}
@@ -304,7 +417,7 @@ export function App() {
                 transactions={summary.weekTransactions}
                 currentUserId={store.profile.id}
                 onEdit={handleOpenEdit}
-                onDelete={store.deleteTransaction}
+                onDelete={handleDeleteTransaction}
                 maxItems={5}
                 onViewAll={() => handleSelectTab("ledger")}
               />
@@ -323,7 +436,7 @@ export function App() {
                 transactions={store.transactions}
                 currentUserId={store.profile.id}
                 onEdit={handleOpenEdit}
-                onDelete={store.deleteTransaction}
+                onDelete={handleDeleteTransaction}
               />
             </div>
 
@@ -372,22 +485,38 @@ export function App() {
         </div>
       </div>
 
+      {/* Floating Glisse Liquid Glass Toast Feedback */}
+      {toastMessage && (
+        <div
+          role="status"
+          aria-live="polite"
+          data-theme="dark"
+          className="keeper-dock pointer-events-none fixed bottom-[calc(5.25rem+env(safe-area-inset-bottom))] left-1/2 z-50 -translate-x-1/2 px-4"
+        >
+          <Glass className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold text-white shadow-xl whitespace-nowrap">
+            <CheckCircle2 className="h-3.5 w-3.5 text-[#E4CCA0] shrink-0" />
+            <span>{toastMessage}</span>
+          </Glass>
+        </div>
+      )}
+
       {/* Floating Dark Liquid Glass Navigation Bar */}
       <BottomDock
         activeTab={activeTab}
         onSelectTab={handleSelectTab}
-        onOpenAdd={handleOpenAdd}
+        onOpenAdd={() => handleOpenAdd("expense")}
       />
 
       {/* Quick Record / Edit Contribution & Expense Sheet */}
       <AddTransactionModal
         open={modalOpen}
+        initialType={modalInitialType}
         members={store.members}
         currentUserId={store.profile.id}
         editingTransaction={editingTx}
         onClose={handleCloseModal}
-        onSubmit={store.addTransaction}
-        onUpdate={store.updateTransaction}
+        onSubmit={handleAddTransaction}
+        onUpdate={handleUpdateTransaction}
       />
     </div>
   );

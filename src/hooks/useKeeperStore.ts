@@ -30,12 +30,14 @@ export interface TransactionInput {
 
 export interface KeeperStore {
   loading: boolean;
+  refreshing: boolean;
   isDemoMode: boolean;
   isSupabaseReady: boolean;
   passwordRecoveryMode: boolean;
   realtimeConnected: boolean;
   error: string | null;
   clearError: () => void;
+  refresh: () => Promise<void>;
   profile: Profile | null;
   household: Household | null;
   members: HouseholdMember[];
@@ -80,6 +82,7 @@ function loadDemoState() {
 
 export function useKeeperStore(): KeeperStore {
   const [loading, setLoading] = useState(isSupabaseConfigured);
+  const [refreshing, setRefreshing] = useState(false);
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [passwordRecoveryMode, setPasswordRecoveryMode] = useState(false);
   const [realtimeConnected, setRealtimeConnected] = useState(false);
@@ -313,6 +316,24 @@ export function useKeeperStore(): KeeperStore {
     setMembers(seed.members);
     setTransactions(seed.transactions);
   }, []);
+
+  const refresh = useCallback(async () => {
+    setError(null);
+    if (isDemoMode) return;
+    if (!supabase) return;
+    setRefreshing(true);
+    try {
+      const { data } = await supabase.auth.getSession();
+      if (data.session?.user) {
+        await fetchHouseholdBundle(data.session.user.id);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not sync household data.");
+    } finally {
+      setRefreshing(false);
+      setLoading(false);
+    }
+  }, [fetchHouseholdBundle, isDemoMode]);
 
   const signIn = useCallback(async (email: string, password: string) => {
     setError(null);
@@ -825,12 +846,14 @@ export function useKeeperStore(): KeeperStore {
 
   return {
     loading,
+    refreshing,
     isDemoMode,
     isSupabaseReady: isSupabaseConfigured,
     passwordRecoveryMode,
     realtimeConnected,
     error,
     clearError,
+    refresh,
     profile,
     household,
     members,

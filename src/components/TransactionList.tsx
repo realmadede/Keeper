@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { ArrowDownLeft, ArrowUpRight, Pencil, ReceiptText, Trash2 } from "lucide-react";
 import { formatShortDate, formatTZS, getInitials } from "../lib/format";
 import { getCategoryMeta, type Transaction } from "../types";
@@ -11,6 +11,7 @@ interface TransactionListProps {
   onDelete: (id: string) => Promise<void>;
   maxItems?: number;
   onViewAll?: () => void;
+  emptyState?: ReactNode;
 }
 
 export function TransactionList({
@@ -21,8 +22,10 @@ export function TransactionList({
   onDelete,
   maxItems,
   onViewAll,
+  emptyState,
 }: TransactionListProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const visible = maxItems ? transactions.slice(0, maxItems) : transactions;
@@ -32,6 +35,7 @@ export function TransactionList({
     try {
       await onDelete(id);
       setExpandedId(null);
+      setConfirmDeleteId(null);
     } finally {
       setDeletingId(null);
     }
@@ -53,26 +57,28 @@ export function TransactionList({
       </div>
 
       {visible.length === 0 ? (
-        <div className="rounded-2xl bg-slate-50 py-8 text-center">
-          <p className="text-sm font-medium text-slate-500">No transactions yet</p>
-          <p className="text-xs text-slate-400 mt-1">
-            Contributions and household purchases will show up here for everyone.
-          </p>
-        </div>
+        emptyState ?? (
+          <div className="rounded-2xl bg-slate-50 py-8 px-4 text-center">
+            <p className="text-sm font-medium text-slate-600">No transactions yet</p>
+            <p className="text-xs text-slate-400 mt-1">
+              Contributions and household purchases will show up here for everyone.
+            </p>
+          </div>
+        )
       ) : (
         <div className="space-y-2.5">
           {visible.map((tx) => {
             const isContribution = tx.type === "contribution";
             const cat = getCategoryMeta(tx.category);
-            const recorderName = tx.recorder?.full_name ?? "Household Member";
-            const creditedProfile =
-              isContribution && tx.payer ? tx.payer : tx.recorder;
+            const recorderName = tx.recorder?.full_name ?? "Former Member";
+            const creditedProfile = isContribution && tx.payer ? tx.payer : tx.recorder;
             const displayName = creditedProfile?.full_name ?? recorderName;
             const avatarColor = creditedProfile?.avatar_color ?? "#BFA377";
             const recordedOnBehalf =
               isContribution && tx.paid_by && tx.paid_by !== tx.recorded_by;
             const canManage = tx.recorded_by === currentUserId;
             const isExpanded = expandedId === tx.id;
+            const confirmingDelete = confirmDeleteId === tx.id;
 
             return (
               <div
@@ -81,7 +87,10 @@ export function TransactionList({
               >
                 <button
                   type="button"
-                  onClick={() => setExpandedId(isExpanded ? null : tx.id)}
+                  onClick={() => {
+                    setExpandedId(isExpanded ? null : tx.id);
+                    if (isExpanded) setConfirmDeleteId(null);
+                  }}
                   className="flex w-full items-center justify-between gap-3 p-3 text-left cursor-pointer"
                 >
                   <div className="flex items-center gap-3 min-w-0">
@@ -146,23 +155,45 @@ export function TransactionList({
                     </span>
                     {canManage && (
                       <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => onEdit(tx)}
-                          className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-1 font-medium text-slate-700 hover:bg-slate-200 cursor-pointer"
-                        >
-                          <Pencil className="h-3 w-3" />
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          disabled={deletingId === tx.id}
-                          onClick={() => void handleDelete(tx.id)}
-                          className="inline-flex items-center gap-1 rounded-lg bg-rose-50 px-2 py-1 font-medium text-rose-600 hover:bg-rose-100 disabled:opacity-50 cursor-pointer"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                          {deletingId === tx.id ? "Removing..." : "Delete"}
-                        </button>
+                        {confirmingDelete ? (
+                          <>
+                            <span className="text-rose-600 font-semibold">Delete entry?</span>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteId(null)}
+                              className="rounded-lg bg-slate-100 px-2 py-1 font-semibold text-slate-600 hover:bg-slate-200 cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              disabled={deletingId === tx.id}
+                              onClick={() => void handleDelete(tx.id)}
+                              className="rounded-lg bg-rose-600 px-2 py-1 font-semibold text-white hover:bg-rose-700 disabled:opacity-50 cursor-pointer"
+                            >
+                              {deletingId === tx.id ? "Deleting..." : "Confirm"}
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => onEdit(tx)}
+                              className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-1 font-medium text-slate-700 hover:bg-slate-200 cursor-pointer"
+                            >
+                              <Pencil className="h-3 w-3" />
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteId(tx.id)}
+                              className="inline-flex items-center gap-1 rounded-lg bg-rose-50 px-2 py-1 font-medium text-rose-600 hover:bg-rose-100 cursor-pointer"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                              Delete
+                            </button>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>

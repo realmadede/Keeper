@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Button, Glass, Input, SegmentedControl } from "glisse";
 import { FileText, X } from "lucide-react";
 import type { TransactionInput } from "../hooks/useKeeperStore";
-import { getInitials, toISODate } from "../lib/format";
+import { formatTZS, getInitials, toISODate } from "../lib/format";
 import {
   EXPENSE_CATEGORIES,
   type ExpenseCategoryId,
@@ -15,6 +15,7 @@ import { IosDatePicker } from "./IosDatePicker";
 
 interface AddTransactionModalProps {
   open: boolean;
+  initialType?: TransactionType;
   members: HouseholdMember[];
   currentUserId: string;
   editingTransaction?: Transaction | null;
@@ -27,6 +28,7 @@ const QUICK_AMOUNTS = [5000, 10000, 20000, 50000, 60000];
 
 export function AddTransactionModal({
   open,
+  initialType = "expense",
   members,
   currentUserId,
   editingTransaction,
@@ -34,7 +36,7 @@ export function AddTransactionModal({
   onSubmit,
   onUpdate,
 }: AddTransactionModalProps) {
-  const [type, setType] = useState<TransactionType>("expense");
+  const [type, setType] = useState<TransactionType>(initialType);
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState<ExpenseCategoryId>("food");
   const [paidBy, setPaidBy] = useState(currentUserId);
@@ -44,6 +46,17 @@ export function AddTransactionModal({
   const [formError, setFormError] = useState<string | null>(null);
 
   const isEditing = Boolean(editingTransaction);
+  const parsedPreview = Number(amount.replace(/,/g, "").trim());
+  const hasValidPreview = Number.isFinite(parsedPreview) && parsedPreview > 0;
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -58,14 +71,14 @@ export function AddTransactionModal({
       setDescription(editingTransaction.description);
       setDate(editingTransaction.transaction_date);
     } else {
-      setType("expense");
+      setType(initialType);
       setAmount("");
       setCategory("food");
       setPaidBy(currentUserId);
       setDescription("");
       setDate(toISODate(new Date()));
     }
-  }, [currentUserId, editingTransaction, open]);
+  }, [currentUserId, editingTransaction, initialType, open]);
 
   if (!open) return null;
 
@@ -147,11 +160,16 @@ export function AddTransactionModal({
             />
           </div>
 
-          {/* TZS Amount */}
+          {/* TZS Amount with Live Formatted Preview */}
           <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-              Amount (TZS)
-            </label>
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <label className="block text-xs font-semibold text-slate-600">Amount (TZS)</label>
+              {hasValidPreview && (
+                <span className="rounded-full bg-[#FBF8F1] border border-[#E5D3B3] px-2 py-0.5 text-[11px] font-bold text-[#7A5E31] tabular-nums">
+                  {formatTZS(parsedPreview)}
+                </span>
+              )}
+            </div>
             <Input
               type="number"
               inputMode="numeric"
