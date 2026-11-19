@@ -52,7 +52,33 @@ export interface Transaction {
   payer?: Profile;
 }
 
+export interface HouseholdNeed {
+  id: string;
+  household_id: string;
+  added_by: string | null;
+  title: string;
+  category: ExpenseCategoryId;
+  is_bought: boolean;
+  bought_at: string | null;
+  created_at: string;
+  adder?: Profile;
+}
+
+export interface RecurringBill {
+  id: string;
+  household_id: string;
+  created_by: string | null;
+  title: string;
+  amount: number;
+  category: ExpenseCategoryId;
+  due_day: number; // 1..31
+  last_paid_month: string | null; // YYYY-MM
+  created_at: string;
+}
+
 export type ActiveTab = "overview" | "ledger" | "budget" | "household";
+export type BudgetSubTab = "pool" | "bills" | "needs";
+export type PeriodKey = "this_week" | "last_week" | "two_weeks_ago" | "this_month" | "last_month";
 
 export interface CategoryMeta {
   id: ExpenseCategoryId;

@@ -7,6 +7,7 @@ interface TransactionListProps {
   title?: string;
   transactions: Transaction[];
   currentUserId: string;
+  newTransactionIds?: Set<string>;
   onEdit: (tx: Transaction) => void;
   onDelete: (id: string) => Promise<void>;
   maxItems?: number;
@@ -18,6 +19,7 @@ export function TransactionList({
   title = "Recent Transactions",
   transactions,
   currentUserId,
+  newTransactionIds,
   onEdit,
   onDelete,
   maxItems,
@@ -79,11 +81,16 @@ export function TransactionList({
             const canManage = tx.recorded_by === currentUserId;
             const isExpanded = expandedId === tx.id;
             const confirmingDelete = confirmDeleteId === tx.id;
+            const isNew = Boolean(newTransactionIds?.has(tx.id));
 
             return (
               <div
                 key={tx.id}
-                className="rounded-2xl border border-slate-100 bg-[#FAFBFD] transition-colors hover:border-slate-200"
+                className={`rounded-2xl border transition-colors ${
+                  isNew
+                    ? "border-[#E5D3B3] bg-[#FBF8F1]/80 hover:border-[#D4BA8E]"
+                    : "border-slate-100 bg-[#FAFBFD] hover:border-slate-200"
+                }`}
               >
                 <button
                   type="button"
@@ -105,6 +112,11 @@ export function TransactionList({
                         <span className="truncate text-[13px] font-semibold text-slate-900">
                           {displayName}
                         </span>
+                        {isNew && (
+                          <span className="shrink-0 rounded-full bg-[#1C1C1E] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-[#E4CCA0]">
+                            New
+                          </span>
+                        )}
                         {tx.updated_at && (
                           <span className="shrink-0 rounded-full bg-slate-200/80 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-500">
                             Edited

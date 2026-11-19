@@ -9,6 +9,8 @@ import { CategoryIcon } from "./CategoryIcon";
 interface CategoryBreakdownProps {
   categories: CategoryBreakdownItem[];
   totalSpent: number;
+  periodKind: "week" | "month";
+  comparisonLabel: string;
   spentDeltaPct: number | null;
   onViewAll: () => void;
 }
@@ -16,6 +18,8 @@ interface CategoryBreakdownProps {
 export function CategoryBreakdown({
   categories,
   totalSpent,
+  periodKind,
+  comparisonLabel,
   spentDeltaPct,
   onViewAll,
 }: CategoryBreakdownProps) {
@@ -39,7 +43,9 @@ export function CategoryBreakdown({
 
       {categories.length === 0 ? (
         <div className="my-6 rounded-2xl bg-slate-50 py-8 text-center">
-          <p className="text-sm font-medium text-slate-500">No household expenses this week</p>
+          <p className="text-sm font-medium text-slate-500">
+            No household expenses this {periodKind}
+          </p>
           <p className="text-xs text-slate-400 mt-1">Tap + below to record a purchase in TZS.</p>
         </div>
       ) : (
@@ -149,10 +155,12 @@ export function CategoryBreakdown({
               <TrendingDown className="h-3 w-3" />
             )}
             <span>{Math.abs(spentDeltaPct)}%</span>
-            <span className="text-slate-400 font-normal">From last week</span>
+            <span className="text-slate-400 font-normal">{comparisonLabel}</span>
           </span>
         ) : (
-          <span className="text-[11px] text-slate-400">Weekly breakdown</span>
+          <span className="text-[11px] text-slate-400">
+            {periodKind === "month" ? "Monthly breakdown" : "Weekly breakdown"}
+          </span>
         )}
         <button
           type="button"

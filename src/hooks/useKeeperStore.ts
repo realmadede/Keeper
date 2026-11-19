@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { getMonthKey } from "../lib/analytics";
 import { createDemoSeed } from "../lib/demoData";
 import {
   createRateLimiter,
@@ -6,18 +7,21 @@ import {
   sanitizeInviteCode,
 } from "../lib/security";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
-
-const authRateLimiter = createRateLimiter(5, 5 * 60 * 1000);
-const resetRateLimiter = createRateLimiter(3, 10 * 60 * 1000);
-const joinRateLimiter = createRateLimiter(5, 15 * 60 * 1000);
 import type {
+  ExpenseCategoryId,
   Household,
   HouseholdMember,
+  HouseholdNeed,
   Profile,
+  RecurringBill,
   Transaction,
   TransactionCategory,
   TransactionType,
 } from "../types";
+
+const authRateLimiter = createRateLimiter(5, 5 * 60 * 1000);
+const resetRateLimiter = createRateLimiter(3, 10 * 60 * 1000);
+const joinRateLimiter = createRateLimiter(5, 15 * 60 * 1000);
 
 export interface TransactionInput {
   type: TransactionType;
@@ -42,6 +46,8 @@ export interface KeeperStore {
   household: Household | null;
   members: HouseholdMember[];
   transactions: Transaction[];
+  needs: HouseholdNeed[];
+  bills: RecurringBill[];
   enterDemoMode: () => void;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (fullName: string, email: string, password: string) => Promise<void>;
@@ -59,6 +65,12 @@ export interface KeeperStore {
   addTransaction: (input: TransactionInput) => Promise<void>;
   updateTransaction: (id: string, input: TransactionInput) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
+  addNeed: (title: string, category: ExpenseCategoryId) => Promise<void>;
+  toggleNeed: (id: string, isBought: boolean) => Promise<void>;
+  deleteNeed: (id: string) => Promise<void>;
+  addBill: (title: string, amount: number, category: ExpenseCategoryId, dueDay: number) => Promise<void>;
+  markBillPaid: (id: string, monthKey?: string) => Promise<void>;
+  deleteBill: (id: string) => Promise<void>;
   updateBudget: (weeklyBudget: number, memberShare: number) => Promise<void>;
   leaveHousehold: () => Promise<void>;
 }
@@ -66,18 +78,24 @@ export interface KeeperStore {
 const DEMO_STORAGE_KEY = "keeper_demo_state_v1";
 
 function loadDemoState() {
+  const fresh = createDemoSeed();
   try {
     const raw = localStorage.getItem(DEMO_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed?.household && Array.isArray(parsed?.transactions)) {
-        return parsed as ReturnType<typeof createDemoSeed>;
+        return {
+          ...fresh,
+          ...parsed,
+          needs: Array.isArray(parsed.needs) ? parsed.needs : fresh.needs,
+          bills: Array.isArray(parsed.bills) ? parsed.bills : fresh.bills,
+        } as ReturnType<typeof createDemoSeed>;
       }
     }
   } catch {
     // Ignore storage read errors
   }
-  return createDemoSeed();
+  return fresh;
 }
 
 export function useKeeperStore(): KeeperStore {
@@ -92,6 +110,8 @@ export function useKeeperStore(): KeeperStore {
   const [household, setHousehold] = useState<Household | null>(null);
   const [members, setMembers] = useState<HouseholdMember[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [needs, setNeeds] = useState<HouseholdNeed[]>([]);
+  const [bills, setBills] = useState<RecurringBill[]>([]);
 
   const clearError = useCallback(() => setError(null), []);
 
@@ -125,10 +145,12 @@ export function useKeeperStore(): KeeperStore {
       setHousehold(null);
       setMembers([]);
       setTransactions([]);
+      setNeeds([]);
+      setBills([]);
       return;
     }
 
-    const [householdRes, membersRes, txRes] = await Promise.all([
+    const [householdRes, membersRes, txRes, needsRes, billsRes] = await Promise.all([
       supabase.from("households").select("*").eq("id", activeHouseholdId).single(),
       supabase
         .from("household_members")
@@ -144,6 +166,19 @@ export function useKeeperStore(): KeeperStore {
         .order("transaction_date", { ascending: false })
         .order("created_at", { ascending: false })
         .limit(500),
+      supabase
+        .from("household_needs")
+        .select("*, adder:profiles!household_needs_added_by_fkey(id, full_name, email, avatar_color)")
+        .eq("household_id", activeHouseholdId)
+        .order("is_bought", { ascending: true })
+        .order("created_at", { ascending: false })
+        .limit(200),
+      supabase
+        .from("recurring_bills")
+        .select("*")
+        .eq("household_id", activeHouseholdId)
+        .order("due_day", { ascending: true })
+        .limit(100),
     ]);
 
     if (householdRes.error) {
@@ -202,6 +237,40 @@ export function useKeeperStore(): KeeperStore {
         };
       });
       setTransactions(normalizedTx);
+    }
+
+    if (needsRes.data) {
+      const normalizedNeeds: HouseholdNeed[] = needsRes.data.map((row: Record<string, unknown>) => {
+        const adder = Array.isArray(row.adder) ? row.adder[0] : row.adder;
+        const addedBy = row.added_by ? String(row.added_by) : null;
+        return {
+          id: String(row.id),
+          household_id: String(row.household_id),
+          added_by: addedBy,
+          title: String(row.title),
+          category: row.category as ExpenseCategoryId,
+          is_bought: Boolean(row.is_bought),
+          bought_at: row.bought_at ? String(row.bought_at) : null,
+          created_at: String(row.created_at),
+          adder: (adder as Profile | undefined) ?? (addedBy ? profileMap.get(addedBy) : undefined),
+        };
+      });
+      setNeeds(normalizedNeeds);
+    }
+
+    if (billsRes.data) {
+      const normalizedBills: RecurringBill[] = billsRes.data.map((row: Record<string, unknown>) => ({
+        id: String(row.id),
+        household_id: String(row.household_id),
+        created_by: row.created_by ? String(row.created_by) : null,
+        title: String(row.title),
+        amount: Number(row.amount),
+        category: row.category as ExpenseCategoryId,
+        due_day: Number(row.due_day),
+        last_paid_month: row.last_paid_month ? String(row.last_paid_month) : null,
+        created_at: String(row.created_at),
+      }));
+      setBills(normalizedBills);
     }
   }, []);
 
@@ -284,6 +353,20 @@ export function useKeeperStore(): KeeperStore {
           void fetchHouseholdBundle(userId);
         },
       )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "household_needs", filter: `household_id=eq.${householdId}` },
+        () => {
+          void fetchHouseholdBundle(userId);
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "recurring_bills", filter: `household_id=eq.${householdId}` },
+        () => {
+          void fetchHouseholdBundle(userId);
+        },
+      )
       .subscribe((status) => {
         setRealtimeConnected(status === "SUBSCRIBED");
       });
@@ -300,12 +383,12 @@ export function useKeeperStore(): KeeperStore {
     try {
       localStorage.setItem(
         DEMO_STORAGE_KEY,
-        JSON.stringify({ currentUser: profile, household, members, transactions }),
+        JSON.stringify({ currentUser: profile, household, members, transactions, needs, bills }),
       );
     } catch {
       // Ignore storage write errors
     }
-  }, [household, isDemoMode, members, profile, transactions]);
+  }, [bills, household, isDemoMode, members, needs, profile, transactions]);
 
   const enterDemoMode = useCallback(() => {
     const seed = loadDemoState();
@@ -315,6 +398,8 @@ export function useKeeperStore(): KeeperStore {
     setHousehold(seed.household);
     setMembers(seed.members);
     setTransactions(seed.transactions);
+    setNeeds(seed.needs);
+    setBills(seed.bills);
   }, []);
 
   const refresh = useCallback(async () => {
@@ -785,6 +870,173 @@ export function useKeeperStore(): KeeperStore {
     [fetchHouseholdBundle, isDemoMode, profile],
   );
 
+  const addNeed = useCallback(
+    async (title: string, category: ExpenseCategoryId) => {
+      setError(null);
+      if (!household || !profile) return;
+      const cleanTitle = title.trim().slice(0, 120);
+      if (!cleanTitle) return;
+
+      if (isDemoMode) {
+        const next: HouseholdNeed = {
+          id: `need-${Date.now()}`,
+          household_id: household.id,
+          added_by: profile.id,
+          title: cleanTitle,
+          category,
+          is_bought: false,
+          bought_at: null,
+          created_at: new Date().toISOString(),
+          adder: profile,
+        };
+        setNeeds((prev) => [next, ...prev]);
+        return;
+      }
+
+      if (!supabase) return;
+      const { error: err } = await supabase.from("household_needs").insert({
+        household_id: household.id,
+        added_by: profile.id,
+        title: cleanTitle,
+        category,
+      });
+      if (err) {
+        setError(err.message);
+        throw err;
+      }
+      await fetchHouseholdBundle(profile.id);
+    },
+    [fetchHouseholdBundle, household, isDemoMode, profile],
+  );
+
+  const toggleNeed = useCallback(
+    async (id: string, isBought: boolean) => {
+      setError(null);
+      const boughtAt = isBought ? new Date().toISOString() : null;
+      if (isDemoMode) {
+        setNeeds((prev) =>
+          prev
+            .map((n) => (n.id === id ? { ...n, is_bought: isBought, bought_at: boughtAt } : n))
+            .sort((a, b) => Number(a.is_bought) - Number(b.is_bought)),
+        );
+        return;
+      }
+      if (!supabase || !profile) return;
+      const { error: err } = await supabase
+        .from("household_needs")
+        .update({ is_bought: isBought, bought_at: boughtAt })
+        .eq("id", id);
+      if (err) {
+        setError(err.message);
+        throw err;
+      }
+      await fetchHouseholdBundle(profile.id);
+    },
+    [fetchHouseholdBundle, isDemoMode, profile],
+  );
+
+  const deleteNeed = useCallback(
+    async (id: string) => {
+      setError(null);
+      if (isDemoMode) {
+        setNeeds((prev) => prev.filter((n) => n.id !== id));
+        return;
+      }
+      if (!supabase || !profile) return;
+      const { error: err } = await supabase.from("household_needs").delete().eq("id", id);
+      if (err) {
+        setError(err.message);
+        throw err;
+      }
+      await fetchHouseholdBundle(profile.id);
+    },
+    [fetchHouseholdBundle, isDemoMode, profile],
+  );
+
+  const addBill = useCallback(
+    async (title: string, amount: number, category: ExpenseCategoryId, dueDay: number) => {
+      setError(null);
+      if (!household || !profile) return;
+      const cleanTitle = title.trim().slice(0, 80);
+      const safeAmount = Math.max(1, Math.round(amount));
+      const safeDay = Math.min(31, Math.max(1, Math.round(dueDay)));
+      if (!cleanTitle) return;
+
+      if (isDemoMode) {
+        const next: RecurringBill = {
+          id: `bill-${Date.now()}`,
+          household_id: household.id,
+          created_by: profile.id,
+          title: cleanTitle,
+          amount: safeAmount,
+          category,
+          due_day: safeDay,
+          last_paid_month: null,
+          created_at: new Date().toISOString(),
+        };
+        setBills((prev) => [...prev, next].sort((a, b) => a.due_day - b.due_day));
+        return;
+      }
+
+      if (!supabase) return;
+      const { error: err } = await supabase.from("recurring_bills").insert({
+        household_id: household.id,
+        created_by: profile.id,
+        title: cleanTitle,
+        amount: safeAmount,
+        category,
+        due_day: safeDay,
+      });
+      if (err) {
+        setError(err.message);
+        throw err;
+      }
+      await fetchHouseholdBundle(profile.id);
+    },
+    [fetchHouseholdBundle, household, isDemoMode, profile],
+  );
+
+  const markBillPaid = useCallback(
+    async (id: string, monthKey = getMonthKey()) => {
+      setError(null);
+      if (isDemoMode) {
+        setBills((prev) =>
+          prev.map((b) => (b.id === id ? { ...b, last_paid_month: monthKey } : b)),
+        );
+        return;
+      }
+      if (!supabase || !profile) return;
+      const { error: err } = await supabase
+        .from("recurring_bills")
+        .update({ last_paid_month: monthKey })
+        .eq("id", id);
+      if (err) {
+        setError(err.message);
+        throw err;
+      }
+      await fetchHouseholdBundle(profile.id);
+    },
+    [fetchHouseholdBundle, isDemoMode, profile],
+  );
+
+  const deleteBill = useCallback(
+    async (id: string) => {
+      setError(null);
+      if (isDemoMode) {
+        setBills((prev) => prev.filter((b) => b.id !== id));
+        return;
+      }
+      if (!supabase || !profile) return;
+      const { error: err } = await supabase.from("recurring_bills").delete().eq("id", id);
+      if (err) {
+        setError(err.message);
+        throw err;
+      }
+      await fetchHouseholdBundle(profile.id);
+    },
+    [fetchHouseholdBundle, isDemoMode, profile],
+  );
+
   const updateBudget = useCallback(
     async (weeklyBudget: number, memberShare: number) => {
       setError(null);
@@ -858,6 +1110,8 @@ export function useKeeperStore(): KeeperStore {
     household,
     members,
     transactions,
+    needs,
+    bills,
     enterDemoMode,
     signIn,
     signUp,
@@ -875,6 +1129,12 @@ export function useKeeperStore(): KeeperStore {
     addTransaction,
     updateTransaction,
     deleteTransaction,
+    addNeed,
+    toggleNeed,
+    deleteNeed,
+    addBill,
+    markBillPaid,
+    deleteBill,
     updateBudget,
     leaveHousehold,
   };

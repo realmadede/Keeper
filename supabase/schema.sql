@@ -106,6 +106,41 @@ create table if not exists public.invite_join_attempts (
 create index if not exists idx_invite_attempts_user_time
   on public.invite_join_attempts (user_id, attempted_at desc);
 
+-- 6. Shared Household Restock / Needs List
+create table if not exists public.household_needs (
+  id uuid primary key default gen_random_uuid(),
+  household_id uuid not null references public.households(id) on delete cascade,
+  added_by uuid references public.profiles(id) on delete set null,
+  title text not null check (char_length(trim(title)) between 1 and 120),
+  category text not null default 'food' check (
+    category in ('food', 'electricity_water', 'rent', 'security_internet', 'supplies', 'transport')
+  ),
+  is_bought boolean not null default false,
+  bought_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_household_needs_household
+  on public.household_needs (household_id, is_bought, created_at desc);
+
+-- 7. Recurring Monthly Household Bills & Due-Date Reminders
+create table if not exists public.recurring_bills (
+  id uuid primary key default gen_random_uuid(),
+  household_id uuid not null references public.households(id) on delete cascade,
+  created_by uuid references public.profiles(id) on delete set null,
+  title text not null check (char_length(trim(title)) between 1 and 80),
+  amount bigint not null check (amount > 0 and amount <= 10000000000),
+  category text not null check (
+    category in ('food', 'electricity_water', 'rent', 'security_internet', 'supplies', 'transport')
+  ),
+  due_day int not null check (due_day between 1 and 31),
+  last_paid_month text check (last_paid_month is null or last_paid_month ~ '^[0-9]{4}-[0-9]{2}$'),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_recurring_bills_household
+  on public.recurring_bills (household_id, due_day asc);
+
 -- Auto-create profile when a new user signs up
 create or replace function public.handle_new_user()
 returns trigger
@@ -596,6 +631,8 @@ alter table public.households enable row level security;
 alter table public.household_members enable row level security;
 alter table public.transactions enable row level security;
 alter table public.invite_join_attempts enable row level security;
+alter table public.household_needs enable row level security;
+alter table public.recurring_bills enable row level security;
 
 -- Profiles: users can see their own profile and profiles of household roommates
 drop policy if exists "Read own and roommate profiles" on public.profiles;
@@ -677,6 +714,56 @@ create policy "Recorder can delete own transaction"
     and recorded_by = auth.uid()
   );
 
+-- Household Needs: all members of a household share the restock checklist
+drop policy if exists "Members can view household needs" on public.household_needs;
+create policy "Members can view household needs"
+  on public.household_needs for select
+  using (public.is_household_member(household_id));
+
+drop policy if exists "Members can add household needs" on public.household_needs;
+create policy "Members can add household needs"
+  on public.household_needs for insert
+  with check (
+    public.is_household_member(household_id)
+    and added_by = auth.uid()
+  );
+
+drop policy if exists "Members can update household needs" on public.household_needs;
+create policy "Members can update household needs"
+  on public.household_needs for update
+  using (public.is_household_member(household_id))
+  with check (public.is_household_member(household_id));
+
+drop policy if exists "Members can delete household needs" on public.household_needs;
+create policy "Members can delete household needs"
+  on public.household_needs for delete
+  using (public.is_household_member(household_id));
+
+-- Recurring Bills: all members can track and mark shared monthly bills paid
+drop policy if exists "Members can view recurring bills" on public.recurring_bills;
+create policy "Members can view recurring bills"
+  on public.recurring_bills for select
+  using (public.is_household_member(household_id));
+
+drop policy if exists "Members can add recurring bills" on public.recurring_bills;
+create policy "Members can add recurring bills"
+  on public.recurring_bills for insert
+  with check (
+    public.is_household_member(household_id)
+    and created_by = auth.uid()
+  );
+
+drop policy if exists "Members can update recurring bills" on public.recurring_bills;
+create policy "Members can update recurring bills"
+  on public.recurring_bills for update
+  using (public.is_household_member(household_id))
+  with check (public.is_household_member(household_id));
+
+drop policy if exists "Members can delete recurring bills" on public.recurring_bills;
+create policy "Members can delete recurring bills"
+  on public.recurring_bills for delete
+  using (public.is_household_member(household_id));
+
 -- Enable Supabase Realtime safely (idempotent)
 do $$
 begin
@@ -699,5 +786,17 @@ end $$;
 do $$
 begin
   alter publication supabase_realtime add table public.transactions;
+exception when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  alter publication supabase_realtime add table public.household_needs;
+exception when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  alter publication supabase_realtime add table public.recurring_bills;
 exception when duplicate_object then null;
 end $$;

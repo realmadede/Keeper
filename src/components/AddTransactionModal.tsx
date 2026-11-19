@@ -13,14 +13,24 @@ import {
 import { CategoryIcon } from "./CategoryIcon";
 import { IosDatePicker } from "./IosDatePicker";
 
+export interface TransactionPrefill {
+  type: TransactionType;
+  amount?: number;
+  category?: ExpenseCategoryId;
+  description?: string;
+  needId?: string;
+  billId?: string;
+}
+
 interface AddTransactionModalProps {
   open: boolean;
   initialType?: TransactionType;
+  prefillDraft?: TransactionPrefill | null;
   members: HouseholdMember[];
   currentUserId: string;
   editingTransaction?: Transaction | null;
   onClose: () => void;
-  onSubmit: (input: TransactionInput) => Promise<void>;
+  onSubmit: (input: TransactionInput, prefill?: TransactionPrefill | null) => Promise<void>;
   onUpdate?: (id: string, input: TransactionInput) => Promise<void>;
 }
 
@@ -29,6 +39,7 @@ const QUICK_AMOUNTS = [5000, 10000, 20000, 50000, 60000];
 export function AddTransactionModal({
   open,
   initialType = "expense",
+  prefillDraft,
   members,
   currentUserId,
   editingTransaction,
@@ -70,6 +81,13 @@ export function AddTransactionModal({
       setPaidBy(editingTransaction.paid_by || editingTransaction.recorded_by);
       setDescription(editingTransaction.description);
       setDate(editingTransaction.transaction_date);
+    } else if (prefillDraft) {
+      setType(prefillDraft.type);
+      setAmount(prefillDraft.amount ? String(prefillDraft.amount) : "");
+      setCategory(prefillDraft.category ?? "food");
+      setPaidBy(currentUserId);
+      setDescription(prefillDraft.description ?? "");
+      setDate(toISODate(new Date()));
     } else {
       setType(initialType);
       setAmount("");
@@ -78,7 +96,7 @@ export function AddTransactionModal({
       setDescription("");
       setDate(toISODate(new Date()));
     }
-  }, [currentUserId, editingTransaction, initialType, open]);
+  }, [currentUserId, editingTransaction, initialType, open, prefillDraft]);
 
   if (!open) return null;
 
@@ -110,7 +128,7 @@ export function AddTransactionModal({
       if (editingTransaction && onUpdate) {
         await onUpdate(editingTransaction.id, payload);
       } else {
-        await onSubmit(payload);
+        await onSubmit(payload, prefillDraft);
       }
       onClose();
     } catch (err) {

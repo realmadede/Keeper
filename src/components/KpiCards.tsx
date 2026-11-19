@@ -15,14 +15,24 @@ interface KpiCardsProps {
   totalContributed: number;
   remainingBalance: number;
   allTimeBalance: number;
-  weeklyBudgetTarget: number;
+  periodBudgetTarget: number;
+  periodGoalLabel: string;
+  comparisonLabel: string;
   spentDeltaPct: number | null;
   contributedDeltaPct: number | null;
 }
 
-function DeltaLabel({ pct, invertGood = false }: { pct: number | null; invertGood?: boolean }) {
+function DeltaLabel({
+  pct,
+  comparisonLabel,
+  invertGood = false,
+}: {
+  pct: number | null;
+  comparisonLabel: string;
+  invertGood?: boolean;
+}) {
   if (pct === null) {
-    return <span className="text-[11px] font-medium text-slate-400">No data last week</span>;
+    return <span className="text-[11px] font-medium text-slate-400">No prior period data</span>;
   }
   const isUp = pct >= 0;
   const isGood = invertGood ? !isUp : isUp;
@@ -34,7 +44,7 @@ function DeltaLabel({ pct, invertGood = false }: { pct: number | null; invertGoo
     >
       {isUp ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
       <span>{Math.abs(pct)}%</span>
-      <span className="text-slate-500 font-normal">From last week</span>
+      <span className="text-slate-500 font-normal">{comparisonLabel}</span>
     </span>
   );
 }
@@ -44,12 +54,14 @@ export function KpiCards({
   totalContributed,
   remainingBalance,
   allTimeBalance,
-  weeklyBudgetTarget,
+  periodBudgetTarget,
+  periodGoalLabel,
+  comparisonLabel,
   spentDeltaPct,
   contributedDeltaPct,
 }: KpiCardsProps) {
   const budgetProgress =
-    weeklyBudgetTarget > 0 ? Math.min(100, Math.round((totalContributed / weeklyBudgetTarget) * 100)) : 0;
+    periodBudgetTarget > 0 ? Math.min(100, Math.round((totalContributed / periodBudgetTarget) * 100)) : 0;
 
   return (
     <div
@@ -68,7 +80,7 @@ export function KpiCards({
           {formatTZS(totalSpent)}
         </div>
         <div className="mt-1.5">
-          <DeltaLabel pct={spentDeltaPct} invertGood />
+          <DeltaLabel pct={spentDeltaPct} comparisonLabel={comparisonLabel} invertGood />
         </div>
       </div>
 
@@ -84,7 +96,7 @@ export function KpiCards({
           {formatTZS(totalContributed)}
         </div>
         <div className="mt-1.5">
-          <DeltaLabel pct={contributedDeltaPct} />
+          <DeltaLabel pct={contributedDeltaPct} comparisonLabel={comparisonLabel} />
         </div>
       </div>
 
@@ -105,7 +117,7 @@ export function KpiCards({
         </div>
         <div className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-emerald-700">
           <ShieldCheck className="h-3 w-3 shrink-0" />
-          <span>{budgetProgress}% of weekly goal</span>
+          <span>{budgetProgress}% of {periodGoalLabel}</span>
         </div>
       </div>
 

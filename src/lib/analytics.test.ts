@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { computeWeeklySummary, getWeekWindow } from "./analytics";
+import {
+  computePeriodSummary,
+  computeWeeklySummary,
+  getBillDueStatus,
+  getWeekWindow,
+} from "./analytics";
 import { formatCompactTZS, formatTZS } from "./format";
-import type { HouseholdMember, Transaction } from "../types";
+import type { HouseholdMember, RecurringBill, Transaction } from "../types";
 
 const REF_DATE = new Date(2026, 10, 19); // Thursday Nov 19, 2026
 
@@ -118,5 +123,44 @@ describe("computeWeeklySummary", () => {
     });
     expect(summary.memberStatuses[0].percentOfShare).toBe(100);
     expect(summary.dailySeries.find((d) => d.iso === "2026-11-18")?.spent).toBe(30000);
+  });
+
+  it("computes monthly period summaries grouped into W1-W5 buckets", () => {
+    const monthly = computePeriodSummary(txns, MEMBERS, 60000, "this_month", REF_DATE);
+    expect(monthly.totalContributed).toBe(120000);
+    expect(monthly.totalSpent).toBe(90000); // 30k + 20k + 40k all in Nov 2026
+    expect(monthly.dailySeries).toHaveLength(5);
+    expect(monthly.dailySeries[0].dayShort).toBe("W1");
+    expect(monthly.dailySeries[1].spent).toBe(40000); // Nov 12 -> W2
+    expect(monthly.dailySeries[2].spent).toBe(50000); // Nov 18 & 19 -> W3
+  });
+});
+
+describe("getBillDueStatus", () => {
+  const baseBill: RecurringBill = {
+    id: "b1",
+    household_id: "h1",
+    created_by: "u1",
+    title: "Fiber Wi-Fi",
+    amount: 70000,
+    category: "security_internet",
+    due_day: 21,
+    last_paid_month: null,
+    created_at: "2026-11-01T00:00:00Z",
+  };
+
+  it("identifies due soon, overdue, and paid this month bills accurately", () => {
+    // REF_DATE is Nov 19, 2026
+    const dueSoon = getBillDueStatus(baseBill, REF_DATE);
+    expect(dueSoon.isDueSoon).toBe(true);
+    expect(dueSoon.statusLabel).toBe("Due in 2 days");
+
+    const overdue = getBillDueStatus({ ...baseBill, due_day: 15 }, REF_DATE);
+    expect(overdue.isOverdue).toBe(true);
+    expect(overdue.statusLabel).toBe("Overdue by 4 days");
+
+    const paid = getBillDueStatus({ ...baseBill, last_paid_month: "2026-11" }, REF_DATE);
+    expect(paid.isPaidThisMonth).toBe(true);
+    expect(paid.statusLabel).toBe("Paid this month");
   });
 });

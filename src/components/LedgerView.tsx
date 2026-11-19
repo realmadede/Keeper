@@ -18,6 +18,7 @@ interface LedgerViewProps {
   householdName: string;
   transactions: Transaction[];
   currentUserId: string;
+  newTransactionIds?: Set<string>;
   onEdit: (tx: Transaction) => void;
   onDelete: (id: string) => Promise<void>;
 }
@@ -26,6 +27,7 @@ export function LedgerView({
   householdName,
   transactions,
   currentUserId,
+  newTransactionIds,
   onEdit,
   onDelete,
 }: LedgerViewProps) {
@@ -220,6 +222,7 @@ export function LedgerView({
         title={`Household Ledger (${filtered.length})`}
         transactions={paginated}
         currentUserId={currentUserId}
+        newTransactionIds={newTransactionIds}
         onEdit={onEdit}
         onDelete={onDelete}
         emptyState={

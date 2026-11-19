@@ -1,5 +1,12 @@
-import type { Household, HouseholdMember, Profile, Transaction } from "../types";
-import { getWeekWindow } from "./analytics";
+import type {
+  Household,
+  HouseholdMember,
+  HouseholdNeed,
+  Profile,
+  RecurringBill,
+  Transaction,
+} from "../types";
+import { getMonthKey, getWeekWindow } from "./analytics";
 
 export function createDemoSeed() {
   const thisWeek = getWeekWindow(0);
@@ -172,10 +179,88 @@ export function createDemoSeed() {
     },
   ];
 
+  const now = new Date();
+  const todayDay = now.getDate();
+  const currentMonthKey = getMonthKey(now);
+
+  const needs: HouseholdNeed[] = [
+    {
+      id: "need-1",
+      household_id: household.id,
+      added_by: "demo-2",
+      title: "Cooking gas refill (15kg)",
+      category: "supplies",
+      is_bought: false,
+      bought_at: null,
+      created_at: new Date(Date.now() - 3 * 3600 * 1000).toISOString(),
+      adder: profiles[1],
+    },
+    {
+      id: "need-2",
+      household_id: household.id,
+      added_by: "demo-3",
+      title: "Rice (5kg) & Tomatoes",
+      category: "food",
+      is_bought: false,
+      bought_at: null,
+      created_at: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
+      adder: profiles[2],
+    },
+    {
+      id: "need-3",
+      household_id: household.id,
+      added_by: "demo-4",
+      title: "Dish soap & toilet tissue",
+      category: "supplies",
+      is_bought: true,
+      bought_at: new Date(Date.now() - 24 * 3600 * 1000).toISOString(),
+      created_at: new Date(Date.now() - 48 * 3600 * 1000).toISOString(),
+      adder: profiles[3],
+    },
+  ];
+
+  const bills: RecurringBill[] = [
+    {
+      id: "bill-1",
+      household_id: household.id,
+      created_by: "demo-1",
+      title: "Shared Fiber Wi-Fi",
+      amount: 70000,
+      category: "security_internet",
+      due_day: Math.min(28, todayDay + 2),
+      last_paid_month: null,
+      created_at: now.toISOString(),
+    },
+    {
+      id: "bill-2",
+      household_id: household.id,
+      created_by: "demo-1",
+      title: "DAWASA Water Bill",
+      amount: 25000,
+      category: "electricity_water",
+      due_day: Math.min(28, todayDay + 6),
+      last_paid_month: null,
+      created_at: now.toISOString(),
+    },
+    {
+      id: "bill-3",
+      household_id: household.id,
+      created_by: "demo-1",
+      title: "Night Security Guard",
+      amount: 40000,
+      category: "security_internet",
+      due_day: 5,
+      last_paid_month: currentMonthKey,
+      created_at: now.toISOString(),
+    },
+  ];
+
   return {
     currentUser: profiles[0],
     household,
     members,
     transactions,
+    needs,
+    bills,
   };
 }

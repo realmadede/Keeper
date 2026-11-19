@@ -7,10 +7,17 @@ import { formatCompactTZS, formatFullDayLabel, formatTZS } from "../lib/format";
 
 interface WeeklyBarChartProps {
   dailySeries: DailyBarPoint[];
+  periodKind: "week" | "month";
+  comparisonLabel: string;
   spentDeltaPct: number | null;
 }
 
-export function WeeklyBarChart({ dailySeries, spentDeltaPct }: WeeklyBarChartProps) {
+export function WeeklyBarChart({
+  dailySeries,
+  periodKind,
+  comparisonLabel,
+  spentDeltaPct,
+}: WeeklyBarChartProps) {
   const defaultIndex = (() => {
     let bestIdx = 0;
     let bestVal = -1;
@@ -32,26 +39,39 @@ export function WeeklyBarChart({ dailySeries, spentDeltaPct }: WeeklyBarChartPro
 
   const activeDay = dailySeries[activeIndex] ?? dailySeries[0];
   const hasActivity = dailySeries.some((d) => d.contributed > 0 || d.spent > 0);
+  const activeSubtitle = activeDay
+    ? periodKind === "month"
+      ? `${activeDay.dayShort} · ${activeDay.detailLabel}`
+      : formatFullDayLabel(activeDay.iso)
+    : "";
 
   return (
     <section className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-[0_2px_16px_rgba(15,23,42,0.04)]">
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-[15px] font-semibold text-slate-900">Expense Overview</h2>
         <span className="text-[11px] font-medium text-slate-400">
-          {hasActivity ? "Tap any day" : "Mon - Sun"}
+          {hasActivity
+            ? periodKind === "month"
+              ? "Tap any week"
+              : "Tap any day"
+            : periodKind === "month"
+              ? "Monthly weeks"
+              : "Mon - Sun"}
         </span>
       </div>
 
       {!hasActivity ? (
         <div className="my-4 rounded-2xl bg-slate-50 py-10 px-4 text-center">
-          <p className="text-sm font-medium text-slate-600">No activity recorded for this week</p>
+          <p className="text-sm font-medium text-slate-600">
+            No activity recorded for this {periodKind}
+          </p>
           <p className="mt-1 text-xs text-slate-400">
             Tap the + button below to log a contribution or household purchase.
           </p>
         </div>
       ) : (
         <>
-          {/* Floating Glisse Liquid Glass Callout Chips for Selected Day */}
+          {/* Floating Glisse Liquid Glass Callout Chips for Selected Day/Week */}
           {activeDay && (
             <div className="mb-3 flex flex-wrap gap-2">
               <Glass className="rounded-xl px-2.5 py-1.5 flex-1 min-w-[130px]">
@@ -59,7 +79,7 @@ export function WeeklyBarChart({ dailySeries, spentDeltaPct }: WeeklyBarChartPro
                   {formatTZS(activeDay.contributed)}
                 </div>
                 <div className="text-[10px] text-slate-500 truncate">
-                  Pooled · {formatFullDayLabel(activeDay.iso)}
+                  Pooled · {activeSubtitle}
                 </div>
               </Glass>
               <Glass className="rounded-xl px-2.5 py-1.5 flex-1 min-w-[130px]">
@@ -67,7 +87,7 @@ export function WeeklyBarChart({ dailySeries, spentDeltaPct }: WeeklyBarChartPro
                   {formatTZS(activeDay.spent)}
                 </div>
                 <div className="text-[10px] text-slate-500 truncate">
-                  Spent · {formatFullDayLabel(activeDay.iso)}
+                  Spent · {activeSubtitle}
                 </div>
               </Glass>
             </div>
@@ -158,7 +178,7 @@ export function WeeklyBarChart({ dailySeries, spentDeltaPct }: WeeklyBarChartPro
               <TrendingDown className="h-3 w-3" />
             )}
             <span>{Math.abs(spentDeltaPct)}%</span>
-            <span className="text-slate-400 font-normal">from last week</span>
+            <span className="text-slate-400 font-normal">{comparisonLabel.toLowerCase()}</span>
           </span>
         )}
       </div>
