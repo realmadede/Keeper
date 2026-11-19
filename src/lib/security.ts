@@ -1,10 +1,30 @@
 const INVITE_CODE_RE = /^[A-Z0-9]{6,12}$/;
 const INVITE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
-/** Strictly validates and normalizes a household invite code. Returns null if invalid. */
+/**
+ * Strictly validates and normalizes a household invite code.
+ * Also safely extracts `?join=CODE` if the user pastes a full invite link.
+ */
 export function sanitizeInviteCode(raw: string | null | undefined): string | null {
   if (!raw) return null;
-  const normalized = raw.trim().toUpperCase();
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+
+  let candidate = trimmed;
+  if (trimmed.includes("join=") || /^https?:\/\//i.test(trimmed)) {
+    try {
+      const parsed = new URL(
+        /^https?:\/\//i.test(trimmed) ? trimmed : `https://keeper.local/${trimmed.replace(/^\/+/, "")}`,
+      );
+      const param = parsed.searchParams.get("join");
+      if (!param) return null;
+      candidate = param.trim();
+    } catch {
+      return null;
+    }
+  }
+
+  const normalized = candidate.toUpperCase();
   return INVITE_CODE_RE.test(normalized) ? normalized : null;
 }
 

@@ -2,13 +2,17 @@ import { describe, expect, it } from "vitest";
 import { createRateLimiter, generateClientInviteCode, sanitizeInviteCode } from "./security";
 
 describe("sanitizeInviteCode", () => {
-  it("accepts valid 6-to-12 alphanumeric codes and normalizes case/whitespace", () => {
+  it("accepts valid 6-to-12 alphanumeric codes and full ?join= invite links", () => {
     expect(sanitizeInviteCode(" snz414 ")).toBe("SNZ414");
     expect(sanitizeInviteCode("k7m9p2x4")).toBe("K7M9P2X4");
+    expect(sanitizeInviteCode("https://keeper.vercel.app/?join=snz414kp")).toBe("SNZ414KP");
+    expect(sanitizeInviteCode("/?join=K7M9P2X4")).toBe("K7M9P2X4");
   });
 
-  it("rejects XSS payloads, SQLi strings, overly short or overly long values", () => {
+  it("rejects XSS payloads, SQLi strings, invalid links, overly short or overly long values", () => {
     expect(sanitizeInviteCode("<script>alert(1)</script>")).toBeNull();
+    expect(sanitizeInviteCode("https://keeper.vercel.app/?join=<script>")).toBeNull();
+    expect(sanitizeInviteCode("https://keeper.vercel.app/")).toBeNull();
     expect(sanitizeInviteCode("SNZ' OR '1'='1")).toBeNull();
     expect(sanitizeInviteCode("ABC")).toBeNull();
     expect(sanitizeInviteCode("A".repeat(20))).toBeNull();

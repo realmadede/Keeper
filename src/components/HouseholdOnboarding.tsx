@@ -1,6 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Glass, SegmentedControl } from "glisse";
 import { Home, Key, LogOut } from "lucide-react";
+import { formatTZS } from "../lib/format";
+import { sanitizeInviteCode } from "../lib/security";
 import type { Profile } from "../types";
 import { KeeperLogo } from "./KeeperLogo";
 import { SoftButton, SoftInput } from "./LightControls";
@@ -24,15 +26,19 @@ export function HouseholdOnboarding({
 }: HouseholdOnboardingProps) {
   const [mode, setMode] = useState<"create" | "join">(initialInviteCode ? "join" : "create");
   const [houseName, setHouseName] = useState("");
-  const [weeklyBudget, setWeeklyBudget] = useState("240000");
-  const [memberShare, setMemberShare] = useState("60000");
-  const [inviteCode, setInviteCode] = useState(initialInviteCode?.toUpperCase() ?? "");
+  const [weeklyBudget, setWeeklyBudget] = useState("");
+  const [memberShare, setMemberShare] = useState("");
+  const [inviteInput, setInviteInput] = useState(initialInviteCode?.toUpperCase() ?? "");
   const [submitting, setSubmitting] = useState(false);
+
+  const extractedCode = sanitizeInviteCode(inviteInput);
+  const parsedBudget = Number(weeklyBudget.replace(/,/g, "").trim());
+  const parsedShare = Number(memberShare.replace(/,/g, "").trim());
 
   useEffect(() => {
     if (initialInviteCode) {
       setMode("join");
-      setInviteCode(initialInviteCode.toUpperCase());
+      setInviteInput(initialInviteCode.toUpperCase());
     }
   }, [initialInviteCode]);
 
@@ -41,9 +47,13 @@ export function HouseholdOnboarding({
     setSubmitting(true);
     try {
       if (mode === "create") {
-        await onCreate(houseName, Number(weeklyBudget) || 0, Number(memberShare) || 0);
+        await onCreate(
+          houseName,
+          Number.isFinite(parsedBudget) && parsedBudget > 0 ? parsedBudget : 0,
+          Number.isFinite(parsedShare) && parsedShare > 0 ? parsedShare : 0,
+        );
       } else {
-        await onJoin(inviteCode);
+        await onJoin(inviteInput);
       }
     } catch {
       // Handled by store error state
@@ -62,7 +72,7 @@ export function HouseholdOnboarding({
           />
           <h1 className="text-xl font-bold text-slate-900">Welcome, {profile.full_name}</h1>
           <p className="mt-1 text-xs text-slate-500">
-            Create your shared household or join your roommates with an invite code.
+            Create your shared household or join your roommates with an invite code or link.
           </p>
         </div>
 
@@ -96,48 +106,73 @@ export function HouseholdOnboarding({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">
-                    Weekly Budget Target (TZS)
-                  </label>
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <label className="block text-xs font-semibold text-slate-600">
+                      Weekly Budget Target (TZS)
+                    </label>
+                    {Number.isFinite(parsedBudget) && parsedBudget > 0 && (
+                      <span className="text-[11px] font-semibold text-[#7A5E31] tabular-nums">
+                        {formatTZS(parsedBudget)}
+                      </span>
+                    )}
+                  </div>
                   <SoftInput
                     type="number"
+                    inputMode="numeric"
                     min="0"
                     step="1000"
+                    placeholder="0"
                     value={weeklyBudget}
                     onValueChange={setWeeklyBudget}
                     icon={<span className="text-xs font-bold text-slate-500">TZS</span>}
-                    required
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">
-                    Weekly Share per Member (TZS)
-                  </label>
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <label className="block text-xs font-semibold text-slate-600">
+                      Weekly Share per Member (TZS)
+                    </label>
+                    {Number.isFinite(parsedShare) && parsedShare > 0 && (
+                      <span className="text-[11px] font-semibold text-[#7A5E31] tabular-nums">
+                        {formatTZS(parsedShare)}
+                      </span>
+                    )}
+                  </div>
                   <SoftInput
                     type="number"
+                    inputMode="numeric"
                     min="0"
                     step="1000"
+                    placeholder="0"
                     value={memberShare}
                     onValueChange={setMemberShare}
                     icon={<span className="text-xs font-bold text-slate-500">TZS</span>}
-                    required
                   />
                 </div>
               </>
             ) : (
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  Invite Code
-                </label>
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <label className="block text-xs font-semibold text-slate-600">
+                    Invite Code or Link
+                  </label>
+                  {extractedCode && inviteInput.includes("join=") && (
+                    <span className="font-mono text-[11px] font-semibold text-emerald-700">
+                      Code: {extractedCode}
+                    </span>
+                  )}
+                </div>
                 <SoftInput
                   type="text"
-                  placeholder="e.g. SNZ414KP"
-                  value={inviteCode}
-                  onValueChange={(v) => setInviteCode(v.toUpperCase())}
+                  placeholder="Paste invite code or link"
+                  value={inviteInput}
+                  onValueChange={setInviteInput}
                   icon={<Key className="h-4 w-4 text-slate-400" />}
-                  className="uppercase tracking-widest"
                   required
                 />
+                <p className="mt-1.5 text-[11px] text-slate-400">
+                  Accepts either an invite code (e.g. SNZ414KP) or a full Keeper invite link.
+                </p>
               </div>
             )}
 
