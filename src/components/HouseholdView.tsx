@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button, Glass } from "glisse";
-import { Check, Copy, LogOut, Radio, Shield, Users } from "lucide-react";
+import { Check, Copy, Link2, LogOut, Radio, Shield, Users } from "lucide-react";
 import { getInitials } from "../lib/format";
 import type { Household, HouseholdMember, Profile } from "../types";
 
@@ -23,15 +23,35 @@ export function HouseholdView({
   onLeaveHousehold,
   onSignOut,
 }: HouseholdViewProps) {
-  const [copied, setCopied] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   const copyCode = async () => {
     try {
       await navigator.clipboard.writeText(household.invite_code);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setCopiedCode(true);
+      setTimeout(() => setCopiedCode(false), 2000);
     } catch {
       // Fallback ignored if clipboard blocked
+    }
+  };
+
+  const copyInviteLink = async () => {
+    const inviteUrl = `${window.location.origin}/?join=${encodeURIComponent(household.invite_code)}`;
+    try {
+      await navigator.clipboard.writeText(inviteUrl);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2000);
+    } catch {
+      if (navigator.share) {
+        await navigator
+          .share({
+            title: `Join ${household.name} on Keeper`,
+            text: `Join our shared household budget on Keeper using code ${household.invite_code}`,
+            url: inviteUrl,
+          })
+          .catch(() => {});
+      }
     }
   };
 
@@ -67,24 +87,47 @@ export function HouseholdView({
           </div>
         </div>
 
-        <Glass className="mt-4 flex items-center justify-between rounded-2xl border border-slate-200/70 px-3.5 py-3">
-          <div>
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-              Private Invite Code
+        <Glass className="mt-4 rounded-2xl border border-slate-200/70 p-3.5 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                Private Invite Code
+              </div>
+              <div className="font-mono text-lg font-bold tracking-[0.2em] text-slate-900 mt-0.5">
+                {household.invite_code}
+              </div>
             </div>
-            <div className="font-mono text-lg font-bold tracking-[0.2em] text-slate-900 mt-0.5">
-              {household.invite_code}
-            </div>
+            <Button
+              onClick={() => void copyCode()}
+              icon={
+                copiedCode ? (
+                  <Check className="h-4 w-4 text-emerald-600" />
+                ) : (
+                  <Copy className="h-4 w-4" />
+                )
+              }
+            >
+              {copiedCode ? "Copied" : "Code"}
+            </Button>
           </div>
+
           <Button
-            onClick={() => void copyCode()}
-            icon={copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
+            onClick={() => void copyInviteLink()}
+            icon={
+              copiedLink ? (
+                <Check className="h-4 w-4 text-emerald-600" />
+              ) : (
+                <Link2 className="h-4 w-4" />
+              )
+            }
+            className="w-full justify-center !h-9 text-xs font-semibold"
           >
-            {copied ? "Copied" : "Copy"}
+            {copiedLink ? "Invite Link Copied" : "Copy Direct Invite Link"}
           </Button>
         </Glass>
         <p className="mt-2 text-[11px] text-slate-400">
-          Share this code privately with roommates so they can join and see the shared budget.
+          Share the code or direct link privately with roommates so they can join and see the shared
+          budget.
         </p>
       </section>
 
@@ -126,7 +169,8 @@ export function HouseholdView({
       {/* Account Actions */}
       <section className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-[0_2px_16px_rgba(15,23,42,0.04)] space-y-2.5">
         <div className="text-xs text-slate-500 mb-2">
-          Signed in as <strong className="text-slate-800">{profile.full_name}</strong> ({profile.email})
+          Signed in as <strong className="text-slate-800">{profile.full_name}</strong> (
+          {profile.email})
         </div>
         <div className="grid grid-cols-2 gap-2.5">
           <Button

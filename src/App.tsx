@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type TouchEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type TouchEvent } from "react";
 import { Menu } from "glisse";
 import { Calendar, Check, ChevronLeft } from "lucide-react";
 import { AddTransactionModal } from "./components/AddTransactionModal";
@@ -15,9 +15,10 @@ import { TransactionList } from "./components/TransactionList";
 import { WeeklyBarChart } from "./components/WeeklyBarChart";
 import { useKeeperStore } from "./hooks/useKeeperStore";
 import { computeWeeklySummary, getWeekWindow } from "./lib/analytics";
-import type { ActiveTab } from "./types";
+import type { ActiveTab, Transaction } from "./types";
 
 const TAB_ORDER: ActiveTab[] = ["overview", "ledger", "budget", "household"];
+const PENDING_JOIN_KEY = "keeper_pending_join_code";
 
 const TAB_TITLES: Record<ActiveTab, string> = {
   overview: "Expense Overview",
@@ -26,17 +27,47 @@ const TAB_TITLES: Record<ActiveTab, string> = {
   household: "My Household",
 };
 
+function readInitialJoinCode(): string | null {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const fromUrl = params.get("join")?.trim().toUpperCase();
+    if (fromUrl) {
+      sessionStorage.setItem(PENDING_JOIN_KEY, fromUrl);
+      const cleanUrl = window.location.pathname + window.location.hash;
+      window.history.replaceState({}, "", cleanUrl);
+      return fromUrl;
+    }
+    return sessionStorage.getItem(PENDING_JOIN_KEY);
+  } catch {
+    return null;
+  }
+}
+
 export function App() {
   const store = useKeeperStore();
   const [activeTab, setActiveTab] = useState<ActiveTab>("overview");
   const [weekOffset, setWeekOffset] = useState(0);
-  const [addOpen, setAddOpen] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingTx, setEditingTx] = useState<Transaction | null>(null);
+  const [pendingJoinCode, setPendingJoinCode] = useState<string | null>(() => readInitialJoinCode());
 
   const paneRefs = useRef<(HTMLDivElement | null)[]>([]);
   const touchStart = useRef<{ x: number; y: number; blocked: boolean } | null>(null);
 
   const activeIndex = TAB_ORDER.indexOf(activeTab);
   const weekWindow = useMemo(() => getWeekWindow(weekOffset), [weekOffset]);
+
+  // Clear pending invite code once the user is inside a household
+  useEffect(() => {
+    if (store.household && pendingJoinCode) {
+      setPendingJoinCode(null);
+      try {
+        sessionStorage.removeItem(PENDING_JOIN_KEY);
+      } catch {
+        // Ignore storage errors
+      }
+    }
+  }, [pendingJoinCode, store.household]);
 
   const summary = useMemo(() => {
     if (!store.household) return null;
@@ -52,6 +83,21 @@ export function App() {
     setActiveTab(tab);
     const idx = TAB_ORDER.indexOf(tab);
     paneRefs.current[idx]?.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleOpenAdd = () => {
+    setEditingTx(null);
+    setModalOpen(true);
+  };
+
+  const handleOpenEdit = (tx: Transaction) => {
+    setEditingTx(tx);
+    setModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setModalOpen(false);
+    setEditingTx(null);
   };
 
   const handleTouchStart = (e: TouchEvent<HTMLDivElement>) => {
@@ -89,12 +135,17 @@ export function App() {
     );
   }
 
-  if (!store.profile) {
+  if (!store.profile || store.passwordRecoveryMode) {
     return (
       <AuthScreen
+        isSupabaseReady={store.isSupabaseReady}
+        passwordRecoveryMode={store.passwordRecoveryMode}
+        pendingInviteCode={pendingJoinCode}
         error={store.error}
         onSignIn={store.signIn}
         onSignUp={store.signUp}
+        onResetPassword={store.resetPassword}
+        onUpdatePassword={store.updatePassword}
         onEnterDemo={store.enterDemoMode}
       />
     );
@@ -104,6 +155,7 @@ export function App() {
     return (
       <HouseholdOnboarding
         profile={store.profile}
+        initialInviteCode={pendingJoinCode}
         error={store.error}
         onCreate={store.createHousehold}
         onJoin={store.joinHousehold}
@@ -129,8 +181,8 @@ export function App() {
   return (
     <div className="h-dvh overflow-hidden flex flex-col">
       <div className="mx-auto flex h-full w-full max-w-[440px] flex-col">
-        {/* Anchored Phone Top Bar */}
-        <header className="shrink-0 px-4 pt-4 pb-3 flex items-center justify-between gap-2">
+        {/* Anchored Phone Top Bar with iOS notch safe-area support */}
+        <header className="shrink-0 px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-3 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2.5 min-w-0">
             {activeTab === "overview" ? (
               <KeeperLogo size={38} className="shrink-0 drop-shadow-xs" />
@@ -156,7 +208,7 @@ export function App() {
 
           {/* Week Switcher with Glisse Liquid Glass Menu */}
           <div className="flex items-center gap-2 shrink-0">
-            <span className="rounded-full border border-slate-200/80 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 shadow-2xs">
+            <span className="max-w-[106px] truncate rounded-full border border-slate-200/80 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 shadow-2xs">
               {weekWindow.label}
             </span>
             <Menu
@@ -203,6 +255,7 @@ export function App() {
                 totalSpent={summary.totalSpent}
                 totalContributed={summary.totalContributed}
                 remainingBalance={summary.remainingBalance}
+                allTimeBalance={summary.allTimeBalance}
                 weeklyBudgetTarget={store.household.weekly_budget_target}
                 spentDeltaPct={summary.spentDeltaPct}
                 contributedDeltaPct={summary.contributedDeltaPct}
@@ -224,6 +277,7 @@ export function App() {
                 title="Recent Transactions"
                 transactions={summary.weekTransactions}
                 currentUserId={store.profile.id}
+                onEdit={handleOpenEdit}
                 onDelete={store.deleteTransaction}
                 maxItems={5}
                 onViewAll={() => handleSelectTab("ledger")}
@@ -239,8 +293,10 @@ export function App() {
               className="h-full w-full shrink-0 overflow-y-auto no-scrollbar px-4 pb-28"
             >
               <LedgerView
+                householdName={store.household.name}
                 transactions={store.transactions}
                 currentUserId={store.profile.id}
+                onEdit={handleOpenEdit}
                 onDelete={store.deleteTransaction}
               />
             </div>
@@ -255,9 +311,8 @@ export function App() {
             >
               <BudgetView
                 household={store.household}
-                totalContributed={summary.totalContributed}
-                totalSpent={summary.totalSpent}
-                memberStatuses={summary.memberStatuses}
+                weekWindow={weekWindow}
+                summary={summary}
                 onUpdateBudget={store.updateBudget}
               />
             </div>
@@ -288,14 +343,18 @@ export function App() {
       <BottomDock
         activeTab={activeTab}
         onSelectTab={handleSelectTab}
-        onOpenAdd={() => setAddOpen(true)}
+        onOpenAdd={handleOpenAdd}
       />
 
-      {/* Quick Record Contribution / Expense Sheet */}
+      {/* Quick Record / Edit Contribution & Expense Sheet */}
       <AddTransactionModal
-        open={addOpen}
-        onClose={() => setAddOpen(false)}
+        open={modalOpen}
+        members={store.members}
+        currentUserId={store.profile.id}
+        editingTransaction={editingTx}
+        onClose={handleCloseModal}
         onSubmit={store.addTransaction}
+        onUpdate={store.updateTransaction}
       />
     </div>
   );

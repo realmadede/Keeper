@@ -48,7 +48,7 @@
 }
 
 .keeper-tab-bar.lg-tab-bar[data-icons] {
-  --lg-tab-width: 66px;
+  --lg-tab-width: clamp(56px, 16vw, 66px);
   --lg-tab-height: 50px;
   --lg-tab-inset: 4px;
   --lg-tab-selected: #e4cca0;
@@ -63,12 +63,19 @@
   max-width: 100%;
 }
 
+/* Prevent iOS Safari auto-zoom when focusing inputs on mobile */
+@media (max-width: 640px) {
+  .lg-input input {
+    font-size: 16px;
+  }
+}
+
 .keeper-segmented-2.lg-segmented {
-  --lg-tab-width: 154px;
+  --lg-tab-width: clamp(122px, 38vw, 154px);
   --lg-tab-height: 36px;
 }
 
 .keeper-segmented-3.lg-segmented {
-  --lg-tab-width: 112px;
+  --lg-tab-width: clamp(92px, 28vw, 112px);
   --lg-tab-height: 34px;
 }

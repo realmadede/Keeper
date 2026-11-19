@@ -1,16 +1,26 @@
 import { useMemo, useState } from "react";
-import { SearchField, SegmentedControl } from "glisse";
-import { formatTZS } from "../lib/format";
+import { Button, SearchField, SegmentedControl } from "glisse";
+import { Download } from "lucide-react";
+import { buildLedgerCsv, downloadTextFile } from "../lib/export";
+import { formatTZS, toISODate } from "../lib/format";
 import { getCategoryMeta, type Transaction } from "../types";
 import { TransactionList } from "./TransactionList";
 
 interface LedgerViewProps {
+  householdName: string;
   transactions: Transaction[];
   currentUserId: string;
+  onEdit: (tx: Transaction) => void;
   onDelete: (id: string) => Promise<void>;
 }
 
-export function LedgerView({ transactions, currentUserId, onDelete }: LedgerViewProps) {
+export function LedgerView({
+  householdName,
+  transactions,
+  currentUserId,
+  onEdit,
+  onDelete,
+}: LedgerViewProps) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "contribution" | "expense">("all");
 
@@ -21,10 +31,12 @@ export function LedgerView({ transactions, currentUserId, onDelete }: LedgerView
       if (!q) return true;
       const cat = getCategoryMeta(tx.category).label.toLowerCase();
       const who = (tx.recorder?.full_name ?? "").toLowerCase();
+      const payer = (tx.payer?.full_name ?? "").toLowerCase();
       return (
         tx.description.toLowerCase().includes(q) ||
         cat.includes(q) ||
         who.includes(q) ||
+        payer.includes(q) ||
         tx.transaction_date.includes(q)
       );
     });
@@ -39,6 +51,19 @@ export function LedgerView({ transactions, currentUserId, onDelete }: LedgerView
     }
     return { pooled, spent };
   }, [filtered]);
+
+  const handleExportCsv = () => {
+    const csv = buildLedgerCsv(filtered);
+    const slug = householdName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "");
+    downloadTextFile(
+      `keeper-${slug || "household"}-${toISODate(new Date())}.csv`,
+      csv,
+      "text/csv;charset=utf-8;",
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -78,10 +103,22 @@ export function LedgerView({ transactions, currentUserId, onDelete }: LedgerView
         </div>
       </div>
 
+      <div className="flex justify-end">
+        <Button
+          onClick={handleExportCsv}
+          disabled={filtered.length === 0}
+          icon={<Download className="h-4 w-4" />}
+          className="!h-9 text-xs font-semibold"
+        >
+          Export CSV ({filtered.length})
+        </Button>
+      </div>
+
       <TransactionList
         title={`Household Ledger (${filtered.length})`}
         transactions={filtered}
         currentUserId={currentUserId}
+        onEdit={onEdit}
         onDelete={onDelete}
       />
     </div>

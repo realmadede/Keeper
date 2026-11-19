@@ -38,13 +38,21 @@ create table if not exists public.transactions (
   id uuid primary key default gen_random_uuid(),
   household_id uuid not null references public.households(id) on delete cascade,
   recorded_by uuid not null references public.profiles(id) on delete cascade,
+  paid_by uuid references public.profiles(id) on delete set null,
   type text not null check (type in ('contribution', 'expense')),
   amount bigint not null check (amount > 0),
   category text not null,
   description text not null,
   transaction_date date not null default current_date,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  updated_at timestamptz
 );
+
+-- Safe additive columns if upgrading an existing database
+alter table public.transactions
+  add column if not exists paid_by uuid references public.profiles(id) on delete set null;
+alter table public.transactions
+  add column if not exists updated_at timestamptz;
 
 create index if not exists idx_transactions_household_date
   on public.transactions (household_id, transaction_date desc, created_at desc);
@@ -202,6 +210,17 @@ create policy "Members can view household transactions"
 
 create policy "Members can record household transactions"
   on public.transactions for insert
+  with check (
+    public.is_household_member(household_id)
+    and recorded_by = auth.uid()
+  );
+
+create policy "Recorder can update own transaction"
+  on public.transactions for update
+  using (
+    public.is_household_member(household_id)
+    and recorded_by = auth.uid()
+  )
   with check (
     public.is_household_member(household_id)
     and recorded_by = auth.uid()

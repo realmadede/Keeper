@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Button, Glass, Input, SegmentedControl } from "glisse";
 import { Home, Key, LogOut } from "lucide-react";
 import type { Profile } from "../types";
@@ -6,6 +6,7 @@ import { KeeperLogo } from "./KeeperLogo";
 
 interface HouseholdOnboardingProps {
   profile: Profile;
+  initialInviteCode?: string | null;
   error: string | null;
   onCreate: (name: string, weeklyBudget: number, memberShare: number) => Promise<void>;
   onJoin: (code: string) => Promise<void>;
@@ -14,17 +15,25 @@ interface HouseholdOnboardingProps {
 
 export function HouseholdOnboarding({
   profile,
+  initialInviteCode,
   error,
   onCreate,
   onJoin,
   onSignOut,
 }: HouseholdOnboardingProps) {
-  const [mode, setMode] = useState<"create" | "join">("create");
+  const [mode, setMode] = useState<"create" | "join">(initialInviteCode ? "join" : "create");
   const [houseName, setHouseName] = useState("");
   const [weeklyBudget, setWeeklyBudget] = useState("240000");
   const [memberShare, setMemberShare] = useState("60000");
-  const [inviteCode, setInviteCode] = useState("");
+  const [inviteCode, setInviteCode] = useState(initialInviteCode?.toUpperCase() ?? "");
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (initialInviteCode) {
+      setMode("join");
+      setInviteCode(initialInviteCode.toUpperCase());
+    }
+  }, [initialInviteCode]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -46,7 +55,10 @@ export function HouseholdOnboarding({
     <div className="min-h-dvh flex flex-col items-center justify-center px-4 py-10">
       <div className="w-full max-w-[420px] space-y-5">
         <div className="text-center">
-          <KeeperLogo size={54} className="mx-auto mb-3 drop-shadow-[0_6px_16px_rgba(15,23,42,0.16)]" />
+          <KeeperLogo
+            size={54}
+            className="mx-auto mb-3 drop-shadow-[0_6px_16px_rgba(15,23,42,0.16)]"
+          />
           <h1 className="text-xl font-bold text-slate-900">Welcome, {profile.full_name}</h1>
           <p className="mt-1 text-xs text-slate-500">
             Create your shared household or join your roommates with an invite code.

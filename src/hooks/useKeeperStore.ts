@@ -10,17 +10,20 @@ import type {
   TransactionType,
 } from "../types";
 
-export interface NewTransactionInput {
+export interface TransactionInput {
   type: TransactionType;
   amount: number;
   category: TransactionCategory;
   description: string;
   transaction_date: string;
+  paid_by?: string;
 }
 
 export interface KeeperStore {
   loading: boolean;
   isDemoMode: boolean;
+  isSupabaseReady: boolean;
+  passwordRecoveryMode: boolean;
   realtimeConnected: boolean;
   error: string | null;
   clearError: () => void;
@@ -31,10 +34,13 @@ export interface KeeperStore {
   enterDemoMode: () => void;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (fullName: string, email: string, password: string) => Promise<void>;
+  resetPassword: (email: string) => Promise<void>;
+  updatePassword: (newPassword: string) => Promise<void>;
   signOut: () => Promise<void>;
   createHousehold: (name: string, weeklyBudget: number, memberShare: number) => Promise<void>;
   joinHousehold: (inviteCode: string) => Promise<void>;
-  addTransaction: (input: NewTransactionInput) => Promise<void>;
+  addTransaction: (input: TransactionInput) => Promise<void>;
+  updateTransaction: (id: string, input: TransactionInput) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
   updateBudget: (weeklyBudget: number, memberShare: number) => Promise<void>;
   leaveHousehold: () => Promise<void>;
@@ -60,6 +66,7 @@ function loadDemoState() {
 export function useKeeperStore(): KeeperStore {
   const [loading, setLoading] = useState(isSupabaseConfigured);
   const [isDemoMode, setIsDemoMode] = useState(false);
+  const [passwordRecoveryMode, setPasswordRecoveryMode] = useState(false);
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -112,11 +119,13 @@ export function useKeeperStore(): KeeperStore {
         .order("joined_at", { ascending: true }),
       supabase
         .from("transactions")
-        .select("*, recorder:profiles(id, full_name, email, avatar_color)")
+        .select(
+          "*, recorder:profiles!transactions_recorded_by_fkey(id, full_name, email, avatar_color), payer:profiles!transactions_paid_by_fkey(id, full_name, email, avatar_color)",
+        )
         .eq("household_id", activeHouseholdId)
         .order("transaction_date", { ascending: false })
         .order("created_at", { ascending: false })
-        .limit(300),
+        .limit(500),
     ]);
 
     if (householdRes.error) {
@@ -132,17 +141,20 @@ export function useKeeperStore(): KeeperStore {
       member_weekly_share: Number(h.member_weekly_share),
     });
 
+    const profileMap = new Map<string, Profile>();
     if (membersRes.data) {
       const normalizedMembers: HouseholdMember[] = membersRes.data
         .map((row: Record<string, unknown>) => {
           const prof = Array.isArray(row.profile) ? row.profile[0] : row.profile;
           if (!prof) return null;
+          const typedProf = prof as Profile;
+          profileMap.set(typedProf.id, typedProf);
           return {
             household_id: String(row.household_id),
             user_id: String(row.user_id),
             role: row.role === "admin" ? "admin" : "member",
             joined_at: String(row.joined_at),
-            profile: prof as Profile,
+            profile: typedProf,
           };
         })
         .filter((m): m is HouseholdMember => m !== null);
@@ -152,17 +164,23 @@ export function useKeeperStore(): KeeperStore {
     if (txRes.data) {
       const normalizedTx: Transaction[] = txRes.data.map((row: Record<string, unknown>) => {
         const rec = Array.isArray(row.recorder) ? row.recorder[0] : row.recorder;
+        const pay = Array.isArray(row.payer) ? row.payer[0] : row.payer;
+        const recordedById = String(row.recorded_by);
+        const paidById = row.paid_by ? String(row.paid_by) : null;
         return {
           id: String(row.id),
           household_id: String(row.household_id),
-          recorded_by: String(row.recorded_by),
+          recorded_by: recordedById,
+          paid_by: paidById,
           type: row.type === "contribution" ? "contribution" : "expense",
           amount: Number(row.amount),
           category: row.category as TransactionCategory,
           description: String(row.description),
           transaction_date: String(row.transaction_date),
           created_at: String(row.created_at),
-          recorder: (rec as Profile | undefined) ?? undefined,
+          updated_at: row.updated_at ? String(row.updated_at) : null,
+          recorder: (rec as Profile | undefined) ?? profileMap.get(recordedById),
+          payer: (pay as Profile | undefined) ?? (paidById ? profileMap.get(paidById) : undefined),
         };
       });
       setTransactions(normalizedTx);
@@ -185,8 +203,11 @@ export function useKeeperStore(): KeeperStore {
       if (mounted) setLoading(false);
     });
 
-    const { data: authSub } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: authSub } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
+      if (event === "PASSWORD_RECOVERY") {
+        setPasswordRecoveryMode(true);
+      }
       if (session?.user) {
         setIsDemoMode(false);
         await fetchHouseholdBundle(session.user.id);
@@ -274,7 +295,7 @@ export function useKeeperStore(): KeeperStore {
   const signIn = useCallback(async (email: string, password: string) => {
     setError(null);
     if (!supabase) {
-      setError("Supabase is not configured yet. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env or use Demo Mode.");
+      setError("Supabase is not configured yet. Add your project URL and key in .env.");
       return;
     }
     const { error: err } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
@@ -287,7 +308,7 @@ export function useKeeperStore(): KeeperStore {
   const signUp = useCallback(async (fullName: string, email: string, password: string) => {
     setError(null);
     if (!supabase) {
-      setError("Supabase is not configured yet. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env or use Demo Mode.");
+      setError("Supabase is not configured yet. Add your project URL and key in .env.");
       return;
     }
     const { data, error: err } = await supabase.auth.signUp({
@@ -304,8 +325,35 @@ export function useKeeperStore(): KeeperStore {
     }
   }, []);
 
+  const resetPassword = useCallback(async (email: string) => {
+    setError(null);
+    if (!supabase) {
+      setError("Supabase is not configured yet. Add your project URL and key in .env.");
+      throw new Error("Supabase not configured");
+    }
+    const { error: err } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: window.location.origin,
+    });
+    if (err) {
+      setError(err.message);
+      throw err;
+    }
+  }, []);
+
+  const updatePassword = useCallback(async (newPassword: string) => {
+    setError(null);
+    if (!supabase) return;
+    const { error: err } = await supabase.auth.updateUser({ password: newPassword });
+    if (err) {
+      setError(err.message);
+      throw err;
+    }
+    setPasswordRecoveryMode(false);
+  }, []);
+
   const signOut = useCallback(async () => {
     setError(null);
+    setPasswordRecoveryMode(false);
     if (isDemoMode) {
       setIsDemoMode(false);
       setProfile(null);
@@ -354,27 +402,33 @@ export function useKeeperStore(): KeeperStore {
   );
 
   const addTransaction = useCallback(
-    async (input: NewTransactionInput) => {
+    async (input: TransactionInput) => {
       setError(null);
       if (!household || !profile) return;
+      const paidById = input.type === "contribution" ? input.paid_by || profile.id : profile.id;
 
       if (isDemoMode) {
+        const payerProfile = members.find((m) => m.user_id === paidById)?.profile ?? profile;
         const newTx: Transaction = {
           id: `demo-${Date.now()}`,
           household_id: household.id,
           recorded_by: profile.id,
+          paid_by: paidById,
           type: input.type,
           amount: Math.round(input.amount),
           category: input.type === "contribution" ? "contribution" : input.category,
           description: input.description.trim(),
           transaction_date: input.transaction_date,
           created_at: new Date().toISOString(),
+          updated_at: null,
           recorder: profile,
+          payer: payerProfile,
         };
         setTransactions((prev) =>
-          [newTx, ...prev].sort((a, b) =>
-            b.transaction_date.localeCompare(a.transaction_date) ||
-            b.created_at.localeCompare(a.created_at),
+          [newTx, ...prev].sort(
+            (a, b) =>
+              b.transaction_date.localeCompare(a.transaction_date) ||
+              b.created_at.localeCompare(a.created_at),
           ),
         );
         return;
@@ -384,6 +438,7 @@ export function useKeeperStore(): KeeperStore {
       const { error: err } = await supabase.from("transactions").insert({
         household_id: household.id,
         recorded_by: profile.id,
+        paid_by: paidById,
         type: input.type,
         amount: Math.round(input.amount),
         category: input.type === "contribution" ? "contribution" : input.category,
@@ -396,7 +451,64 @@ export function useKeeperStore(): KeeperStore {
       }
       await fetchHouseholdBundle(profile.id);
     },
-    [fetchHouseholdBundle, household, isDemoMode, profile],
+    [fetchHouseholdBundle, household, isDemoMode, members, profile],
+  );
+
+  const updateTransaction = useCallback(
+    async (id: string, input: TransactionInput) => {
+      setError(null);
+      if (!household || !profile) return;
+      const paidById = input.type === "contribution" ? input.paid_by || profile.id : profile.id;
+      const nowIso = new Date().toISOString();
+
+      if (isDemoMode) {
+        const payerProfile = members.find((m) => m.user_id === paidById)?.profile ?? profile;
+        setTransactions((prev) =>
+          prev
+            .map((tx) =>
+              tx.id === id
+                ? {
+                    ...tx,
+                    type: input.type,
+                    amount: Math.round(input.amount),
+                    category: input.type === "contribution" ? "contribution" : input.category,
+                    description: input.description.trim(),
+                    transaction_date: input.transaction_date,
+                    paid_by: paidById,
+                    payer: payerProfile,
+                    updated_at: nowIso,
+                  }
+                : tx,
+            )
+            .sort(
+              (a, b) =>
+                b.transaction_date.localeCompare(a.transaction_date) ||
+                b.created_at.localeCompare(a.created_at),
+            ),
+        );
+        return;
+      }
+
+      if (!supabase) return;
+      const { error: err } = await supabase
+        .from("transactions")
+        .update({
+          type: input.type,
+          amount: Math.round(input.amount),
+          category: input.type === "contribution" ? "contribution" : input.category,
+          description: input.description.trim(),
+          transaction_date: input.transaction_date,
+          paid_by: paidById,
+          updated_at: nowIso,
+        })
+        .eq("id", id);
+      if (err) {
+        setError(err.message);
+        throw err;
+      }
+      await fetchHouseholdBundle(profile.id);
+    },
+    [fetchHouseholdBundle, household, isDemoMode, members, profile],
   );
 
   const deleteTransaction = useCallback(
@@ -479,6 +591,8 @@ export function useKeeperStore(): KeeperStore {
   return {
     loading,
     isDemoMode,
+    isSupabaseReady: isSupabaseConfigured,
+    passwordRecoveryMode,
     realtimeConnected,
     error,
     clearError,
@@ -489,10 +603,13 @@ export function useKeeperStore(): KeeperStore {
     enterDemoMode,
     signIn,
     signUp,
+    resetPassword,
+    updatePassword,
     signOut,
     createHousehold,
     joinHousehold,
     addTransaction,
+    updateTransaction,
     deleteTransaction,
     updateBudget,
     leaveHousehold,

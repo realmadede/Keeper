@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowDownLeft, ArrowUpRight, ReceiptText, Trash2 } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Pencil, ReceiptText, Trash2 } from "lucide-react";
 import { formatShortDate, formatTZS, getInitials } from "../lib/format";
 import { getCategoryMeta, type Transaction } from "../types";
 
@@ -7,6 +7,7 @@ interface TransactionListProps {
   title?: string;
   transactions: Transaction[];
   currentUserId: string;
+  onEdit: (tx: Transaction) => void;
   onDelete: (id: string) => Promise<void>;
   maxItems?: number;
   onViewAll?: () => void;
@@ -16,6 +17,7 @@ export function TransactionList({
   title = "Recent Transactions",
   transactions,
   currentUserId,
+  onEdit,
   onDelete,
   maxItems,
   onViewAll,
@@ -63,8 +65,13 @@ export function TransactionList({
             const isContribution = tx.type === "contribution";
             const cat = getCategoryMeta(tx.category);
             const recorderName = tx.recorder?.full_name ?? "Household Member";
-            const avatarColor = tx.recorder?.avatar_color ?? "#BFA377";
-            const canDelete = tx.recorded_by === currentUserId;
+            const creditedProfile =
+              isContribution && tx.payer ? tx.payer : tx.recorder;
+            const displayName = creditedProfile?.full_name ?? recorderName;
+            const avatarColor = creditedProfile?.avatar_color ?? "#BFA377";
+            const recordedOnBehalf =
+              isContribution && tx.paid_by && tx.paid_by !== tx.recorded_by;
+            const canManage = tx.recorded_by === currentUserId;
             const isExpanded = expandedId === tx.id;
 
             return (
@@ -82,14 +89,22 @@ export function TransactionList({
                       className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white shadow-xs"
                       style={{ backgroundColor: avatarColor }}
                     >
-                      {getInitials(recorderName)}
+                      {getInitials(displayName)}
                     </div>
                     <div className="min-w-0">
-                      <div className="truncate text-[13px] font-semibold text-slate-900">
-                        {recorderName}
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="truncate text-[13px] font-semibold text-slate-900">
+                          {displayName}
+                        </span>
+                        {tx.updated_at && (
+                          <span className="shrink-0 rounded-full bg-slate-200/80 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-500">
+                            Edited
+                          </span>
+                        )}
                       </div>
                       <div className="truncate text-[11px] text-slate-500 mt-0.5">
                         {cat.label} · {formatShortDate(tx.transaction_date)}
+                        {recordedOnBehalf ? ` · via ${recorderName.split(" ")[0]}` : ""}
                       </div>
                     </div>
                   </div>
@@ -115,21 +130,40 @@ export function TransactionList({
                 </button>
 
                 {isExpanded && (
-                  <div className="flex items-center justify-between border-t border-slate-100 px-3 py-2 text-[11px] text-slate-500">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-3 py-2 text-[11px] text-slate-500">
                     <span>
-                      Recorded by <strong className="text-slate-700">{recorderName}</strong> on{" "}
-                      {tx.transaction_date}
+                      {recordedOnBehalf ? (
+                        <>
+                          Paid by <strong className="text-slate-700">{displayName}</strong> ·
+                          recorded by <strong className="text-slate-700">{recorderName}</strong>
+                        </>
+                      ) : (
+                        <>
+                          Recorded by <strong className="text-slate-700">{recorderName}</strong>
+                        </>
+                      )}{" "}
+                      on {tx.transaction_date}
                     </span>
-                    {canDelete && (
-                      <button
-                        type="button"
-                        disabled={deletingId === tx.id}
-                        onClick={() => void handleDelete(tx.id)}
-                        className="inline-flex items-center gap-1 rounded-lg bg-rose-50 px-2 py-1 font-medium text-rose-600 hover:bg-rose-100 disabled:opacity-50 cursor-pointer"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                        {deletingId === tx.id ? "Removing..." : "Delete"}
-                      </button>
+                    {canManage && (
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => onEdit(tx)}
+                          className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-1 font-medium text-slate-700 hover:bg-slate-200 cursor-pointer"
+                        >
+                          <Pencil className="h-3 w-3" />
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          disabled={deletingId === tx.id}
+                          onClick={() => void handleDelete(tx.id)}
+                          className="inline-flex items-center gap-1 rounded-lg bg-rose-50 px-2 py-1 font-medium text-rose-600 hover:bg-rose-100 disabled:opacity-50 cursor-pointer"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                          {deletingId === tx.id ? "Removing..." : "Delete"}
+                        </button>
+                      </div>
                     )}
                   </div>
                 )}

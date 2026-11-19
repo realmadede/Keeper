@@ -40,13 +40,16 @@ export interface Transaction {
   id: string;
   household_id: string;
   recorded_by: string;
+  paid_by?: string | null;
   type: TransactionType;
   amount: number;
   category: TransactionCategory;
   description: string;
   transaction_date: string; // YYYY-MM-DD
   created_at: string;
+  updated_at?: string | null;
   recorder?: Profile;
+  payer?: Profile;
 }
 
 export type ActiveTab = "overview" | "ledger" | "budget" | "household";

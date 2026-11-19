@@ -2,6 +2,7 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   Clock,
+  Landmark,
   ShieldCheck,
   TrendingDown,
   TrendingUp,
@@ -13,6 +14,7 @@ interface KpiCardsProps {
   totalSpent: number;
   totalContributed: number;
   remainingBalance: number;
+  allTimeBalance: number;
   weeklyBudgetTarget: number;
   spentDeltaPct: number | null;
   contributedDeltaPct: number | null;
@@ -41,6 +43,7 @@ export function KpiCards({
   totalSpent,
   totalContributed,
   remainingBalance,
+  allTimeBalance,
   weeklyBudgetTarget,
   spentDeltaPct,
   contributedDeltaPct,
@@ -103,6 +106,26 @@ export function KpiCards({
         <div className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-emerald-700">
           <ShieldCheck className="h-3 w-3 shrink-0" />
           <span>{budgetProgress}% of weekly goal</span>
+        </div>
+      </div>
+
+      {/* Carry-Over House Pool Card — All-Time Rollover Cash on Hand */}
+      <div className="min-w-[168px] flex-1 rounded-2xl border border-[#E5D3B3] bg-[#FBF8F1] p-3.5 shadow-[0_2px_10px_rgba(166,135,86,0.06)]">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-xs font-medium text-slate-600">Cash on Hand</span>
+          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#EFE3CC] text-[#8F703F]">
+            <Landmark className="h-3.5 w-3.5" />
+          </span>
+        </div>
+        <div
+          className={`text-[17px] font-bold tracking-tight tabular-nums leading-tight ${
+            allTimeBalance >= 0 ? "text-[#7A5E31]" : "text-rose-600"
+          }`}
+        >
+          {formatTZS(allTimeBalance)}
+        </div>
+        <div className="mt-1.5 text-[11px] font-medium text-slate-500">
+          All-time carry-over pool
         </div>
       </div>
     </div>

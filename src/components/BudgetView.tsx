@@ -1,38 +1,38 @@
 import { useState, type FormEvent } from "react";
 import { Button, Input } from "glisse";
-import { CheckCircle2, Target } from "lucide-react";
-import type { MemberContributionStatus } from "../lib/analytics";
+import { Check, CheckCircle2, Share2, Target } from "lucide-react";
+import type { WeeklySummary, WeekWindow } from "../lib/analytics";
+import { buildWeeklyWhatsAppSummary } from "../lib/export";
 import { formatTZS, getInitials } from "../lib/format";
 import type { Household } from "../types";
 
 interface BudgetViewProps {
   household: Household;
-  totalContributed: number;
-  totalSpent: number;
-  memberStatuses: MemberContributionStatus[];
+  weekWindow: WeekWindow;
+  summary: WeeklySummary;
   onUpdateBudget: (weeklyBudget: number, memberShare: number) => Promise<void>;
 }
 
 export function BudgetView({
   household,
-  totalContributed,
-  totalSpent,
-  memberStatuses,
+  weekWindow,
+  summary,
   onUpdateBudget,
 }: BudgetViewProps) {
   const [weeklyTarget, setWeeklyTarget] = useState(String(household.weekly_budget_target));
   const [memberShare, setMemberShare] = useState(String(household.member_weekly_share));
   const [saving, setSaving] = useState(false);
   const [savedToast, setSavedToast] = useState(false);
+  const [copiedSummary, setCopiedSummary] = useState(false);
 
   const poolPct =
     household.weekly_budget_target > 0
-      ? Math.min(100, Math.round((totalContributed / household.weekly_budget_target) * 100))
+      ? Math.min(100, Math.round((summary.totalContributed / household.weekly_budget_target) * 100))
       : 0;
 
   const spentPct =
     household.weekly_budget_target > 0
-      ? Math.min(100, Math.round((totalSpent / household.weekly_budget_target) * 100))
+      ? Math.min(100, Math.round((summary.totalSpent / household.weekly_budget_target) * 100))
       : 0;
 
   const handleSave = async (e: FormEvent) => {
@@ -46,6 +46,20 @@ export function BudgetView({
       setTimeout(() => setSavedToast(false), 2200);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleShareSummary = async () => {
+    const text = buildWeeklyWhatsAppSummary(household, weekWindow, summary);
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedSummary(true);
+      setTimeout(() => setCopiedSummary(false), 2400);
+    } catch {
+      // Fallback: try native Web Share if clipboard denied
+      if (navigator.share) {
+        await navigator.share({ title: `${household.name} Weekly Summary`, text }).catch(() => {});
+      }
     }
   };
 
@@ -70,7 +84,7 @@ export function BudgetView({
             <div className="flex justify-between text-xs mb-1">
               <span className="font-medium text-slate-600">Contributed this week</span>
               <span className="font-bold text-emerald-700 tabular-nums">
-                {formatTZS(totalContributed)} ({poolPct}%)
+                {formatTZS(summary.totalContributed)} ({poolPct}%)
               </span>
             </div>
             <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
@@ -85,7 +99,7 @@ export function BudgetView({
             <div className="flex justify-between text-xs mb-1">
               <span className="font-medium text-slate-600">Spent vs. weekly budget</span>
               <span className="font-bold text-orange-600 tabular-nums">
-                {formatTZS(totalSpent)} ({spentPct}%)
+                {formatTZS(summary.totalSpent)} ({spentPct}%)
               </span>
             </div>
             <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
@@ -95,6 +109,34 @@ export function BudgetView({
               />
             </div>
           </div>
+
+          <div className="flex items-center justify-between rounded-2xl border border-[#E5D3B3]/80 bg-[#FBF8F1] px-3 py-2 text-xs">
+            <span className="font-medium text-slate-600">Cash on Hand (Carry-Over)</span>
+            <span
+              className={`font-bold tabular-nums ${
+                summary.allTimeBalance >= 0 ? "text-[#7A5E31]" : "text-rose-600"
+              }`}
+            >
+              {formatTZS(summary.allTimeBalance)}
+            </span>
+          </div>
+        </div>
+
+        {/* 1-Tap WhatsApp Summary Copy */}
+        <div className="mt-3.5 pt-3 border-t border-slate-100">
+          <Button
+            onClick={() => void handleShareSummary()}
+            icon={
+              copiedSummary ? (
+                <Check className="h-4 w-4 text-emerald-600" />
+              ) : (
+                <Share2 className="h-4 w-4" />
+              )
+            }
+            className="w-full justify-center !h-10 text-xs font-semibold"
+          >
+            {copiedSummary ? "Copied Summary for WhatsApp" : "Copy Weekly Summary for WhatsApp"}
+          </Button>
         </div>
       </section>
 
@@ -108,8 +150,9 @@ export function BudgetView({
         </div>
 
         <div className="space-y-3">
-          {memberStatuses.map((status) => {
-            const done = status.contributedThisWeek >= status.expectedShare && status.expectedShare > 0;
+          {summary.memberStatuses.map((status) => {
+            const done =
+              status.contributedThisWeek >= status.expectedShare && status.expectedShare > 0;
             const partial = status.contributedThisWeek > 0 && !done;
             return (
               <div

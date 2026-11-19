@@ -42,6 +42,7 @@ export interface WeeklySummary {
   totalContributed: number;
   totalSpent: number;
   remainingBalance: number;
+  allTimeBalance: number;
   spentDeltaPct: number | null;
   contributedDeltaPct: number | null;
   dailySeries: DailyBarPoint[];
@@ -97,6 +98,15 @@ export function getWeekWindow(weekOffset = 0, referenceDate = new Date()): WeekW
 function pctChange(current: number, previous: number): number | null {
   if (previous <= 0) return current > 0 ? 100 : null;
   return Math.round(((current - previous) / previous) * 100);
+}
+
+export function computeAllTimeBalance(transactions: Transaction[]): number {
+  let balance = 0;
+  for (const t of transactions) {
+    if (t.type === "contribution") balance += t.amount;
+    else balance -= t.amount;
+  }
+  return balance;
 }
 
 export function computeWeeklySummary(
@@ -171,9 +181,12 @@ export function computeWeeklySummary(
     let contributedThisWeek = 0;
     let spentRecordedThisWeek = 0;
     for (const t of weekTransactions) {
-      if (t.recorded_by !== member.user_id) continue;
-      if (t.type === "contribution") contributedThisWeek += t.amount;
-      else spentRecordedThisWeek += t.amount;
+      if (t.type === "contribution") {
+        const creditedUserId = t.paid_by || t.recorded_by;
+        if (creditedUserId === member.user_id) contributedThisWeek += t.amount;
+      } else if (t.recorded_by === member.user_id) {
+        spentRecordedThisWeek += t.amount;
+      }
     }
     const percentOfShare =
       memberWeeklyShare > 0
@@ -192,6 +205,7 @@ export function computeWeeklySummary(
     totalContributed,
     totalSpent,
     remainingBalance: totalContributed - totalSpent,
+    allTimeBalance: computeAllTimeBalance(transactions),
     spentDeltaPct: pctChange(totalSpent, prevSpent),
     contributedDeltaPct: pctChange(totalContributed, prevContributed),
     dailySeries: currentWeek.days.map((d) => dailyMap.get(d.iso)!),

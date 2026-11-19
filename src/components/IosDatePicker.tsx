@@ -107,7 +107,7 @@ export function IosDatePicker({ value, onChange }: IosDatePickerProps) {
   return (
     <div className="space-y-2.5">
       {/* Compact iOS Row: Quick Today / Yesterday pills + Glass Date Trigger */}
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
           {[
             { label: "Today", iso: todayISO },
