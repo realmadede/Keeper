@@ -1,10 +1,11 @@
 import { useState, type FormEvent } from "react";
 import { Button, Glass, Input, SegmentedControl } from "glisse";
-import { Calendar, FileText, X } from "lucide-react";
+import { FileText, X } from "lucide-react";
 import type { NewTransactionInput } from "../hooks/useKeeperStore";
 import { toISODate } from "../lib/format";
 import { EXPENSE_CATEGORIES, type ExpenseCategoryId, type TransactionType } from "../types";
 import { CategoryIcon } from "./CategoryIcon";
+import { IosDatePicker } from "./IosDatePicker";
 
 interface AddTransactionModalProps {
   open: boolean;
@@ -65,7 +66,7 @@ export function AddTransactionModal({ open, onClose, onSubmit }: AddTransactionM
       onClick={onClose}
     >
       <Glass
-        className="w-full max-w-[430px] rounded-[28px] !bg-white/90 p-5 shadow-2xl"
+        className="w-full max-w-[430px] max-h-[90dvh] overflow-y-auto no-scrollbar rounded-[28px] !bg-white/90 p-5 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
@@ -170,17 +171,10 @@ export function AddTransactionModal({ open, onClose, onSubmit }: AddTransactionM
             />
           </div>
 
-          {/* Date */}
+          {/* iOS Inline Liquid Glass Date Picker */}
           <div>
             <label className="block text-xs font-semibold text-slate-600 mb-1.5">Date</label>
-            <Input
-              type="date"
-              value={date}
-              onValueChange={setDate}
-              icon={<Calendar className="h-4 w-4 text-slate-400" />}
-              className="w-full"
-              required
-            />
+            <IosDatePicker value={date} onChange={setDate} />
           </div>
 
           {formError && (
