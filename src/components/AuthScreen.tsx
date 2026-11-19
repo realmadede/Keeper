@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Button, Glass, Input, SegmentedControl } from "glisse";
-import { KeyRound, Mail, Sparkles, User } from "lucide-react";
+import { Check, Eye, EyeOff, KeyRound, Mail, Sparkles, User } from "lucide-react";
 import { KeeperLogo } from "./KeeperLogo";
 
 interface AuthScreenProps {
@@ -20,10 +20,34 @@ export function AuthScreen({
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const passwordsMatch =
+    confirmPassword.length > 0 && password === confirmPassword;
+  const passwordsMismatch =
+    confirmPassword.length > 0 && password !== confirmPassword;
+
+  const handleModeChange = (next: string) => {
+    setMode(next as "signin" | "signup");
+    setLocalError(null);
+    setConfirmPassword("");
+    setShowPassword(false);
+    setShowConfirmPassword(false);
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    setLocalError(null);
+
+    if (mode === "signup" && password !== confirmPassword) {
+      setLocalError("Passwords do not match. Please type your chosen password again.");
+      return;
+    }
+
     setSubmitting(true);
     try {
       if (mode === "signin") {
@@ -37,6 +61,8 @@ export function AuthScreen({
       setSubmitting(false);
     }
   };
+
+  const displayedError = localError ?? error;
 
   return (
     <div className="min-h-dvh flex flex-col items-center justify-center px-4 py-10">
@@ -55,7 +81,7 @@ export function AuthScreen({
             <SegmentedControl
               className="keeper-segmented-2"
               value={mode}
-              onValueChange={(v) => setMode(v as "signin" | "signup")}
+              onValueChange={handleModeChange}
               items={[
                 { value: "signin", label: "Sign In" },
                 { value: "signup", label: "Create Account" },
@@ -94,21 +120,90 @@ export function AuthScreen({
 
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1">Password</label>
-              <Input
-                type="password"
-                placeholder="At least 6 characters"
-                minLength={6}
-                value={password}
-                onValueChange={setPassword}
-                icon={<KeyRound className="h-4 w-4 text-slate-400" />}
-                className="w-full"
-                required
-              />
+              <div className="relative">
+                <Input
+                  type={showPassword ? "text" : "password"}
+                  placeholder={
+                    mode === "signup"
+                      ? "Choose a password (min. 6 characters)"
+                      : "Enter your password"
+                  }
+                  minLength={6}
+                  value={password}
+                  onValueChange={(v) => {
+                    setPassword(v);
+                    if (localError) setLocalError(null);
+                  }}
+                  icon={<KeyRound className="h-4 w-4 text-slate-400" />}
+                  className="w-full !pr-11"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  className="absolute right-2 top-1/2 z-10 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-900/5 hover:text-slate-700 cursor-pointer"
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
             </div>
 
-            {error && (
+            {mode === "signup" && (
+              <div>
+                <div className="mb-1 flex items-center justify-between">
+                  <label className="block text-xs font-semibold text-slate-600">
+                    Confirm Password
+                  </label>
+                  {passwordsMatch && (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600">
+                      <Check className="h-3 w-3" />
+                      Matches
+                    </span>
+                  )}
+                  {passwordsMismatch && (
+                    <span className="text-[11px] font-medium text-rose-500">
+                      Does not match
+                    </span>
+                  )}
+                </div>
+                <div className="relative">
+                  <Input
+                    type={showConfirmPassword ? "text" : "password"}
+                    placeholder="Type your password again"
+                    minLength={6}
+                    value={confirmPassword}
+                    onValueChange={(v) => {
+                      setConfirmPassword(v);
+                      if (localError) setLocalError(null);
+                    }}
+                    icon={<KeyRound className="h-4 w-4 text-slate-400" />}
+                    className="w-full !pr-11"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword((prev) => !prev)}
+                    aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+                    className="absolute right-2 top-1/2 z-10 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-900/5 hover:text-slate-700 cursor-pointer"
+                  >
+                    {showConfirmPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {displayedError && (
               <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">
-                {error}
+                {displayedError}
               </div>
             )}
 
