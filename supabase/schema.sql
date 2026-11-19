@@ -8,6 +8,7 @@ create or replace function public.generate_invite_code()
 returns text
 language plpgsql
 volatile
+set search_path = public, extensions
 as $$
 declare
   alphabet constant text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
