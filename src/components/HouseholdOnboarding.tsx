@@ -12,7 +12,7 @@ interface HouseholdOnboardingProps {
   initialInviteCode?: string | null;
   error: string | null;
   onCreate: (name: string, weeklyBudget: number, memberShare: number) => Promise<void>;
-  onJoin: (code: string) => Promise<void>;
+  onJoin: (inviteCode: string) => Promise<void>;
   onSignOut: () => Promise<void>;
 }
 
@@ -64,27 +64,27 @@ export function HouseholdOnboarding({
 
   return (
     <div className="min-h-dvh flex flex-col items-center justify-center px-4 py-10">
-      <div className="w-full max-w-[420px] space-y-5">
+      <div className="w-full max-w-[400px] space-y-5">
         <div className="text-center">
           <KeeperLogo
-            size={54}
-            className="mx-auto mb-3 drop-shadow-[0_6px_16px_rgba(15,23,42,0.16)]"
+            size={52}
+            className="mx-auto mb-3 drop-shadow-[0_8px_18px_rgba(28,28,30,0.14)]"
           />
-          <h1 className="text-xl font-bold text-slate-900">Welcome, {profile.full_name}</h1>
-          <p className="mt-1 text-xs text-slate-500">
-            Create your shared household or join your roommates with an invite code or link.
+          <h1 className="text-xl font-semibold text-[#1C1C1E]">Set up your household</h1>
+          <p className="mt-1 text-xs text-[#52525B]">
+            {profile.full_name} · create a shared house or join with an invite code or link
           </p>
         </div>
 
-        <Glass className="rounded-[28px] !bg-white/85 p-5 shadow-[0_12px_36px_rgba(15,23,42,0.08)]">
+        <Glass className="rounded-[20px] !bg-white/90 p-5 shadow-[0_8px_28px_rgba(28,28,30,0.06)]">
           <div className="mb-5 flex justify-center">
             <SegmentedControl
               className="keeper-segmented-2"
               value={mode}
               onValueChange={(v) => setMode(v as "create" | "join")}
               items={[
-                { value: "create", label: "Create House" },
-                { value: "join", label: "Join with Code" },
+                { value: "create", label: "Create house" },
+                { value: "join", label: "Join with code" },
               ]}
             />
           </div>
@@ -93,25 +93,25 @@ export function HouseholdOnboarding({
             {mode === "create" ? (
               <>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">
-                    Household Name
+                  <label className="block text-xs font-medium text-[#52525B] mb-1">
+                    Household name
                   </label>
                   <SoftInput
                     type="text"
-                    placeholder="e.g. Sinza House 14"
+                    placeholder="Sinza House 414"
                     value={houseName}
                     onValueChange={setHouseName}
-                    icon={<Home className="h-4 w-4 text-slate-400" />}
+                    icon={<Home className="h-4 w-4" />}
                     required
                   />
                 </div>
                 <div>
                   <div className="mb-1 flex items-center justify-between gap-2">
-                    <label className="block text-xs font-semibold text-slate-600">
-                      Weekly Budget Target (TZS)
+                    <label className="block text-xs font-medium text-[#52525B]">
+                      Weekly budget target (TZS)
                     </label>
                     {Number.isFinite(parsedBudget) && parsedBudget > 0 && (
-                      <span className="text-[11px] font-semibold text-[#7A5E31] tabular-nums">
+                      <span className="text-xs font-medium text-[#8F703F] tabular-nums">
                         {formatTZS(parsedBudget)}
                       </span>
                     )}
@@ -124,16 +124,16 @@ export function HouseholdOnboarding({
                     placeholder="0"
                     value={weeklyBudget}
                     onValueChange={setWeeklyBudget}
-                    icon={<span className="text-xs font-bold text-slate-500">TZS</span>}
+                    icon={<span className="font-mono text-xs font-medium text-[#8E8E93]">TZS</span>}
                   />
                 </div>
                 <div>
                   <div className="mb-1 flex items-center justify-between gap-2">
-                    <label className="block text-xs font-semibold text-slate-600">
-                      Weekly Share per Member (TZS)
+                    <label className="block text-xs font-medium text-[#52525B]">
+                      Weekly share per member (TZS)
                     </label>
                     {Number.isFinite(parsedShare) && parsedShare > 0 && (
-                      <span className="text-[11px] font-semibold text-[#7A5E31] tabular-nums">
+                      <span className="text-xs font-medium text-[#8F703F] tabular-nums">
                         {formatTZS(parsedShare)}
                       </span>
                     )}
@@ -146,18 +146,18 @@ export function HouseholdOnboarding({
                     placeholder="0"
                     value={memberShare}
                     onValueChange={setMemberShare}
-                    icon={<span className="text-xs font-bold text-slate-500">TZS</span>}
+                    icon={<span className="font-mono text-xs font-medium text-[#8E8E93]">TZS</span>}
                   />
                 </div>
               </>
             ) : (
               <div>
                 <div className="mb-1 flex items-center justify-between gap-2">
-                  <label className="block text-xs font-semibold text-slate-600">
-                    Invite Code or Link
+                  <label className="block text-xs font-medium text-[#52525B]">
+                    Invite code or link
                   </label>
                   {extractedCode && inviteInput.includes("join=") && (
-                    <span className="font-mono text-[11px] font-semibold text-emerald-700">
+                    <span className="font-mono text-xs font-medium text-emerald-700">
                       Code: {extractedCode}
                     </span>
                   )}
@@ -167,17 +167,17 @@ export function HouseholdOnboarding({
                   placeholder="Paste invite code or link"
                   value={inviteInput}
                   onValueChange={setInviteInput}
-                  icon={<Key className="h-4 w-4 text-slate-400" />}
+                  icon={<Key className="h-4 w-4" />}
                   required
                 />
-                <p className="mt-1.5 text-[11px] text-slate-400">
-                  Accepts either an invite code (e.g. SNZ414KP) or a full Keeper invite link.
+                <p className="mt-1.5 text-[11px] text-[#8E8E93]">
+                  Accepts an 8-character invite code or a full Keeper invite link
                 </p>
               </div>
             )}
 
             {error && (
-              <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">
+              <div className="rounded-xl border border-rose-700/20 bg-rose-50/70 px-3 py-2 text-xs font-medium text-rose-700">
                 {error}
               </div>
             )}
@@ -186,21 +186,21 @@ export function HouseholdOnboarding({
               type="submit"
               variant="filled"
               disabled={submitting}
-              className="w-full !h-11 text-sm font-semibold"
+              className="w-full !h-11 text-sm font-medium"
             >
               {submitting
                 ? "Setting up..."
                 : mode === "create"
-                  ? "Create Shared Household"
-                  : "Join Household"}
+                  ? "Create household"
+                  : "Join household"}
             </SoftButton>
           </form>
 
-          <div className="mt-4 flex justify-center">
+          <div className="mt-4 pt-3 border-t border-stone-900/[0.06] text-center">
             <button
               type="button"
               onClick={() => void onSignOut()}
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-400 hover:text-slate-700 cursor-pointer"
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-[#8E8E93] hover:text-[#1C1C1E] transition-colors cursor-pointer"
             >
               <LogOut className="h-3.5 w-3.5" />
               Sign out

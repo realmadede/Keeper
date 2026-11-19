@@ -10,8 +10,7 @@ interface SoftInputProps
 }
 
 /**
- * Lightweight Apple-frosted pill input matching Glisse's visual language without
- * running per-pixel JS canvas refraction loops on every form field.
+ * Quiet warm-stone control input with nested 12px radius and hairline border.
  */
 export function SoftInput({
   value,
@@ -23,13 +22,13 @@ export function SoftInput({
 }: SoftInputProps) {
   return (
     <div
-      className={`flex h-10 w-full items-center gap-2.5 rounded-full border border-slate-900/10 bg-white/80 px-3.5 text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.8),0_1px_2px_rgba(15,23,42,0.04)] backdrop-blur-sm transition-colors focus-within:border-slate-900/25 focus-within:bg-white ${className}`}
+      className={`flex h-10 w-full items-center gap-2.5 rounded-xl border border-stone-900/10 bg-white px-3.5 text-[#1C1C1E] transition-colors focus-within:border-stone-900/35 focus-within:ring-2 focus-within:ring-stone-900/[0.06] ${className}`}
     >
-      {icon && <span className="flex shrink-0 items-center text-slate-400">{icon}</span>}
+      {icon && <span className="flex w-4 shrink-0 items-center justify-center text-stone-400">{icon}</span>}
       <input
         value={value}
         onChange={(e) => onValueChange(e.currentTarget.value)}
-        className="h-full w-full min-w-0 bg-transparent text-[16px] sm:text-sm text-slate-900 outline-none placeholder:text-slate-400"
+        className="h-full w-full min-w-0 bg-transparent text-[16px] sm:text-sm text-[#1C1C1E] outline-none placeholder:text-stone-400"
         {...props}
       />
       {clearable && value && (
@@ -37,7 +36,7 @@ export function SoftInput({
           type="button"
           aria-label="Clear search"
           onClick={() => onValueChange("")}
-          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-200/80 text-slate-500 hover:bg-slate-300/80 cursor-pointer"
+          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-stone-100 text-stone-500 transition-colors hover:bg-stone-200 cursor-pointer"
         >
           <X className="h-3 w-3" />
         </button>
@@ -53,8 +52,7 @@ interface SoftButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 /**
- * Lightweight frosted pill button matching Apple / Glisse styling with instant
- * CSS spring press feedback and zero SVG displacement overhead.
+ * Quiet control button sharing the 12px control radius and warm-stone palette.
  */
 export function SoftButton({
   variant = "glass",
@@ -68,16 +66,16 @@ export function SoftButton({
 }: SoftButtonProps) {
   const variantClasses =
     variant === "filled"
-      ? "bg-[#1C1C1E] text-white shadow-[0_4px_12px_rgba(28,28,30,0.2)] hover:bg-[#2C2C30]"
+      ? "bg-[#1C1C1E] text-white hover:bg-[#2C2C30]"
       : variant === "destructive"
-        ? "border border-rose-200/90 bg-rose-50/90 text-rose-600 hover:bg-rose-100/90"
-        : "border border-slate-900/10 bg-white/80 text-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_1px_3px_rgba(15,23,42,0.05)] backdrop-blur-sm hover:bg-white";
+        ? "border border-rose-700/20 bg-rose-50/70 text-rose-700 hover:bg-rose-100/70"
+        : "border border-stone-900/10 bg-white text-[#1C1C1E] hover:bg-stone-50";
 
   return (
     <button
       type={type}
       style={variant === "filled" && tint ? { ...style, backgroundColor: tint } : style}
-      className={`inline-flex h-10 items-center justify-center gap-2 rounded-full px-4 text-sm font-medium transition-transform duration-100 active:scale-[0.98] disabled:opacity-45 disabled:pointer-events-none cursor-pointer select-none ${variantClasses} ${className}`}
+      className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-sm font-medium transition-[transform,background-color,border-color] duration-100 active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-900 disabled:opacity-45 disabled:pointer-events-none cursor-pointer select-none ${variantClasses} ${className}`}
       {...props}
     >
       {icon && <span className="flex shrink-0 items-center">{icon}</span>}

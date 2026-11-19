@@ -105,7 +105,7 @@ export function IosDatePicker({ value, onChange }: IosDatePickerProps) {
 
   return (
     <div className="space-y-2.5">
-      {/* Compact iOS Row: Quick Today / Yesterday pills + Glass Date Trigger */}
+      {/* Compact Row: Quick Today / Yesterday controls + Date Trigger */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
           {[
@@ -118,10 +118,10 @@ export function IosDatePicker({ value, onChange }: IosDatePickerProps) {
                 key={chip.label}
                 type="button"
                 onClick={() => selectISO(chip.iso, true)}
-                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
+                className={`rounded-xl px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
                   active
-                    ? "bg-[#1C1C1E] text-white shadow-xs"
-                    : "border border-slate-200 bg-white/80 text-slate-600 hover:bg-slate-100"
+                    ? "bg-[#1C1C1E] text-white"
+                    : "border border-stone-900/10 bg-white text-[#52525B] hover:bg-stone-50"
                 }`}
               >
                 {chip.label}
@@ -135,24 +135,24 @@ export function IosDatePicker({ value, onChange }: IosDatePickerProps) {
           onClick={toggleOpen}
           aria-expanded={open}
           aria-label="Choose date from calendar"
-          className="inline-flex items-center gap-1.5 rounded-full border border-slate-200/90 bg-white/90 px-3 py-1.5 text-xs font-semibold text-slate-800 shadow-2xs hover:bg-white cursor-pointer"
+          className="inline-flex items-center gap-1.5 rounded-xl border border-stone-900/10 bg-white px-3 py-1.5 text-xs font-medium text-[#1C1C1E] hover:bg-stone-50 transition-colors cursor-pointer"
         >
-          <Calendar className="h-3.5 w-3.5 text-[#A68756]" />
+          <Calendar className="h-3.5 w-3.5 text-[#8F703F]" />
           <span className="tabular-nums">{formattedPill}</span>
           <ChevronDown
-            className={`h-3.5 w-3.5 text-slate-400 transition-transform duration-200 ${
+            className={`h-3.5 w-3.5 text-[#8E8E93] transition-transform duration-200 ${
               open ? "rotate-180" : ""
             }`}
           />
         </button>
       </div>
 
-      {/* Expandable iOS Inline Frosted Calendar */}
+      {/* Expandable Inline Calendar */}
       {open && (
-        <div className="rounded-[22px] border border-slate-200/80 bg-white/95 p-3.5 shadow-[0_10px_28px_rgba(15,23,42,0.08)] backdrop-blur-sm">
+        <div className="rounded-2xl border border-stone-900/[0.08] bg-white p-3.5">
           {/* Month Header */}
           <div className="mb-3 flex items-center justify-between">
-            <span className="text-[13px] font-bold tracking-tight text-slate-900">
+            <span className="text-sm font-semibold text-[#1C1C1E]">
               {monthLabel}
             </span>
             <div className="flex items-center gap-1">
@@ -160,7 +160,7 @@ export function IosDatePicker({ value, onChange }: IosDatePickerProps) {
                 type="button"
                 aria-label="Previous month"
                 onClick={() => shiftMonth(-1)}
-                className="flex h-7 w-7 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100 active:scale-95 transition-all cursor-pointer"
+                className="flex h-7 w-7 items-center justify-center rounded-lg text-[#52525B] hover:bg-stone-100 transition-colors cursor-pointer"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
@@ -168,19 +168,19 @@ export function IosDatePicker({ value, onChange }: IosDatePickerProps) {
                 type="button"
                 aria-label="Next month"
                 onClick={() => shiftMonth(1)}
-                className="flex h-7 w-7 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100 active:scale-95 transition-all cursor-pointer"
+                className="flex h-7 w-7 items-center justify-center rounded-lg text-[#52525B] hover:bg-stone-100 transition-colors cursor-pointer"
               >
                 <ChevronRight className="h-4 w-4" />
               </button>
             </div>
           </div>
 
-          {/* Weekday Labels */}
+          {/* Weekday Labels (Sentence Case) */}
           <div className="mb-1 grid grid-cols-7 text-center">
             {WEEKDAYS.map((day) => (
               <div
                 key={day}
-                className="py-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400"
+                className="py-1 font-mono text-[11px] font-medium text-[#8E8E93]"
               >
                 {day.slice(0, 2)}
               </div>
@@ -197,14 +197,14 @@ export function IosDatePicker({ value, onChange }: IosDatePickerProps) {
                   <button
                     type="button"
                     onClick={() => selectISO(cell.iso, true)}
-                    className={`flex h-8 w-8 items-center justify-center rounded-full text-xs tabular-nums transition-all cursor-pointer ${
+                    className={`flex h-8 w-8 items-center justify-center rounded-lg text-xs tabular-nums transition-colors cursor-pointer ${
                       isSelected
-                        ? "bg-[#1C1C1E] font-bold text-white shadow-[0_3px_10px_rgba(28,28,30,0.28)] scale-105"
+                        ? "bg-[#1C1C1E] font-semibold text-white"
                         : isToday
-                          ? "bg-[#FFF5E8] font-bold text-[#A68756] ring-1 ring-[#E4CCA0]"
+                          ? "bg-[#F6F5F2] font-semibold text-[#8F703F] ring-1 ring-[#C6A87C]"
                           : cell.inMonth
-                            ? "font-medium text-slate-800 hover:bg-slate-100"
-                            : "font-normal text-slate-300 hover:bg-slate-50"
+                            ? "font-medium text-[#1C1C1E] hover:bg-stone-100"
+                            : "font-normal text-stone-300 hover:bg-stone-50"
                     }`}
                   >
                     {cell.day}

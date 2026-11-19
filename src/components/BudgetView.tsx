@@ -7,7 +7,6 @@ import {
   Plus,
   Share2,
   ShoppingBasket,
-  Target,
   Trash2,
 } from "lucide-react";
 import {
@@ -177,34 +176,35 @@ export function BudgetView({
       {subTab === "pool" && (
         <>
           {/* Pool Progress Card */}
-          <section className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-[0_2px_16px_rgba(15,23,42,0.04)]">
-            <div className="flex items-center justify-between mb-3">
+          <section className="rounded-2xl border border-stone-900/[0.08] bg-white p-4">
+            <div className="flex items-baseline justify-between gap-2 mb-3">
               <div>
-                <h2 className="text-[15px] font-semibold text-slate-900">
-                  {weekWindow.kind === "month" ? "Monthly Household Pool" : "Weekly Household Pool"}
+                <h2 className="text-base font-semibold text-[#1C1C1E]">
+                  {weekWindow.kind === "month" ? "Monthly household pool" : "Weekly household pool"}
                 </h2>
-                <p className="text-xs text-slate-500">
-                  Target ({weekWindow.label}): {formatTZS(periodTarget)}
+                <p className="text-xs text-[#52525B] mt-0.5 tabular-nums">
+                  Target ({weekWindow.label.toLowerCase()}): {formatTZS(periodTarget)}
                 </p>
               </div>
-              <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-[#FFF8F2] text-[#BFA377]">
-                <Target className="h-5 w-5" />
+              <span className="font-mono text-xs text-[#8E8E93] tabular-nums">
+                {poolPct}% funded
               </span>
             </div>
 
             <div className="space-y-3">
               <div>
                 <div className="flex justify-between text-xs mb-1">
-                  <span className="font-medium text-slate-600">
-                    Contributed ({weekWindow.label.toLowerCase()})
+                  <span className="inline-flex items-center gap-1.5 text-[#52525B]">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#C6A87C]" />
+                    <span>Contributed ({weekWindow.label.toLowerCase()})</span>
                   </span>
-                  <span className="font-bold text-emerald-700 tabular-nums">
+                  <span className="font-semibold text-[#1C1C1E] tabular-nums">
                     {formatTZS(summary.totalContributed)} ({poolPct}%)
                   </span>
                 </div>
-                <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
+                <div className="h-1.5 w-full rounded-full bg-stone-100 overflow-hidden">
                   <div
-                    className="h-full rounded-full bg-emerald-500 transition-all duration-300"
+                    className="h-full rounded-full bg-[#C6A87C] transition-[width] duration-300"
                     style={{ width: `${poolPct}%` }}
                   />
                 </div>
@@ -212,24 +212,27 @@ export function BudgetView({
 
               <div>
                 <div className="flex justify-between text-xs mb-1">
-                  <span className="font-medium text-slate-600">Spent vs. target</span>
-                  <span className="font-bold text-orange-600 tabular-nums">
+                  <span className="inline-flex items-center gap-1.5 text-[#52525B]">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#1C1C1E]" />
+                    <span>Spent vs. target</span>
+                  </span>
+                  <span className="font-semibold text-[#1C1C1E] tabular-nums">
                     {formatTZS(summary.totalSpent)} ({spentPct}%)
                   </span>
                 </div>
-                <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
+                <div className="h-1.5 w-full rounded-full bg-stone-100 overflow-hidden">
                   <div
-                    className="h-full rounded-full bg-orange-500 transition-all duration-300"
+                    className="h-full rounded-full bg-[#1C1C1E] transition-[width] duration-300"
                     style={{ width: `${spentPct}%` }}
                   />
                 </div>
               </div>
 
-              <div className="flex items-center justify-between rounded-2xl border border-[#E5D3B3]/80 bg-[#FBF8F1] px-3 py-2 text-xs">
-                <span className="font-medium text-slate-600">Cash on Hand (Carry-Over)</span>
+              <div className="flex items-center justify-between rounded-xl bg-[#F6F5F2] px-3 py-2.5 text-xs">
+                <span className="text-[#52525B]">Cash on hand (carry-over)</span>
                 <span
-                  className={`font-bold tabular-nums ${
-                    summary.allTimeBalance >= 0 ? "text-[#7A5E31]" : "text-rose-600"
+                  className={`font-semibold tabular-nums ${
+                    summary.allTimeBalance >= 0 ? "text-[#1C1C1E]" : "text-rose-700"
                   }`}
                 >
                   {formatTZS(summary.allTimeBalance)}
@@ -237,78 +240,84 @@ export function BudgetView({
               </div>
             </div>
 
-            <div className="mt-3.5 pt-3 border-t border-slate-100">
+            <div className="mt-3.5 pt-3 border-t border-stone-900/[0.06]">
               <SoftButton
                 onClick={() => void handleShareSummary()}
                 icon={
                   copiedSummary ? (
-                    <Check className="h-4 w-4 text-emerald-600" />
+                    <Check className="h-4 w-4 text-emerald-700" />
                   ) : (
                     <Share2 className="h-4 w-4" />
                   )
                 }
-                className="w-full !h-10 text-xs font-semibold"
+                className="w-full !h-10 text-xs font-medium"
               >
-                {copiedSummary ? "Copied Summary for WhatsApp" : "Copy Summary for WhatsApp"}
+                {copiedSummary ? "Copied summary for WhatsApp" : "Copy summary for WhatsApp"}
               </SoftButton>
             </div>
           </section>
 
           {/* Member Accountability Breakdown */}
-          <section className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-[0_2px_16px_rgba(15,23,42,0.04)]">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-[15px] font-semibold text-slate-900">Member Contributions</h2>
-              <span className="text-[11px] font-medium text-slate-500 tabular-nums">
+          <section className="rounded-2xl border border-stone-900/[0.08] bg-white p-4">
+            <div className="flex items-baseline justify-between mb-2">
+              <h2 className="text-base font-semibold text-[#1C1C1E]">Member contributions</h2>
+              <span className="font-mono text-xs text-[#8E8E93] tabular-nums">
                 Share: {formatTZS(household.member_weekly_share)}/wk
               </span>
             </div>
 
-            <div className="space-y-3">
+            <div className="divide-y divide-stone-900/[0.06]">
               {summary.memberStatuses.map((status) => {
                 const done =
                   status.contributedThisWeek >= status.expectedShare && status.expectedShare > 0;
                 const partial = status.contributedThisWeek > 0 && !done;
                 return (
-                  <div
-                    key={status.member.user_id}
-                    className="rounded-2xl border border-slate-100 bg-[#FAFBFD] p-3"
-                  >
+                  <div key={status.member.user_id} className="py-3 first:pt-1 last:pb-0">
                     <div className="flex items-center justify-between gap-2 mb-2">
-                      <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="flex items-center gap-3 min-w-0">
                         <div
-                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
+                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white"
                           style={{ backgroundColor: status.member.profile.avatar_color }}
                         >
                           {getInitials(status.member.profile.full_name)}
                         </div>
                         <div className="min-w-0">
-                          <div className="truncate text-[13px] font-semibold text-slate-900">
+                          <div className="truncate text-sm font-medium text-[#1C1C1E]">
                             {status.member.profile.full_name}
                           </div>
-                          <div className="text-[11px] text-slate-500 tabular-nums">
+                          <div className="text-xs text-[#8E8E93] tabular-nums">
                             {formatTZS(status.contributedThisWeek)} /{" "}
                             {formatTZS(status.expectedShare)}
                           </div>
                         </div>
                       </div>
                       <span
-                        className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${
+                        className={`inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium ${
                           done
                             ? "bg-emerald-50 text-emerald-700"
                             : partial
-                              ? "bg-amber-50 text-amber-700"
-                              : "bg-slate-100 text-slate-500"
+                              ? "bg-stone-100 text-[#8F703F]"
+                              : "bg-stone-100 text-[#8E8E93]"
                         }`}
                       >
+                        <span
+                          className={`h-1.5 w-1.5 rounded-full ${
+                            done
+                              ? "bg-emerald-600"
+                              : partial
+                                ? "bg-[#C6A87C]"
+                                : "bg-stone-400"
+                          }`}
+                        />
                         {done ? "Paid" : partial ? "Partial" : "Pending"}
                       </span>
                     </div>
-                    <div className="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
+                    <div className="h-1 w-full rounded-full bg-stone-100 overflow-hidden">
                       <div
-                        className="h-full rounded-full transition-all duration-300"
+                        className="h-full rounded-full transition-[width] duration-300"
                         style={{
                           width: `${status.percentOfShare}%`,
-                          backgroundColor: done ? "#22C55E" : partial ? "#F59E0B" : "#CBD5E1",
+                          backgroundColor: done ? "#15803D" : partial ? "#C6A87C" : "#D6D3D1",
                         }}
                       />
                     </div>
@@ -319,16 +328,16 @@ export function BudgetView({
           </section>
 
           {/* Edit Shared Weekly Budget */}
-          <section className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-[0_2px_16px_rgba(15,23,42,0.04)]">
-            <h2 className="text-[15px] font-semibold text-slate-900 mb-1">Update Weekly Budget</h2>
-            <p className="text-xs text-slate-500 mb-3">
-              Changes sync immediately across everyone in {household.name}.
+          <section className="rounded-2xl border border-stone-900/[0.08] bg-white p-4">
+            <h2 className="text-base font-semibold text-[#1C1C1E]">Update weekly budget</h2>
+            <p className="text-xs text-[#52525B] mt-0.5 mb-3">
+              Changes sync across everyone in {household.name}
             </p>
 
             <form onSubmit={(e) => void handleSave(e)} className="space-y-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  Total Weekly Budget (TZS)
+                <label className="block text-xs font-medium text-[#52525B] mb-1">
+                  Total weekly budget (TZS)
                 </label>
                 <SoftInput
                   type="number"
@@ -336,13 +345,13 @@ export function BudgetView({
                   step="1000"
                   value={weeklyTarget}
                   onValueChange={setWeeklyTarget}
-                  icon={<span className="text-xs font-bold text-slate-500">TZS</span>}
+                  icon={<span className="font-mono text-xs font-medium text-[#8E8E93]">TZS</span>}
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  Expected Share per Member (TZS)
+                <label className="block text-xs font-medium text-[#52525B] mb-1">
+                  Expected share per member (TZS)
                 </label>
                 <SoftInput
                   type="number"
@@ -350,7 +359,7 @@ export function BudgetView({
                   step="1000"
                   value={memberShare}
                   onValueChange={setMemberShare}
-                  icon={<span className="text-xs font-bold text-slate-500">TZS</span>}
+                  icon={<span className="font-mono text-xs font-medium text-[#8E8E93]">TZS</span>}
                 />
               </div>
 
@@ -358,15 +367,15 @@ export function BudgetView({
                 type="submit"
                 variant="filled"
                 disabled={saving}
-                className="w-full !h-10 text-xs font-semibold"
+                className="w-full !h-10 text-xs font-medium"
               >
-                {saving ? "Updating..." : "Save Shared Budget"}
+                {saving ? "Saving..." : "Save budget"}
               </SoftButton>
 
               {savedToast && (
-                <div className="flex items-center justify-center gap-1.5 text-xs font-medium text-emerald-600">
+                <div className="flex items-center justify-center gap-1.5 text-xs font-medium text-emerald-700">
                   <CheckCircle2 className="h-3.5 w-3.5" />
-                  Weekly budget updated!
+                  Weekly budget updated
                 </div>
               )}
             </form>
@@ -375,35 +384,35 @@ export function BudgetView({
       )}
 
       {subTab === "bills" && (
-        <section className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-[0_2px_16px_rgba(15,23,42,0.04)] space-y-3.5">
+        <section className="rounded-2xl border border-stone-900/[0.08] bg-white p-4 space-y-3.5">
           <div className="flex items-center justify-between gap-2">
             <div>
-              <h2 className="text-[15px] font-semibold text-slate-900">Recurring House Bills</h2>
-              <p className="text-xs text-slate-500">
-                Track rent, Wi-Fi, water, and guard due dates.
+              <h2 className="text-base font-semibold text-[#1C1C1E]">Recurring house bills</h2>
+              <p className="text-xs text-[#52525B] mt-0.5">
+                Track rent, Wi-Fi, water, and guard due dates
               </p>
             </div>
             <button
               type="button"
               onClick={() => setShowBillForm((v) => !v)}
-              className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#1C1C1E] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-slate-800 cursor-pointer"
+              className="inline-flex shrink-0 items-center gap-1 rounded-xl bg-[#1C1C1E] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#2C2C30] transition-colors cursor-pointer"
             >
               <Plus className="h-3.5 w-3.5" />
-              {showBillForm ? "Close" : "Add Bill"}
+              {showBillForm ? "Close" : "Add bill"}
             </button>
           </div>
 
           {showBillForm && (
             <form
               onSubmit={(e) => void handleAddBill(e)}
-              className="rounded-2xl border border-slate-100 bg-[#FAFBFD] p-3.5 space-y-3"
+              className="rounded-xl border border-stone-900/[0.08] bg-[#F6F5F2] p-3.5 space-y-3"
             >
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">Bill Name</label>
+                <label className="block text-xs font-medium text-[#52525B] mb-1">Bill name</label>
                 <SoftInput
                   type="text"
                   maxLength={80}
-                  placeholder="e.g. Monthly House Rent, Fiber Wi-Fi"
+                  placeholder="Monthly house rent, Fiber Wi-Fi"
                   value={billTitle}
                   onValueChange={setBillTitle}
                   required
@@ -412,7 +421,7 @@ export function BudgetView({
 
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">
+                  <label className="block text-xs font-medium text-[#52525B] mb-1">
                     Amount (TZS)
                   </label>
                   <SoftInput
@@ -426,8 +435,8 @@ export function BudgetView({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">
-                    Due Day (1-31)
+                  <label className="block text-xs font-medium text-[#52525B] mb-1">
+                    Due day (1-31)
                   </label>
                   <SoftInput
                     type="number"
@@ -448,13 +457,13 @@ export function BudgetView({
                       key={cat.id}
                       type="button"
                       onClick={() => setBillCategory(cat.id)}
-                      className={`flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-left text-[11px] font-medium cursor-pointer ${
+                      className={`flex items-center gap-2 rounded-xl border px-2.5 py-2 text-left text-xs font-medium transition-colors cursor-pointer ${
                         selected
-                          ? "border-slate-900 bg-slate-900 text-white"
-                          : "border-slate-200 bg-white text-slate-700"
+                          ? "border-[#1C1C1E] bg-[#1C1C1E] text-white"
+                          : "border-stone-900/10 bg-white text-[#52525B]"
                       }`}
                     >
-                      <CategoryIcon category={cat.id} className="h-3 w-3 shrink-0" />
+                      <CategoryIcon category={cat.id} className="h-3.5 w-3.5 shrink-0" />
                       <span className="truncate">{cat.label}</span>
                     </button>
                   );
@@ -465,64 +474,61 @@ export function BudgetView({
                 type="submit"
                 variant="filled"
                 disabled={addingBill}
-                className="w-full !h-9 text-xs font-semibold"
+                className="w-full !h-9 text-xs font-medium"
               >
-                {addingBill ? "Saving..." : "Save Recurring Bill"}
+                {addingBill ? "Saving..." : "Save bill"}
               </SoftButton>
             </form>
           )}
 
           {bills.length === 0 ? (
-            <div className="rounded-2xl bg-slate-50 py-8 px-4 text-center space-y-1.5">
-              <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-slate-200/70 text-slate-500">
-                <CalendarClock className="h-5 w-5" />
+            <div className="rounded-xl bg-[#F6F5F2] py-8 px-4 text-center space-y-1.5">
+              <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-xl bg-white border border-stone-900/[0.08] text-[#52525B]">
+                <CalendarClock className="h-4 w-4" />
               </div>
-              <p className="text-sm font-medium text-slate-600">No recurring bills yet</p>
-              <p className="text-xs text-slate-400">
-                Add monthly rent, Wi-Fi, water, or security fees so no due date is missed.
+              <p className="text-sm font-medium text-[#1C1C1E]">No recurring bills yet</p>
+              <p className="text-xs text-[#8E8E93]">
+                Add monthly rent, Wi-Fi, water, or security fees so no due date is missed
               </p>
             </div>
           ) : (
-            <div className="space-y-2.5">
+            <div className="divide-y divide-stone-900/[0.06]">
               {bills.map((bill) => {
                 const status = getBillDueStatus(bill);
                 const confirming = confirmDeleteBillId === bill.id;
                 return (
-                  <div
-                    key={bill.id}
-                    className="rounded-2xl border border-slate-100 bg-[#FAFBFD] p-3 space-y-2.5"
-                  >
+                  <div key={bill.id} className="py-3 first:pt-1 last:pb-0 space-y-2">
                     <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white border border-slate-100 text-slate-700">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="flex w-5 shrink-0 items-center justify-center text-[#52525B]">
                           <CategoryIcon category={bill.category} className="h-4 w-4" />
                         </span>
                         <div className="min-w-0">
-                          <div className="truncate text-[13px] font-semibold text-slate-900">
+                          <div className="truncate text-sm font-medium text-[#1C1C1E]">
                             {bill.title}
                           </div>
-                          <div className="text-xs font-bold text-slate-700 tabular-nums">
+                          <div className="text-xs font-semibold text-[#52525B] tabular-nums">
                             {formatTZS(bill.amount)}
                           </div>
                         </div>
                       </div>
 
                       <span
-                        className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${
+                        className={`shrink-0 rounded-md px-2 py-0.5 text-xs font-medium ${
                           status.isPaidThisMonth
                             ? "bg-emerald-50 text-emerald-700"
                             : status.isOverdue
                               ? "bg-rose-50 text-rose-700"
                               : status.isDueSoon
-                                ? "bg-amber-50 text-amber-800"
-                                : "bg-slate-100 text-slate-600"
+                                ? "bg-stone-100 text-[#8F703F]"
+                                : "bg-stone-100 text-[#52525B]"
                         }`}
                       >
                         {status.statusLabel}
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between gap-2 border-t border-slate-100 pt-2">
+                    <div className="flex items-center justify-between gap-2 pl-8">
                       {!status.isPaidThisMonth ? (
                         <button
                           type="button"
@@ -535,24 +541,24 @@ export function BudgetView({
                               billId: bill.id,
                             })
                           }
-                          className="inline-flex items-center gap-1.5 rounded-full bg-[#1C1C1E] px-3 py-1 text-[11px] font-semibold text-white hover:bg-slate-800 cursor-pointer"
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-[#1C1C1E] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#2C2C30] transition-colors cursor-pointer"
                         >
                           <Check className="h-3 w-3" />
-                          Record Payment
+                          Record payment
                         </button>
                       ) : (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600">
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700">
                           <CheckCircle2 className="h-3.5 w-3.5" />
                           Settled for this month
                         </span>
                       )}
 
                       {confirming ? (
-                        <div className="flex items-center gap-1.5 text-[11px]">
+                        <div className="flex items-center gap-1.5 text-xs">
                           <button
                             type="button"
                             onClick={() => setConfirmDeleteBillId(null)}
-                            className="rounded-lg bg-slate-100 px-2 py-0.5 font-semibold text-slate-600 cursor-pointer"
+                            className="rounded-md bg-stone-100 px-2 py-0.5 font-medium text-[#52525B] cursor-pointer"
                           >
                             Cancel
                           </button>
@@ -562,7 +568,7 @@ export function BudgetView({
                               setConfirmDeleteBillId(null);
                               void onDeleteBill(bill.id);
                             }}
-                            className="rounded-lg bg-rose-600 px-2 py-0.5 font-semibold text-white cursor-pointer"
+                            className="rounded-md bg-rose-700 px-2 py-0.5 font-medium text-white cursor-pointer"
                           >
                             Delete
                           </button>
@@ -572,7 +578,7 @@ export function BudgetView({
                           type="button"
                           aria-label={`Delete ${bill.title}`}
                           onClick={() => setConfirmDeleteBillId(bill.id)}
-                          className="flex h-7 w-7 items-center justify-center rounded-full text-slate-400 hover:bg-rose-50 hover:text-rose-600 cursor-pointer"
+                          className="flex h-7 w-7 items-center justify-center rounded-md text-[#8E8E93] hover:bg-rose-50 hover:text-rose-700 transition-colors cursor-pointer"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
@@ -587,11 +593,11 @@ export function BudgetView({
       )}
 
       {subTab === "needs" && (
-        <section className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-[0_2px_16px_rgba(15,23,42,0.04)] space-y-3.5">
+        <section className="rounded-2xl border border-stone-900/[0.08] bg-white p-4 space-y-3.5">
           <div>
-            <h2 className="text-[15px] font-semibold text-slate-900">What the House Needs</h2>
-            <p className="text-xs text-slate-500">
-              Shared restock list — tap Buy & Log when someone picks an item up.
+            <h2 className="text-base font-semibold text-[#1C1C1E]">What the house needs</h2>
+            <p className="text-xs text-[#52525B] mt-0.5">
+              Shared restock list — tap Buy & log when someone picks an item up
             </p>
           </div>
 
@@ -601,7 +607,7 @@ export function BudgetView({
               <SoftInput
                 type="text"
                 maxLength={120}
-                placeholder="e.g. Cooking gas, Rice 5kg, Dish soap..."
+                placeholder="Cooking gas, Rice 5kg, Dish soap"
                 value={needTitle}
                 onValueChange={setNeedTitle}
                 className="flex-1"
@@ -611,7 +617,7 @@ export function BudgetView({
                 type="submit"
                 variant="filled"
                 disabled={addingNeed}
-                className="shrink-0 !h-10 text-xs font-semibold"
+                className="shrink-0 !h-10 text-xs font-medium"
               >
                 Add
               </SoftButton>
@@ -627,13 +633,13 @@ export function BudgetView({
                     key={cat.id}
                     type="button"
                     onClick={() => setNeedCategory(cat.id)}
-                    className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold cursor-pointer ${
+                    className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer ${
                       active
                         ? "bg-[#1C1C1E] text-white"
-                        : "border border-slate-200 bg-slate-50 text-slate-600"
+                        : "border border-stone-900/10 bg-[#F6F5F2] text-[#52525B]"
                     }`}
                   >
-                    <CategoryIcon category={cat.id} className="h-3 w-3" />
+                    <CategoryIcon category={cat.id} className="h-3.5 w-3.5" />
                     <span>{cat.label}</span>
                   </button>
                 );
@@ -642,98 +648,104 @@ export function BudgetView({
           </form>
 
           {needs.length === 0 ? (
-            <div className="rounded-2xl bg-slate-50 py-8 px-4 text-center space-y-1.5">
-              <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-slate-200/70 text-slate-500">
-                <ShoppingBasket className="h-5 w-5" />
+            <div className="rounded-xl bg-[#F6F5F2] py-8 px-4 text-center space-y-1.5">
+              <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-xl bg-white border border-stone-900/[0.08] text-[#52525B]">
+                <ShoppingBasket className="h-4 w-4" />
               </div>
-              <p className="text-sm font-medium text-slate-600">Everything is stocked</p>
-              <p className="text-xs text-slate-400">
-                Add groceries, gas, or cleaning supplies whenever the house runs low.
+              <p className="text-sm font-medium text-[#1C1C1E]">Everything is stocked</p>
+              <p className="text-xs text-[#8E8E93]">
+                Add groceries, gas, or cleaning supplies whenever the house runs low
               </p>
             </div>
           ) : (
-            <div className="space-y-2">
-              {pendingNeeds.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-center justify-between gap-2 rounded-2xl border border-slate-100 bg-[#FAFBFD] px-3 py-2.5"
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <button
-                      type="button"
-                      aria-label={`Mark ${item.title} as bought`}
-                      onClick={() => void onToggleNeed(item.id, true)}
-                      className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white hover:border-slate-700 cursor-pointer"
-                    />
-                    <div className="min-w-0">
-                      <div className="truncate text-[13px] font-semibold text-slate-900">
-                        {item.title}
-                      </div>
-                      <div className="truncate text-[11px] text-slate-400">
-                        Added by {item.adder?.full_name ?? "Member"}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onStartPrefillExpense({
-                          type: "expense",
-                          category: item.category,
-                          description: item.title,
-                          needId: item.id,
-                        })
-                      }
-                      className="rounded-full bg-[#1C1C1E] px-2.5 py-1 text-[10px] font-semibold text-white hover:bg-slate-800 cursor-pointer"
-                    >
-                      Buy & Log
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={`Remove ${item.title}`}
-                      onClick={() => void onDeleteNeed(item.id)}
-                      className="flex h-6 w-6 items-center justify-center rounded-full text-slate-400 hover:bg-rose-50 hover:text-rose-600 cursor-pointer"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-
-              {boughtNeeds.length > 0 && (
-                <div className="pt-2 space-y-1.5">
-                  <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                    Recently Bought ({boughtNeeds.length})
-                  </div>
-                  {boughtNeeds.map((item) => (
+            <div className="space-y-3">
+              {pendingNeeds.length > 0 && (
+                <div className="divide-y divide-stone-900/[0.06]">
+                  {pendingNeeds.map((item) => (
                     <div
                       key={item.id}
-                      className="flex items-center justify-between gap-2 rounded-2xl border border-slate-100/70 bg-slate-50/70 px-3 py-2 opacity-75"
+                      className="flex items-center justify-between gap-2 py-2.5 first:pt-0 last:pb-0"
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
                         <button
                           type="button"
-                          aria-label={`Restore ${item.title} to needed`}
-                          onClick={() => void onToggleNeed(item.id, false)}
-                          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-emerald-600 text-white cursor-pointer"
-                        >
-                          <Check className="h-3 w-3" strokeWidth={3} />
-                        </button>
-                        <span className="truncate text-xs font-medium text-slate-500 line-through">
-                          {item.title}
-                        </span>
+                          aria-label={`Mark ${item.title} as bought`}
+                          onClick={() => void onToggleNeed(item.id, true)}
+                          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-stone-300 bg-white hover:border-[#1C1C1E] transition-colors cursor-pointer"
+                        />
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-medium text-[#1C1C1E]">
+                            {item.title}
+                          </div>
+                          <div className="truncate text-xs text-[#8E8E93]">
+                            Added by {item.adder?.full_name ?? "Member"}
+                          </div>
+                        </div>
                       </div>
-                      <button
-                        type="button"
-                        aria-label={`Delete ${item.title}`}
-                        onClick={() => void onDeleteNeed(item.id)}
-                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-400 hover:bg-rose-50 hover:text-rose-600 cursor-pointer"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onStartPrefillExpense({
+                              type: "expense",
+                              category: item.category,
+                              description: item.title,
+                              needId: item.id,
+                            })
+                          }
+                          className="rounded-lg bg-[#1C1C1E] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#2C2C30] transition-colors cursor-pointer"
+                        >
+                          Buy & log
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Remove ${item.title}`}
+                          onClick={() => void onDeleteNeed(item.id)}
+                          className="flex h-7 w-7 items-center justify-center rounded-md text-[#8E8E93] hover:bg-rose-50 hover:text-rose-700 transition-colors cursor-pointer"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </div>
                   ))}
+                </div>
+              )}
+
+              {boughtNeeds.length > 0 && (
+                <div className="pt-2 border-t border-stone-900/[0.06] space-y-1.5">
+                  <div className="text-xs font-medium text-[#8E8E93]">
+                    Recently bought ({boughtNeeds.length})
+                  </div>
+                  <div className="divide-y divide-stone-900/[0.06]">
+                    {boughtNeeds.map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex items-center justify-between gap-2 py-2 opacity-75"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <button
+                            type="button"
+                            aria-label={`Restore ${item.title} to needed`}
+                            onClick={() => void onToggleNeed(item.id, false)}
+                            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-[#1C1C1E] text-white cursor-pointer"
+                          >
+                            <Check className="h-3 w-3" strokeWidth={2.5} />
+                          </button>
+                          <span className="truncate text-xs text-[#52525B] line-through">
+                            {item.title}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          aria-label={`Delete ${item.title}`}
+                          onClick={() => void onDeleteNeed(item.id)}
+                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[#8E8E93] hover:bg-rose-50 hover:text-rose-700 transition-colors cursor-pointer"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

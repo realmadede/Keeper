@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Glass, SegmentedControl } from "glisse";
-import { ArrowLeft, Check, Eye, EyeOff, KeyRound, Mail, Sparkles, User } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Eye, EyeOff, KeyRound, Mail, User } from "lucide-react";
 import { KeeperLogo } from "./KeeperLogo";
 import { LegalModal, type LegalDocType } from "./LegalModal";
 import { SoftButton, SoftInput } from "./LightControls";
@@ -168,7 +168,7 @@ export function AuthScreen({
             <button
               type="button"
               onClick={onBack}
-              className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-900 cursor-pointer"
+              className="inline-flex items-center gap-1 text-xs font-medium text-[#52525B] hover:text-[#1C1C1E] transition-colors cursor-pointer"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
               About Keeper
@@ -179,26 +179,28 @@ export function AuthScreen({
         {/* Brand Header */}
         <div className="text-center">
           <KeeperLogo
-            size={60}
-            className="mx-auto mb-3 drop-shadow-[0_8px_20px_rgba(15,23,42,0.18)]"
+            size={56}
+            className="mx-auto mb-3 drop-shadow-[0_8px_18px_rgba(28,28,30,0.14)]"
           />
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Keeper</h1>
-          <p className="mt-1 text-xs text-slate-500">
+          <h1 className="text-2xl font-semibold tracking-tight text-[#1C1C1E]">Keeper</h1>
+          <p className="mt-1 text-xs text-[#52525B]">
             One household, one shared budget, complete transparency.
           </p>
           {pendingInviteCode && !passwordRecoveryMode && (
-            <div className="mt-2.5 inline-flex items-center gap-1.5 rounded-full border border-[#E5D3B3] bg-[#FBF8F1] px-3 py-1 text-[11px] font-semibold text-[#7A5E31]">
-              Joining household code: <span className="font-mono tracking-wider">{pendingInviteCode}</span>
+            <div className="mt-2.5 inline-flex items-center gap-1.5 rounded-xl border border-stone-900/10 bg-white px-3 py-1 text-xs font-medium text-[#8F703F]">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#C6A87C]" />
+              <span>Joining household code</span>
+              <span className="font-mono font-semibold text-[#1C1C1E]">{pendingInviteCode}</span>
             </div>
           )}
         </div>
 
-        <Glass className="rounded-[28px] !bg-white/85 p-5 shadow-[0_12px_36px_rgba(15,23,42,0.08)]">
+        <Glass className="rounded-[20px] !bg-white/90 p-5 shadow-[0_8px_28px_rgba(28,28,30,0.06)]">
           {passwordRecoveryMode ? (
             <div className="mb-4">
-              <h2 className="text-base font-bold text-slate-900">Set New Password</h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Choose a new password for your Keeper account.
+              <h2 className="text-base font-semibold text-[#1C1C1E]">Set new password</h2>
+              <p className="text-xs text-[#52525B] mt-0.5">
+                Choose a new password for your Keeper account
               </p>
             </div>
           ) : mode === "forgot" ? (
@@ -206,14 +208,14 @@ export function AuthScreen({
               <button
                 type="button"
                 onClick={() => handleModeChange("signin")}
-                className="mb-2 inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-900 cursor-pointer"
+                className="mb-2 inline-flex items-center gap-1 text-xs font-medium text-[#52525B] hover:text-[#1C1C1E] transition-colors cursor-pointer"
               >
                 <ArrowLeft className="h-3.5 w-3.5" />
-                Back to Sign In
+                Back to sign in
               </button>
-              <h2 className="text-base font-bold text-slate-900">Reset Password</h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Enter your email and we will send you a password reset link.
+              <h2 className="text-base font-semibold text-[#1C1C1E]">Reset password</h2>
+              <p className="text-xs text-[#52525B] mt-0.5">
+                Enter your email to receive a password reset link
               </p>
             </div>
           ) : (
@@ -223,8 +225,8 @@ export function AuthScreen({
                 value={mode}
                 onValueChange={handleModeChange}
                 items={[
-                  { value: "signin", label: "Sign In" },
-                  { value: "signup", label: "Create Account" },
+                  { value: "signin", label: "Sign in" },
+                  { value: "signup", label: "Create account" },
                 ]}
               />
             </div>
@@ -233,13 +235,13 @@ export function AuthScreen({
           <form onSubmit={(e) => void handleSubmit(e)} className="space-y-3.5">
             {!passwordRecoveryMode && mode === "signup" && (
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">Full Name</label>
+                <label className="block text-xs font-medium text-[#52525B] mb-1">Full name</label>
                 <SoftInput
                   type="text"
-                  placeholder="e.g. Amani Juma"
+                  placeholder="Amani Juma"
                   value={fullName}
                   onValueChange={setFullName}
-                  icon={<User className="h-4 w-4 text-slate-400" />}
+                  icon={<User className="h-4 w-4" />}
                   required
                 />
               </div>
@@ -247,13 +249,13 @@ export function AuthScreen({
 
             {!passwordRecoveryMode && (
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">Email</label>
+                <label className="block text-xs font-medium text-[#52525B] mb-1">Email</label>
                 <SoftInput
                   type="email"
                   placeholder="you@example.com"
                   value={email}
                   onValueChange={setEmail}
-                  icon={<Mail className="h-4 w-4 text-slate-400" />}
+                  icon={<Mail className="h-4 w-4" />}
                   required
                 />
               </div>
@@ -262,8 +264,8 @@ export function AuthScreen({
             {(passwordRecoveryMode || mode !== "forgot") && (
               <div>
                 <div className="mb-1 flex items-center justify-between">
-                  <label className="block text-xs font-semibold text-slate-600">
-                    {passwordRecoveryMode ? "New Password" : "Password"}
+                  <label className="block text-xs font-medium text-[#52525B]">
+                    {passwordRecoveryMode ? "New password" : "Password"}
                   </label>
                   {!passwordRecoveryMode && mode === "signin" && (
                     <button
@@ -273,7 +275,7 @@ export function AuthScreen({
                         setLocalError(null);
                         setResetSent(false);
                       }}
-                      className="text-[11px] font-semibold text-slate-500 hover:text-slate-900 cursor-pointer"
+                      className="text-xs font-medium text-[#52525B] hover:text-[#1C1C1E] transition-colors cursor-pointer"
                     >
                       Forgot password?
                     </button>
@@ -284,8 +286,8 @@ export function AuthScreen({
                     type={showPassword ? "text" : "password"}
                     placeholder={
                       passwordRecoveryMode || mode === "signup"
-                        ? "Choose a password (min. 6 characters)"
-                        : "Enter your password"
+                        ? "Min. 6 characters"
+                        : "Password"
                     }
                     minLength={6}
                     value={password}
@@ -293,7 +295,7 @@ export function AuthScreen({
                       setPassword(v);
                       if (localError) setLocalError(null);
                     }}
-                    icon={<KeyRound className="h-4 w-4 text-slate-400" />}
+                    icon={<KeyRound className="h-4 w-4" />}
                     className="!pr-11"
                     required
                   />
@@ -301,7 +303,7 @@ export function AuthScreen({
                     type="button"
                     onClick={() => setShowPassword((prev) => !prev)}
                     aria-label={showPassword ? "Hide password" : "Show password"}
-                    className="absolute right-2 top-1/2 z-10 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-900/5 hover:text-slate-700 cursor-pointer"
+                    className="absolute right-2 top-1/2 z-10 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-[#8E8E93] transition-colors hover:bg-stone-900/5 hover:text-[#1C1C1E] cursor-pointer"
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
@@ -312,30 +314,30 @@ export function AuthScreen({
             {(passwordRecoveryMode || mode === "signup") && (
               <div>
                 <div className="mb-1 flex items-center justify-between">
-                  <label className="block text-xs font-semibold text-slate-600">
-                    Confirm Password
+                  <label className="block text-xs font-medium text-[#52525B]">
+                    Confirm password
                   </label>
                   {passwordsMatch && (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600">
+                    <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700">
                       <Check className="h-3 w-3" />
                       Matches
                     </span>
                   )}
                   {passwordsMismatch && (
-                    <span className="text-[11px] font-medium text-rose-500">Does not match</span>
+                    <span className="text-xs font-medium text-rose-700">Does not match</span>
                   )}
                 </div>
                 <div className="relative">
                   <SoftInput
                     type={showConfirmPassword ? "text" : "password"}
-                    placeholder="Type your password again"
+                    placeholder="Repeat password"
                     minLength={6}
                     value={confirmPassword}
                     onValueChange={(v) => {
                       setConfirmPassword(v);
                       if (localError) setLocalError(null);
                     }}
-                    icon={<KeyRound className="h-4 w-4 text-slate-400" />}
+                    icon={<KeyRound className="h-4 w-4" />}
                     className="!pr-11"
                     required
                   />
@@ -345,7 +347,7 @@ export function AuthScreen({
                     aria-label={
                       showConfirmPassword ? "Hide confirm password" : "Show confirm password"
                     }
-                    className="absolute right-2 top-1/2 z-10 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-900/5 hover:text-slate-700 cursor-pointer"
+                    className="absolute right-2 top-1/2 z-10 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-[#8E8E93] transition-colors hover:bg-stone-900/5 hover:text-[#1C1C1E] cursor-pointer"
                   >
                     {showConfirmPassword ? (
                       <EyeOff className="h-4 w-4" />
@@ -358,7 +360,7 @@ export function AuthScreen({
             )}
 
             {!passwordRecoveryMode && mode === "signup" && (
-              <div className="flex items-start gap-2.5 rounded-2xl border border-slate-200/80 bg-slate-50/70 px-3 py-2.5">
+              <div className="flex items-start gap-2.5 rounded-xl border border-stone-900/[0.08] bg-[#F6F5F2] px-3 py-2.5">
                 <button
                   type="button"
                   role="checkbox"
@@ -368,20 +370,20 @@ export function AuthScreen({
                     setAcceptedTerms((prev) => !prev);
                     if (localError) setLocalError(null);
                   }}
-                  className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-[5px] border transition-colors cursor-pointer ${
+                  className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border transition-colors cursor-pointer ${
                     acceptedTerms
                       ? "border-[#1C1C1E] bg-[#1C1C1E] text-white"
-                      : "border-slate-300 bg-white text-transparent hover:border-slate-500"
+                      : "border-stone-300 bg-white text-transparent hover:border-stone-500"
                   }`}
                 >
-                  <Check className="h-3 w-3" strokeWidth={3} />
+                  <Check className="h-3 w-3" strokeWidth={2.5} />
                 </button>
-                <p className="text-[11px] leading-snug text-slate-600">
+                <p className="text-xs leading-snug text-[#52525B]">
                   I agree to the{" "}
                   <button
                     type="button"
                     onClick={() => setLegalDoc("terms")}
-                    className="font-semibold text-slate-900 underline underline-offset-2 hover:text-[#A68756] cursor-pointer"
+                    className="font-medium text-[#1C1C1E] underline underline-offset-2 hover:text-[#8F703F] cursor-pointer"
                   >
                     Terms of Service
                   </button>{" "}
@@ -389,23 +391,22 @@ export function AuthScreen({
                   <button
                     type="button"
                     onClick={() => setLegalDoc("privacy")}
-                    className="font-semibold text-slate-900 underline underline-offset-2 hover:text-[#A68756] cursor-pointer"
+                    className="font-medium text-[#1C1C1E] underline underline-offset-2 hover:text-[#8F703F] cursor-pointer"
                   >
                     Privacy Policy
                   </button>
-                  .
                 </p>
               </div>
             )}
 
             {resetSent && mode === "forgot" && (
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">
-                Password reset link sent to <strong>{email}</strong>. Check your inbox.
+              <div className="rounded-xl border border-emerald-700/20 bg-emerald-50/70 px-3 py-2 text-xs font-medium text-emerald-800">
+                Password reset link sent to <strong>{email}</strong>
               </div>
             )}
 
             {displayedError && (
-              <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">
+              <div className="rounded-xl border border-rose-700/20 bg-rose-50/70 px-3 py-2 text-xs font-medium text-rose-700">
                 {displayedError}
               </div>
             )}
@@ -414,17 +415,17 @@ export function AuthScreen({
               type="submit"
               variant="filled"
               disabled={submitting || (!passwordRecoveryMode && mode === "signup" && !acceptedTerms)}
-              className="w-full !h-11 text-sm font-semibold"
+              className="w-full !h-11 text-sm font-medium"
             >
               {submitting
                 ? "Please wait..."
                 : passwordRecoveryMode
-                  ? "Update Password"
+                  ? "Update password"
                   : mode === "forgot"
-                    ? "Send Reset Link"
+                    ? "Send reset link"
                     : mode === "signin"
-                      ? "Sign In to Household"
-                      : "Create Keeper Account"}
+                      ? "Sign in"
+                      : "Create account"}
             </SoftButton>
           </form>
 
@@ -432,9 +433,9 @@ export function AuthScreen({
           {!passwordRecoveryMode && mode !== "forgot" && (
             <>
               <div className="my-4 flex items-center gap-3">
-                <div className="h-px flex-1 bg-slate-200" />
-                <span className="text-[11px] font-medium text-slate-400">OR</span>
-                <div className="h-px flex-1 bg-slate-200" />
+                <div className="h-px flex-1 bg-stone-900/[0.08]" />
+                <span className="text-xs text-[#8E8E93]">or</span>
+                <div className="h-px flex-1 bg-stone-900/[0.08]" />
               </div>
 
               <SoftButton
@@ -442,7 +443,7 @@ export function AuthScreen({
                 onClick={() => void handleGoogleAuth()}
                 disabled={googleSubmitting || submitting}
                 icon={<GoogleMark />}
-                className="w-full !h-10 text-xs font-semibold"
+                className="w-full !h-10 text-xs font-medium"
               >
                 {googleSubmitting
                   ? "Connecting to Google..."
@@ -455,14 +456,15 @@ export function AuthScreen({
 
           {/* Auto-hide Demo Mode once real Supabase credentials are configured */}
           {!isSupabaseReady && !passwordRecoveryMode && mode !== "forgot" && (
-            <div className="mt-2.5">
-              <SoftButton
+            <div className="mt-3 text-center">
+              <button
+                type="button"
                 onClick={onEnterDemo}
-                icon={<Sparkles className="h-4 w-4 text-[#BFA377]" />}
-                className="w-full !h-10 text-xs font-semibold"
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-[#52525B] hover:text-[#1C1C1E] transition-colors cursor-pointer"
               >
-                Preview Demo Household (TZS)
-              </SoftButton>
+                <span>Preview demo household</span>
+                <ArrowRight className="h-3.5 w-3.5" />
+              </button>
             </div>
           )}
         </Glass>

@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { ArrowDownLeft, ArrowUpRight, Pencil, ReceiptText, Trash2 } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import { formatShortDate, formatTZS, getInitials } from "../lib/format";
 import { getCategoryMeta, type Transaction } from "../types";
 
@@ -16,7 +16,7 @@ interface TransactionListProps {
 }
 
 export function TransactionList({
-  title = "Recent Transactions",
+  title = "Recent activity",
   transactions,
   currentUserId,
   newTransactionIds,
@@ -44,35 +44,35 @@ export function TransactionList({
   };
 
   return (
-    <section className="rounded-[24px] border border-slate-100 bg-white p-4 shadow-[0_2px_16px_rgba(15,23,42,0.04)]">
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-[15px] font-semibold text-slate-900">{title}</h2>
+    <section className="rounded-2xl border border-stone-900/[0.08] bg-white p-4">
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-base font-semibold text-[#1C1C1E]">{title}</h2>
         {onViewAll && transactions.length > (maxItems ?? 0) && (
           <button
             type="button"
             onClick={onViewAll}
-            className="text-xs font-semibold text-slate-500 hover:text-slate-900 cursor-pointer"
+            className="text-xs font-medium text-[#52525B] hover:text-[#1C1C1E] transition-colors cursor-pointer"
           >
-            View All ({transactions.length})
+            View all ({transactions.length})
           </button>
         )}
       </div>
 
       {visible.length === 0 ? (
         emptyState ?? (
-          <div className="rounded-2xl bg-slate-50 py-8 px-4 text-center">
-            <p className="text-sm font-medium text-slate-600">No transactions yet</p>
-            <p className="text-xs text-slate-400 mt-1">
-              Contributions and household purchases will show up here for everyone.
+          <div className="my-2 rounded-xl bg-[#F6F5F2] py-8 px-4 text-center">
+            <p className="text-sm font-medium text-[#52525B]">No transactions yet</p>
+            <p className="text-xs text-[#8E8E93] mt-1">
+              Contributions and household expenses appear here for everyone
             </p>
           </div>
         )
       ) : (
-        <div className="space-y-2.5">
+        <div className="divide-y divide-stone-900/[0.06]">
           {visible.map((tx) => {
             const isContribution = tx.type === "contribution";
             const cat = getCategoryMeta(tx.category);
-            const recorderName = tx.recorder?.full_name ?? "Former Member";
+            const recorderName = tx.recorder?.full_name ?? "Former member";
             const creditedProfile = isContribution && tx.payer ? tx.payer : tx.recorder;
             const displayName = creditedProfile?.full_name ?? recorderName;
             const avatarColor = creditedProfile?.avatar_color ?? "#BFA377";
@@ -84,46 +84,40 @@ export function TransactionList({
             const isNew = Boolean(newTransactionIds?.has(tx.id));
 
             return (
-              <div
-                key={tx.id}
-                className={`rounded-2xl border transition-colors ${
-                  isNew
-                    ? "border-[#E5D3B3] bg-[#FBF8F1]/80 hover:border-[#D4BA8E]"
-                    : "border-slate-100 bg-[#FAFBFD] hover:border-slate-200"
-                }`}
-              >
+              <div key={tx.id} className="py-3 first:pt-1 last:pb-0">
                 <button
                   type="button"
                   onClick={() => {
                     setExpandedId(isExpanded ? null : tx.id);
                     if (isExpanded) setConfirmDeleteId(null);
                   }}
-                  className="flex w-full items-center justify-between gap-3 p-3 text-left cursor-pointer"
+                  className="flex w-full items-center justify-between gap-3 text-left cursor-pointer"
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <div
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white shadow-xs"
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white"
                       style={{ backgroundColor: avatarColor }}
                     >
                       {getInitials(displayName)}
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 min-w-0">
-                        <span className="truncate text-[13px] font-semibold text-slate-900">
+                        <span className="truncate text-sm font-medium text-[#1C1C1E]">
                           {displayName}
                         </span>
                         {isNew && (
-                          <span className="shrink-0 rounded-full bg-[#1C1C1E] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-[#E4CCA0]">
+                          <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-stone-100 px-1.5 py-0.5 text-[11px] font-medium text-[#8F703F]">
+                            <span className="h-1.5 w-1.5 rounded-full bg-[#C6A87C]" />
                             New
                           </span>
                         )}
                         {tx.updated_at && (
-                          <span className="shrink-0 rounded-full bg-slate-200/80 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-500">
+                          <span className="shrink-0 rounded-md bg-stone-100 px-1.5 py-0.5 text-[11px] text-[#8E8E93]">
                             Edited
                           </span>
                         )}
                       </div>
-                      <div className="truncate text-[11px] text-slate-500 mt-0.5">
+                      <div className="truncate text-xs text-[#8E8E93] mt-0.5">
                         {cat.label} · {formatShortDate(tx.transaction_date)}
                         {recordedOnBehalf ? ` · via ${recorderName.split(" ")[0]}` : ""}
                       </div>
@@ -132,35 +126,30 @@ export function TransactionList({
 
                   <div className="flex flex-col items-end shrink-0">
                     <div
-                      className={`inline-flex items-center gap-1 text-[13px] font-bold tabular-nums ${
-                        isContribution ? "text-emerald-600" : "text-rose-600"
+                      className={`text-sm font-semibold tabular-nums ${
+                        isContribution ? "text-emerald-700" : "text-[#1C1C1E]"
                       }`}
                     >
-                      <span>{formatTZS(tx.amount)}</span>
-                      {isContribution ? (
-                        <ArrowDownLeft className="h-3.5 w-3.5" />
-                      ) : (
-                        <ArrowUpRight className="h-3.5 w-3.5" />
-                      )}
+                      {isContribution ? "+" : "-"}
+                      {formatTZS(tx.amount)}
                     </div>
-                    <span className="mt-1 inline-flex max-w-[138px] items-center gap-1 rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
-                      <span className="truncate">{tx.description}</span>
-                      <ReceiptText className="h-2.5 w-2.5 shrink-0 text-slate-400" />
+                    <span className="mt-0.5 max-w-[148px] truncate text-xs text-[#8E8E93]">
+                      {tx.description}
                     </span>
                   </div>
                 </button>
 
                 {isExpanded && (
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-3 py-2 text-[11px] text-slate-500">
+                  <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-[#F6F5F2] px-3 py-2 text-xs text-[#52525B]">
                     <span>
                       {recordedOnBehalf ? (
                         <>
-                          Paid by <strong className="text-slate-700">{displayName}</strong> ·
-                          recorded by <strong className="text-slate-700">{recorderName}</strong>
+                          Paid by <strong className="font-medium text-[#1C1C1E]">{displayName}</strong> ·
+                          recorded by <strong className="font-medium text-[#1C1C1E]">{recorderName}</strong>
                         </>
                       ) : (
                         <>
-                          Recorded by <strong className="text-slate-700">{recorderName}</strong>
+                          Recorded by <strong className="font-medium text-[#1C1C1E]">{recorderName}</strong>
                         </>
                       )}{" "}
                       on {tx.transaction_date}
@@ -169,11 +158,11 @@ export function TransactionList({
                       <div className="flex items-center gap-1.5">
                         {confirmingDelete ? (
                           <>
-                            <span className="text-rose-600 font-semibold">Delete entry?</span>
+                            <span className="text-rose-700 font-medium">Delete entry?</span>
                             <button
                               type="button"
                               onClick={() => setConfirmDeleteId(null)}
-                              className="rounded-lg bg-slate-100 px-2 py-1 font-semibold text-slate-600 hover:bg-slate-200 cursor-pointer"
+                              className="rounded-md bg-white px-2 py-1 text-xs font-medium text-[#52525B] border border-stone-900/10 hover:bg-stone-50 cursor-pointer"
                             >
                               Cancel
                             </button>
@@ -181,7 +170,7 @@ export function TransactionList({
                               type="button"
                               disabled={deletingId === tx.id}
                               onClick={() => void handleDelete(tx.id)}
-                              className="rounded-lg bg-rose-600 px-2 py-1 font-semibold text-white hover:bg-rose-700 disabled:opacity-50 cursor-pointer"
+                              className="rounded-md bg-rose-700 px-2 py-1 text-xs font-medium text-white hover:bg-rose-800 disabled:opacity-50 cursor-pointer"
                             >
                               {deletingId === tx.id ? "Deleting..." : "Confirm"}
                             </button>
@@ -191,7 +180,7 @@ export function TransactionList({
                             <button
                               type="button"
                               onClick={() => onEdit(tx)}
-                              className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-1 font-medium text-slate-700 hover:bg-slate-200 cursor-pointer"
+                              className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 text-xs font-medium text-[#1C1C1E] border border-stone-900/10 hover:bg-stone-50 cursor-pointer"
                             >
                               <Pencil className="h-3 w-3" />
                               Edit
@@ -199,7 +188,7 @@ export function TransactionList({
                             <button
                               type="button"
                               onClick={() => setConfirmDeleteId(tx.id)}
-                              className="inline-flex items-center gap-1 rounded-lg bg-rose-50 px-2 py-1 font-medium text-rose-600 hover:bg-rose-100 cursor-pointer"
+                              className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 text-xs font-medium text-rose-700 border border-rose-700/20 hover:bg-rose-50 cursor-pointer"
                             >
                               <Trash2 className="h-3 w-3" />
                               Delete

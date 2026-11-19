@@ -141,29 +141,29 @@ export function AddTransactionModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/35 backdrop-blur-xs p-3 sm:p-4"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-stone-900/35 backdrop-blur-xs p-3 sm:p-4"
       onClick={onClose}
     >
       <Glass
-        className="w-full max-w-[430px] max-h-[90dvh] overflow-y-auto no-scrollbar rounded-[28px] !bg-white/92 p-5 shadow-2xl"
+        className="w-full max-w-[430px] max-h-[90dvh] overflow-y-auto no-scrollbar rounded-[20px] !bg-white/95 p-5 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-base font-bold text-slate-900">
-              {isEditing ? "Edit Activity" : "Record Activity"}
+            <h3 className="text-base font-semibold text-[#1C1C1E]">
+              {isEditing ? "Edit entry" : "Record entry"}
             </h3>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-[#52525B] mt-0.5">
               {isEditing
-                ? "Changes are marked as edited for full transparency"
-                : "Visible to all household members in real time"}
+                ? "Updates are marked as edited for everyone"
+                : "Syncs immediately to all household members"}
             </p>
           </div>
           <button
             type="button"
             aria-label="Close"
             onClick={onClose}
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200/80 bg-white/80 text-slate-700 hover:bg-slate-100 cursor-pointer"
+            className="flex h-9 w-9 items-center justify-center rounded-xl border border-stone-900/10 bg-white text-[#52525B] hover:bg-stone-50 hover:text-[#1C1C1E] transition-colors cursor-pointer"
           >
             <X className="h-4 w-4" />
           </button>
@@ -185,9 +185,9 @@ export function AddTransactionModal({
           {/* TZS Amount with Live Formatted Preview */}
           <div>
             <div className="mb-1.5 flex items-center justify-between gap-2">
-              <label className="block text-xs font-semibold text-slate-600">Amount (TZS)</label>
+              <label className="block text-xs font-medium text-[#52525B]">Amount (TZS)</label>
               {hasValidPreview && (
-                <span className="rounded-full bg-[#FBF8F1] border border-[#E5D3B3] px-2 py-0.5 text-[11px] font-bold text-[#7A5E31] tabular-nums">
+                <span className="text-xs font-medium text-[#8F703F] tabular-nums">
                   {formatTZS(parsedPreview)}
                 </span>
               )}
@@ -197,10 +197,10 @@ export function AddTransactionModal({
               inputMode="numeric"
               min="1"
               step="1"
-              placeholder="e.g. 25000"
+              placeholder="25000"
               value={amount}
               onValueChange={setAmount}
-              icon={<span className="text-xs font-bold text-slate-500">TZS</span>}
+              icon={<span className="font-mono text-xs font-medium text-[#8E8E93]">TZS</span>}
               required
             />
             <div className="mt-2 flex flex-wrap gap-1.5">
@@ -209,7 +209,7 @@ export function AddTransactionModal({
                   key={preset}
                   type="button"
                   onClick={() => setAmount(String(preset))}
-                  className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-100 tabular-nums cursor-pointer"
+                  className="rounded-lg border border-stone-900/10 bg-[#F6F5F2] px-2.5 py-1 font-mono text-xs text-[#52525B] hover:bg-stone-200/60 hover:text-[#1C1C1E] transition-colors tabular-nums cursor-pointer"
                 >
                   +{preset.toLocaleString("en-US")}
                 </button>
@@ -220,8 +220,8 @@ export function AddTransactionModal({
           {/* Paid By Picker (Contributions — supports treasurer logging on behalf of roommates) */}
           {type === "contribution" && members.length > 0 && (
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-                Contributed By
+              <label className="block text-xs font-medium text-[#52525B] mb-1.5">
+                Contributed by
               </label>
               <div className="grid grid-cols-2 gap-2">
                 {members.map((m) => {
@@ -231,14 +231,14 @@ export function AddTransactionModal({
                       key={m.user_id}
                       type="button"
                       onClick={() => setPaidBy(m.user_id)}
-                      className={`flex items-center gap-2 rounded-2xl border px-2.5 py-2 text-left text-xs font-medium transition-all cursor-pointer ${
+                      className={`flex items-center gap-2 rounded-xl border px-2.5 py-2 text-left text-xs font-medium transition-colors cursor-pointer ${
                         selected
-                          ? "border-slate-900 bg-slate-900 text-white shadow-xs"
-                          : "border-slate-200 bg-white/80 text-slate-700 hover:border-slate-300"
+                          ? "border-[#1C1C1E] bg-[#1C1C1E] text-white"
+                          : "border-stone-900/10 bg-white text-[#52525B] hover:border-stone-900/25"
                       }`}
                     >
                       <span
-                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold text-white"
                         style={{ backgroundColor: m.profile.avatar_color }}
                       >
                         {getInitials(m.profile.full_name)}
@@ -257,7 +257,7 @@ export function AddTransactionModal({
           {/* Category Picker (Expenses only) */}
           {type === "expense" && (
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Category</label>
+              <label className="block text-xs font-medium text-[#52525B] mb-1.5">Category</label>
               <div className="grid grid-cols-2 gap-2">
                 {EXPENSE_CATEGORIES.map((cat) => {
                   const selected = category === cat.id;
@@ -266,10 +266,10 @@ export function AddTransactionModal({
                       key={cat.id}
                       type="button"
                       onClick={() => setCategory(cat.id)}
-                      className={`flex items-center gap-2 rounded-2xl border px-3 py-2 text-left text-xs font-medium transition-all cursor-pointer ${
+                      className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-left text-xs font-medium transition-colors cursor-pointer ${
                         selected
-                          ? "border-slate-900 bg-slate-900 text-white shadow-xs"
-                          : "border-slate-200 bg-white/80 text-slate-700 hover:border-slate-300"
+                          ? "border-[#1C1C1E] bg-[#1C1C1E] text-white"
+                          : "border-stone-900/10 bg-white text-[#52525B] hover:border-stone-900/25"
                       }`}
                     >
                       <CategoryIcon category={cat.id} className="h-3.5 w-3.5 shrink-0" />
@@ -283,30 +283,30 @@ export function AddTransactionModal({
 
           {/* Description */}
           <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+            <label className="block text-xs font-medium text-[#52525B] mb-1.5">
               Description
             </label>
             <SoftInput
               type="text"
               placeholder={
                 type === "contribution"
-                  ? "e.g. M-Pesa weekly pool share"
-                  : "e.g. LUKU tokens, Rice & Cooking Oil"
+                  ? "M-Pesa weekly pool share"
+                  : "LUKU tokens, Rice & cooking oil"
               }
               value={description}
               onValueChange={setDescription}
-              icon={<FileText className="h-4 w-4 text-slate-400" />}
+              icon={<FileText className="h-4 w-4" />}
             />
           </div>
 
           {/* iOS Inline Liquid Glass Date Picker */}
           <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Date</label>
+            <label className="block text-xs font-medium text-[#52525B] mb-1.5">Date</label>
             <IosDatePicker value={date} onChange={setDate} />
           </div>
 
           {formError && (
-            <div className="rounded-xl bg-rose-50 border border-rose-200 px-3 py-2 text-xs font-medium text-rose-700">
+            <div className="rounded-xl bg-rose-50/70 border border-rose-700/20 px-3 py-2 text-xs font-medium text-rose-700">
               {formError}
             </div>
           )}
@@ -314,17 +314,16 @@ export function AddTransactionModal({
           <SoftButton
             type="submit"
             variant="filled"
-            tint={type === "contribution" ? "#16A34A" : "#18181B"}
             disabled={submitting}
-            className="w-full !h-11 !text-sm font-semibold"
+            className="w-full !h-11 !text-sm font-medium"
           >
             {submitting
               ? "Saving..."
               : isEditing
-                ? "Save Changes"
+                ? "Save changes"
                 : type === "contribution"
-                  ? "Record Contribution"
-                  : "Record Household Expense"}
+                  ? "Record contribution"
+                  : "Record expense"}
           </SoftButton>
         </form>
       </Glass>

@@ -3,19 +3,16 @@
 @layer base {
   html {
     font-family: "Agrave Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background-color: #f5f6fa;
-    color: #111827;
+    background-color: #f6f5f2;
+    color: #1c1c1e;
     scrollbar-gutter: stable;
   }
 
   body {
     margin: 0;
     min-height: 100dvh;
-    background:
-      radial-gradient(circle at 12% 8%, rgba(191, 163, 119, 0.14), transparent 36%),
-      radial-gradient(circle at 88% 12%, rgba(59, 130, 246, 0.1), transparent 38%),
-      radial-gradient(circle at 50% 92%, rgba(20, 184, 166, 0.08), transparent 42%),
-      #f5f6fa;
+    background-color: #f6f5f2;
+    color: #1c1c1e;
   }
 }
 
@@ -32,31 +29,31 @@
   scrollbar-width: none;
 }
 
-/* Custom Glisse theme accents tailored to Keeper */
+/* Custom Glisse theme accents tailored to Keeper's warm-stone & obsidian palette */
 :root[data-theme="light"] {
   --lg-fill: #1c1c1e;
-  --lg-glass: rgba(255, 255, 255, 0.72);
-  --lg-edge: rgba(17, 24, 39, 0.08);
-  --lg-drop: rgba(17, 24, 39, 0.06);
+  --lg-glass: rgba(255, 255, 255, 0.78);
+  --lg-edge: rgba(28, 28, 30, 0.08);
+  --lg-drop: rgba(28, 28, 30, 0.05);
 }
 
 .keeper-dock[data-theme="dark"] {
-  --lg-glass: rgba(24, 24, 27, 0.86);
-  --lg-edge: rgba(255, 255, 255, 0.14);
-  --lg-drop: rgba(0, 0, 0, 0.28);
-  --lg-rim-shine: 0.22;
+  --lg-glass: rgba(28, 28, 30, 0.88);
+  --lg-edge: rgba(255, 255, 255, 0.12);
+  --lg-drop: rgba(0, 0, 0, 0.24);
+  --lg-rim-shine: 0.18;
 }
 
 .keeper-tab-bar.lg-tab-bar[data-icons] {
   --lg-tab-width: clamp(56px, 16vw, 66px);
-  --lg-tab-height: 50px;
+  --lg-tab-height: 48px;
   --lg-tab-inset: 4px;
   --lg-tab-selected: #e4cca0;
 }
 
 .keeper-tab-bar.lg-tab-bar[data-icons] .lg-tab-icon > svg {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
 }
 
 .lg-input {
@@ -71,11 +68,11 @@
 }
 
 .keeper-segmented-2.lg-segmented {
-  --lg-tab-width: clamp(122px, 38vw, 154px);
+  --lg-tab-width: clamp(120px, 38vw, 152px);
   --lg-tab-height: 36px;
 }
 
 .keeper-segmented-3.lg-segmented {
   --lg-tab-width: clamp(92px, 28vw, 112px);
-  --lg-tab-height: 34px;
+  --lg-tab-height: 36px;
 }

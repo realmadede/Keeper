@@ -26,7 +26,7 @@ import { LoadingSkeleton } from "./components/LoadingSkeleton";
 import { TransactionList } from "./components/TransactionList";
 import { WelcomeScreen } from "./components/WelcomeScreen";
 
-// Lazy-load Recharts visualizations so Welcome/Auth screens skip downloading 420kB of chart code
+// Lazy-load Recharts visualizations so Welcome/Auth screens skip downloading chart code
 const WeeklyBarChart = lazy(() =>
   import("./components/WeeklyBarChart").then((m) => ({ default: m.WeeklyBarChart })),
 );
@@ -48,10 +48,10 @@ const PENDING_JOIN_KEY = "keeper_pending_join_code";
 const LAST_SEEN_PREFIX = "keeper_last_seen_v1:";
 
 const TAB_TITLES: Record<ActiveTab, string> = {
-  overview: "Expense Overview",
-  ledger: "Household Ledger",
-  budget: "Budget & House",
-  household: "My Household",
+  overview: "Household overview",
+  ledger: "Household ledger",
+  budget: "Budget & house",
+  household: "My household",
 };
 
 function readInitialJoinCode(): string | null {
@@ -401,22 +401,22 @@ export function App() {
         <header className="shrink-0 px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-3 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2.5 min-w-0">
             {activeTab === "overview" ? (
-              <KeeperLogo size={38} className="shrink-0 drop-shadow-xs" />
+              <KeeperLogo size={36} className="shrink-0 drop-shadow-xs" />
             ) : (
               <button
                 type="button"
-                aria-label="Back to Overview"
+                aria-label="Back to overview"
                 onClick={() => handleSelectTab("overview")}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-slate-700 shadow-xs border border-slate-100 hover:bg-slate-50 cursor-pointer"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-[#1C1C1E] border border-stone-900/[0.08] hover:bg-stone-50 transition-colors cursor-pointer"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
             )}
             <div className="min-w-0">
-              <h1 className="truncate text-[16px] font-bold tracking-tight text-slate-900 leading-tight">
+              <h1 className="truncate text-base font-semibold tracking-tight text-[#1C1C1E] leading-tight">
                 {TAB_TITLES[activeTab]}
               </h1>
-              <p className="truncate text-[11px] font-medium text-slate-500">
+              <p className="truncate text-xs text-[#52525B]">
                 {store.household.name} · {periodWindow.monthLabel}
               </p>
             </div>
@@ -430,39 +430,39 @@ export function App() {
                 aria-label="Sync household now"
                 disabled={store.refreshing}
                 onClick={() => void handleManualSync()}
-                className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200/80 bg-white text-slate-600 shadow-2xs hover:bg-slate-50 disabled:opacity-60 cursor-pointer"
+                className="flex h-8 w-8 items-center justify-center rounded-xl border border-stone-900/[0.08] bg-white text-[#52525B] hover:bg-stone-50 hover:text-[#1C1C1E] disabled:opacity-50 transition-colors cursor-pointer"
               >
                 <RotateCw className={`h-3.5 w-3.5 ${store.refreshing ? "animate-spin" : ""}`} />
               </button>
             )}
-            <span className="max-w-[96px] truncate rounded-full border border-slate-200/80 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 shadow-2xs">
+            <span className="max-w-[96px] truncate rounded-xl border border-stone-900/[0.08] bg-white px-2.5 py-1 text-xs font-medium text-[#1C1C1E]">
               {periodWindow.label}
             </span>
             <Menu
               aria-label="Select period"
               align="end"
-              icon={<Calendar className="h-4 w-4 text-slate-700" />}
+              icon={<Calendar className="h-4 w-4 text-[#1C1C1E]" />}
               items={periodMenuItems}
             />
           </div>
         </header>
 
         {isOffline && (
-          <div className="mx-4 mb-2 shrink-0 flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3.5 py-2 text-xs font-medium text-amber-800">
+          <div className="mx-4 mb-2 shrink-0 flex items-center gap-2 rounded-xl border border-stone-900/10 bg-white px-3.5 py-2 text-xs font-medium text-[#8F703F]">
             <WifiOff className="h-3.5 w-3.5 shrink-0" />
-            <span>You are offline — reconnect to sync household changes.</span>
+            <span>You are offline — reconnect to sync household changes</span>
           </div>
         )}
 
         {store.error && (
-          <div className="mx-4 mb-2 shrink-0 flex items-center justify-between gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs font-medium text-rose-700">
+          <div className="mx-4 mb-2 shrink-0 flex items-center justify-between gap-2 rounded-xl border border-rose-700/20 bg-rose-50/80 px-3.5 py-2.5 text-xs font-medium text-rose-700">
             <span className="min-w-0">{store.error}</span>
             <div className="flex shrink-0 items-center gap-2">
               {!store.isDemoMode && (
                 <button
                   type="button"
                   onClick={() => void handleManualSync()}
-                  className="font-bold underline cursor-pointer"
+                  className="font-semibold underline cursor-pointer"
                 >
                   Retry
                 </button>
@@ -470,7 +470,7 @@ export function App() {
               <button
                 type="button"
                 onClick={store.clearError}
-                className="font-bold underline cursor-pointer"
+                className="font-semibold underline cursor-pointer"
               >
                 Dismiss
               </button>
@@ -498,9 +498,10 @@ export function App() {
             >
               {/* New Roommate Activity Pill */}
               {newTransactionIds.size > 0 && (
-                <div className="flex items-center justify-between gap-2 rounded-2xl border border-[#E5D3B3] bg-[#FBF8F1] px-3.5 py-2 text-xs">
-                  <span className="inline-flex items-center gap-1.5 font-semibold text-[#7A5E31]">
-                    <Bell className="h-3.5 w-3.5 shrink-0" />
+                <div className="flex items-center justify-between gap-2 rounded-xl border border-stone-900/[0.08] bg-white px-3.5 py-2 text-xs">
+                  <span className="inline-flex items-center gap-2 font-medium text-[#1C1C1E]">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#C6A87C]" />
+                    <Bell className="h-3.5 w-3.5 shrink-0 text-[#52525B]" />
                     <span>
                       {newTransactionIds.size}{" "}
                       {newTransactionIds.size === 1 ? "new entry" : "new entries"} since your last
@@ -510,7 +511,7 @@ export function App() {
                   <button
                     type="button"
                     onClick={markAllSeen}
-                    className="shrink-0 rounded-full bg-[#1C1C1E] px-2.5 py-1 text-[10px] font-semibold text-white hover:bg-slate-800 cursor-pointer"
+                    className="shrink-0 rounded-lg bg-[#1C1C1E] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#2C2C30] transition-colors cursor-pointer"
                   >
                     Mark seen
                   </button>
@@ -527,9 +528,10 @@ export function App() {
                         setBudgetSubTab("bills");
                         handleSelectTab("budget");
                       }}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] font-semibold text-amber-800 hover:bg-amber-100 cursor-pointer"
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-stone-900/[0.08] bg-white px-3 py-1.5 text-xs font-medium text-[#1C1C1E] hover:bg-stone-50 transition-colors cursor-pointer"
                     >
-                      <CalendarClock className="h-3.5 w-3.5" />
+                      <span className="h-1.5 w-1.5 rounded-full bg-[#C6A87C]" />
+                      <CalendarClock className="h-3.5 w-3.5 text-[#52525B]" />
                       <span>
                         {dueSoonBillsCount} {dueSoonBillsCount === 1 ? "bill" : "bills"} due soon
                       </span>
@@ -542,7 +544,7 @@ export function App() {
                         setBudgetSubTab("needs");
                         handleSelectTab("budget");
                       }}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-stone-900/[0.08] bg-white px-3 py-1.5 text-xs font-medium text-[#52525B] hover:bg-stone-50 hover:text-[#1C1C1E] transition-colors cursor-pointer"
                     >
                       <span>
                         {pendingNeedsCount} house {pendingNeedsCount === 1 ? "need" : "needs"} to
@@ -555,13 +557,13 @@ export function App() {
 
               {/* Actionable First-Time Household Guide */}
               {isBrandNewHouse && (
-                <section className="rounded-[24px] border border-[#E5D3B3] bg-[#FBF8F1] p-4 shadow-xs space-y-3">
+                <section className="rounded-2xl border border-stone-900/[0.08] bg-white p-4 space-y-3">
                   <div>
-                    <h2 className="text-sm font-bold text-slate-900">
-                      Welcome to {store.household.name}
+                    <h2 className="text-sm font-semibold text-[#1C1C1E]">
+                      {store.household.name} is ready
                     </h2>
-                    <p className="mt-0.5 text-xs text-slate-600">
-                      Start by logging your first weekly contribution or inviting your roommates.
+                    <p className="mt-0.5 text-xs text-[#52525B]">
+                      Record your first weekly contribution or copy the invite key for your roommates
                     </p>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
@@ -569,16 +571,16 @@ export function App() {
                       variant="filled"
                       onClick={() => handleOpenAdd("contribution")}
                       icon={<Plus className="h-3.5 w-3.5" />}
-                      className="w-full !h-9 text-xs font-semibold"
+                      className="w-full !h-9 text-xs font-medium"
                     >
-                      First Contribution
+                      First contribution
                     </SoftButton>
                     <SoftButton
                       onClick={() => void handleCopyInviteQuick(store.household!.invite_code)}
                       icon={<Copy className="h-3.5 w-3.5" />}
-                      className="w-full !h-9 text-xs font-semibold"
+                      className="w-full !h-9 text-xs font-medium"
                     >
-                      Copy Invite Code
+                      Copy invite key
                     </SoftButton>
                   </div>
                 </section>
@@ -600,7 +602,7 @@ export function App() {
 
               <Suspense
                 fallback={
-                  <div className="h-[260px] rounded-[24px] border border-slate-100 bg-white p-4 animate-pulse" />
+                  <div className="h-[260px] rounded-2xl border border-stone-900/[0.08] bg-white p-4 animate-pulse" />
                 }
               >
                 <WeeklyBarChart
@@ -613,7 +615,7 @@ export function App() {
 
               <Suspense
                 fallback={
-                  <div className="h-[280px] rounded-[24px] border border-slate-100 bg-white p-4 animate-pulse" />
+                  <div className="h-[220px] rounded-2xl border border-stone-900/[0.08] bg-white p-4 animate-pulse" />
                 }
               >
                 <CategoryBreakdown
@@ -627,7 +629,7 @@ export function App() {
               </Suspense>
 
               <TransactionList
-                title="Recent Transactions"
+                title="Recent activity"
                 transactions={summary.weekTransactions}
                 currentUserId={store.profile.id}
                 newTransactionIds={newTransactionIds}
@@ -737,7 +739,7 @@ export function App() {
           data-theme="dark"
           className="keeper-dock pointer-events-none fixed bottom-[calc(5.25rem+env(safe-area-inset-bottom))] left-1/2 z-50 -translate-x-1/2 px-4"
         >
-          <Glass className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold text-white shadow-xl whitespace-nowrap">
+          <Glass className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-medium text-white shadow-xl whitespace-nowrap">
             <CheckCircle2 className="h-3.5 w-3.5 text-[#E4CCA0] shrink-0" />
             <span>{toastMessage}</span>
           </Glass>
