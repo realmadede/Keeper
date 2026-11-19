@@ -6,9 +6,11 @@ import { LegalModal, type LegalDocType } from "./LegalModal";
 
 interface AuthScreenProps {
   isSupabaseReady: boolean;
+  initialMode?: "signin" | "signup";
   passwordRecoveryMode?: boolean;
   pendingInviteCode?: string | null;
   error: string | null;
+  onBack?: () => void;
   onSignIn: (email: string, password: string) => Promise<void>;
   onSignUp: (fullName: string, email: string, password: string) => Promise<void>;
   onResetPassword: (email: string) => Promise<void>;
@@ -18,16 +20,18 @@ interface AuthScreenProps {
 
 export function AuthScreen({
   isSupabaseReady,
+  initialMode = "signin",
   passwordRecoveryMode = false,
   pendingInviteCode,
   error,
+  onBack,
   onSignIn,
   onSignUp,
   onResetPassword,
   onUpdatePassword,
   onEnterDemo,
 }: AuthScreenProps) {
-  const [mode, setMode] = useState<"signin" | "signup" | "forgot">("signin");
+  const [mode, setMode] = useState<"signin" | "signup" | "forgot">(initialMode);
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -116,6 +120,19 @@ export function AuthScreen({
   return (
     <div className="min-h-dvh flex flex-col items-center justify-center px-4 py-10">
       <div className="w-full max-w-[400px] space-y-5">
+        {onBack && !passwordRecoveryMode && (
+          <div className="flex justify-start">
+            <button
+              type="button"
+              onClick={onBack}
+              className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-900 cursor-pointer"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              About Keeper
+            </button>
+          </div>
+        )}
+
         {/* Brand Header */}
         <div className="text-center">
           <KeeperLogo

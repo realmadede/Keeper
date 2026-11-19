@@ -25,6 +25,7 @@ import { LedgerView } from "./components/LedgerView";
 import { LoadingSkeleton } from "./components/LoadingSkeleton";
 import { TransactionList } from "./components/TransactionList";
 import { WeeklyBarChart } from "./components/WeeklyBarChart";
+import { WelcomeScreen } from "./components/WelcomeScreen";
 import { useKeeperStore, type TransactionInput } from "./hooks/useKeeperStore";
 import {
   computePeriodSummary,
@@ -77,6 +78,9 @@ export function App() {
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
   const [pendingJoinCode, setPendingJoinCode] = useState<string | null>(() =>
     readInitialJoinCode(),
+  );
+  const [authView, setAuthView] = useState<"welcome" | "signin" | "signup">(
+    pendingJoinCode ? "signup" : "welcome",
   );
   const [lastSeenAt, setLastSeenAt] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -305,12 +309,25 @@ export function App() {
   }
 
   if (!store.profile || store.passwordRecoveryMode) {
+    if (!store.passwordRecoveryMode && !pendingJoinCode && authView === "welcome") {
+      return (
+        <WelcomeScreen
+          isSupabaseReady={store.isSupabaseReady}
+          onSignUp={() => setAuthView("signup")}
+          onSignIn={() => setAuthView("signin")}
+          onEnterDemo={store.enterDemoMode}
+        />
+      );
+    }
+
     return (
       <AuthScreen
         isSupabaseReady={store.isSupabaseReady}
+        initialMode={authView === "signup" ? "signup" : "signin"}
         passwordRecoveryMode={store.passwordRecoveryMode}
         pendingInviteCode={pendingJoinCode}
         error={store.error}
+        onBack={pendingJoinCode ? undefined : () => setAuthView("welcome")}
         onSignIn={store.signIn}
         onSignUp={store.signUp}
         onResetPassword={store.resetPassword}
