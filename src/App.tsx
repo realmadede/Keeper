@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type TouchEvent } from "react";
-import { Button, Glass, Menu, type MenuEntry } from "glisse";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type TouchEvent } from "react";
+import { Glass, Menu, type MenuEntry } from "glisse";
 import {
   Bell,
   Calendar,
@@ -16,16 +16,23 @@ import { AddTransactionModal, type TransactionPrefill } from "./components/AddTr
 import { AuthScreen } from "./components/AuthScreen";
 import { BottomDock } from "./components/BottomDock";
 import { BudgetView } from "./components/BudgetView";
-import { CategoryBreakdown } from "./components/CategoryBreakdown";
 import { HouseholdOnboarding } from "./components/HouseholdOnboarding";
 import { HouseholdView } from "./components/HouseholdView";
 import { KeeperLogo } from "./components/KeeperLogo";
 import { KpiCards } from "./components/KpiCards";
 import { LedgerView } from "./components/LedgerView";
+import { SoftButton } from "./components/LightControls";
 import { LoadingSkeleton } from "./components/LoadingSkeleton";
 import { TransactionList } from "./components/TransactionList";
-import { WeeklyBarChart } from "./components/WeeklyBarChart";
 import { WelcomeScreen } from "./components/WelcomeScreen";
+
+// Lazy-load Recharts visualizations so Welcome/Auth screens skip downloading 420kB of chart code
+const WeeklyBarChart = lazy(() =>
+  import("./components/WeeklyBarChart").then((m) => ({ default: m.WeeklyBarChart })),
+);
+const CategoryBreakdown = lazy(() =>
+  import("./components/CategoryBreakdown").then((m) => ({ default: m.CategoryBreakdown })),
+);
 import { useKeeperStore, type TransactionInput } from "./hooks/useKeeperStore";
 import {
   computePeriodSummary,
@@ -70,6 +77,7 @@ function readInitialJoinCode(): string | null {
 export function App() {
   const store = useKeeperStore();
   const [activeTab, setActiveTab] = useState<ActiveTab>("overview");
+  const [visitedTabs, setVisitedTabs] = useState<Set<ActiveTab>>(() => new Set(["overview"]));
   const [budgetSubTab, setBudgetSubTab] = useState<BudgetSubTab>("pool");
   const [periodKey, setPeriodKey] = useState<PeriodKey>("this_week");
   const [modalOpen, setModalOpen] = useState(false);
@@ -210,6 +218,12 @@ export function App() {
 
   const handleSelectTab = (tab: ActiveTab) => {
     setActiveTab(tab);
+    setVisitedTabs((prev) => {
+      if (prev.has(tab)) return prev;
+      const next = new Set(prev);
+      next.add(tab);
+      return next;
+    });
     const idx = TAB_ORDER.indexOf(tab);
     paneRefs.current[idx]?.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -551,21 +565,21 @@ export function App() {
                     </p>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    <Button
+                    <SoftButton
                       variant="filled"
                       onClick={() => handleOpenAdd("contribution")}
                       icon={<Plus className="h-3.5 w-3.5" />}
-                      className="w-full justify-center !h-9 text-xs font-semibold"
+                      className="w-full !h-9 text-xs font-semibold"
                     >
                       First Contribution
-                    </Button>
-                    <Button
+                    </SoftButton>
+                    <SoftButton
                       onClick={() => void handleCopyInviteQuick(store.household!.invite_code)}
                       icon={<Copy className="h-3.5 w-3.5" />}
-                      className="w-full justify-center !h-9 text-xs font-semibold"
+                      className="w-full !h-9 text-xs font-semibold"
                     >
                       Copy Invite Code
-                    </Button>
+                    </SoftButton>
                   </div>
                 </section>
               )}
@@ -584,21 +598,33 @@ export function App() {
                 contributedDeltaPct={summary.contributedDeltaPct}
               />
 
-              <WeeklyBarChart
-                dailySeries={summary.dailySeries}
-                periodKind={periodWindow.kind}
-                comparisonLabel={periodWindow.comparisonLabel}
-                spentDeltaPct={summary.spentDeltaPct}
-              />
+              <Suspense
+                fallback={
+                  <div className="h-[260px] rounded-[24px] border border-slate-100 bg-white p-4 animate-pulse" />
+                }
+              >
+                <WeeklyBarChart
+                  dailySeries={summary.dailySeries}
+                  periodKind={periodWindow.kind}
+                  comparisonLabel={periodWindow.comparisonLabel}
+                  spentDeltaPct={summary.spentDeltaPct}
+                />
+              </Suspense>
 
-              <CategoryBreakdown
-                categories={summary.categories}
-                totalSpent={summary.totalSpent}
-                periodKind={periodWindow.kind}
-                comparisonLabel={periodWindow.comparisonLabel}
-                spentDeltaPct={summary.spentDeltaPct}
-                onViewAll={() => handleSelectTab("ledger")}
-              />
+              <Suspense
+                fallback={
+                  <div className="h-[280px] rounded-[24px] border border-slate-100 bg-white p-4 animate-pulse" />
+                }
+              >
+                <CategoryBreakdown
+                  categories={summary.categories}
+                  totalSpent={summary.totalSpent}
+                  periodKind={periodWindow.kind}
+                  comparisonLabel={periodWindow.comparisonLabel}
+                  spentDeltaPct={summary.spentDeltaPct}
+                  onViewAll={() => handleSelectTab("ledger")}
+                />
+              </Suspense>
 
               <TransactionList
                 title="Recent Transactions"
@@ -612,7 +638,7 @@ export function App() {
               />
             </div>
 
-            {/* Screen 2: Ledger */}
+            {/* Screen 2: Ledger (mounted on demand for faster initial paint) */}
             <div
               ref={(el) => {
                 paneRefs.current[1] = el;
@@ -620,17 +646,19 @@ export function App() {
               aria-hidden={activeTab !== "ledger"}
               className="h-full w-full shrink-0 overflow-y-auto no-scrollbar px-4 pb-28"
             >
-              <LedgerView
-                householdName={store.household.name}
-                transactions={store.transactions}
-                currentUserId={store.profile.id}
-                newTransactionIds={newTransactionIds}
-                onEdit={handleOpenEdit}
-                onDelete={handleDeleteTransaction}
-              />
+              {visitedTabs.has("ledger") && (
+                <LedgerView
+                  householdName={store.household.name}
+                  transactions={store.transactions}
+                  currentUserId={store.profile.id}
+                  newTransactionIds={newTransactionIds}
+                  onEdit={handleOpenEdit}
+                  onDelete={handleDeleteTransaction}
+                />
+              )}
             </div>
 
-            {/* Screen 3: Budget, Recurring Bills & House Needs */}
+            {/* Screen 3: Budget, Recurring Bills & House Needs (mounted on demand) */}
             <div
               ref={(el) => {
                 paneRefs.current[2] = el;
@@ -638,37 +666,39 @@ export function App() {
               aria-hidden={activeTab !== "budget"}
               className="h-full w-full shrink-0 overflow-y-auto no-scrollbar px-4 pb-28"
             >
-              <BudgetView
-                household={store.household}
-                weekWindow={periodWindow}
-                summary={summary}
-                subTab={budgetSubTab}
-                onSubTabChange={setBudgetSubTab}
-                needs={store.needs}
-                bills={store.bills}
-                onUpdateBudget={store.updateBudget}
-                onAddNeed={async (title, category) => {
-                  await store.addNeed(title, category);
-                  showToast("Added to house needs");
-                }}
-                onToggleNeed={store.toggleNeed}
-                onDeleteNeed={async (id) => {
-                  await store.deleteNeed(id);
-                  showToast("Item removed");
-                }}
-                onAddBill={async (title, amount, category, dueDay) => {
-                  await store.addBill(title, amount, category, dueDay);
-                  showToast("Recurring bill added");
-                }}
-                onDeleteBill={async (id) => {
-                  await store.deleteBill(id);
-                  showToast("Bill removed");
-                }}
-                onStartPrefillExpense={handleOpenPrefillExpense}
-              />
+              {visitedTabs.has("budget") && (
+                <BudgetView
+                  household={store.household}
+                  weekWindow={periodWindow}
+                  summary={summary}
+                  subTab={budgetSubTab}
+                  onSubTabChange={setBudgetSubTab}
+                  needs={store.needs}
+                  bills={store.bills}
+                  onUpdateBudget={store.updateBudget}
+                  onAddNeed={async (title, category) => {
+                    await store.addNeed(title, category);
+                    showToast("Added to house needs");
+                  }}
+                  onToggleNeed={store.toggleNeed}
+                  onDeleteNeed={async (id) => {
+                    await store.deleteNeed(id);
+                    showToast("Item removed");
+                  }}
+                  onAddBill={async (title, amount, category, dueDay) => {
+                    await store.addBill(title, amount, category, dueDay);
+                    showToast("Recurring bill added");
+                  }}
+                  onDeleteBill={async (id) => {
+                    await store.deleteBill(id);
+                    showToast("Bill removed");
+                  }}
+                  onStartPrefillExpense={handleOpenPrefillExpense}
+                />
+              )}
             </div>
 
-            {/* Screen 4: Household */}
+            {/* Screen 4: Household (mounted on demand) */}
             <div
               ref={(el) => {
                 paneRefs.current[3] = el;
@@ -676,22 +706,24 @@ export function App() {
               aria-hidden={activeTab !== "household"}
               className="h-full w-full shrink-0 overflow-y-auto no-scrollbar px-4 pb-28"
             >
-              <HouseholdView
-                household={store.household}
-                profile={store.profile}
-                members={store.members}
-                isDemoMode={store.isDemoMode}
-                realtimeConnected={store.realtimeConnected}
-                onUpdateProfile={store.updateProfile}
-                onUpdatePassword={store.updatePassword}
-                onRenameHousehold={store.renameHousehold}
-                onPromoteMember={store.promoteMember}
-                onRemoveMember={store.removeMember}
-                onRegenerateInviteCode={store.regenerateInviteCode}
-                onLeaveHousehold={store.leaveHousehold}
-                onDeleteAccount={store.deleteAccount}
-                onSignOut={store.signOut}
-              />
+              {visitedTabs.has("household") && (
+                <HouseholdView
+                  household={store.household}
+                  profile={store.profile}
+                  members={store.members}
+                  isDemoMode={store.isDemoMode}
+                  realtimeConnected={store.realtimeConnected}
+                  onUpdateProfile={store.updateProfile}
+                  onUpdatePassword={store.updatePassword}
+                  onRenameHousehold={store.renameHousehold}
+                  onPromoteMember={store.promoteMember}
+                  onRemoveMember={store.removeMember}
+                  onRegenerateInviteCode={store.regenerateInviteCode}
+                  onLeaveHousehold={store.leaveHousehold}
+                  onDeleteAccount={store.deleteAccount}
+                  onSignOut={store.signOut}
+                />
+              )}
             </div>
           </div>
         </div>

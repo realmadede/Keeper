@@ -1,5 +1,4 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Button, Glass, Input } from "glisse";
 import {
   Check,
   CheckCircle2,
@@ -22,6 +21,7 @@ import {
 import { getInitials } from "../lib/format";
 import type { Household, HouseholdMember, Profile } from "../types";
 import { LegalModal, type LegalDocType } from "./LegalModal";
+import { SoftButton, SoftInput } from "./LightControls";
 
 const AVATAR_SWATCHES = [
   "#BFA377",
@@ -257,24 +257,23 @@ export function HouseholdView({
 
             {renamingHouse ? (
               <form onSubmit={(e) => void handleRenameSubmit(e)} className="mt-2 space-y-2">
-                <Input
+                <SoftInput
                   type="text"
                   maxLength={80}
                   value={houseNameInput}
                   onValueChange={setHouseNameInput}
                   placeholder="Household name"
-                  className="w-full"
                   required
                 />
                 <div className="flex items-center gap-2">
-                  <Button
+                  <SoftButton
                     type="submit"
                     variant="filled"
                     disabled={savingHouseName}
                     className="!h-8 text-xs font-semibold"
                   >
                     {savingHouseName ? "Saving..." : "Save Name"}
-                  </Button>
+                  </SoftButton>
                   <button
                     type="button"
                     onClick={() => {
@@ -313,7 +312,7 @@ export function HouseholdView({
           </div>
         </div>
 
-        <Glass className="mt-4 rounded-2xl border border-slate-200/70 p-3.5 space-y-3">
+        <div className="mt-4 rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3.5 space-y-3">
           <div className="flex items-center justify-between gap-2">
             <div>
               <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
@@ -323,8 +322,9 @@ export function HouseholdView({
                 {household.invite_code}
               </div>
             </div>
-            <Button
+            <SoftButton
               onClick={() => void copyCode()}
+              className="!h-9 text-xs font-semibold"
               icon={
                 copiedCode ? (
                   <Check className="h-4 w-4 text-emerald-600" />
@@ -334,10 +334,10 @@ export function HouseholdView({
               }
             >
               {copiedCode ? "Copied" : "Code"}
-            </Button>
+            </SoftButton>
           </div>
 
-          <Button
+          <SoftButton
             onClick={() => void copyInviteLink()}
             icon={
               copiedLink ? (
@@ -346,10 +346,10 @@ export function HouseholdView({
                 <Link2 className="h-4 w-4" />
               )
             }
-            className="w-full justify-center !h-9 text-xs font-semibold"
+            className="w-full !h-9 text-xs font-semibold"
           >
             {copiedLink ? "Invite Link Copied" : "Copy Direct Invite Link"}
-          </Button>
+          </SoftButton>
 
           {isAdmin && (
             <div className="pt-2 border-t border-slate-200/70">
@@ -386,7 +386,7 @@ export function HouseholdView({
               )}
             </div>
           )}
-        </Glass>
+        </div>
         <p className="mt-2 text-[11px] text-slate-400">
           Share the code or direct link privately with roommates so they can join and see the shared
           budget.
@@ -529,13 +529,12 @@ export function HouseholdView({
               <label className="block text-xs font-semibold text-slate-600 mb-1">
                 Display Name
               </label>
-              <Input
+              <SoftInput
                 type="text"
                 maxLength={80}
                 value={displayName}
                 onValueChange={setDisplayName}
                 icon={<User className="h-4 w-4 text-slate-400" />}
-                className="w-full"
                 required
               />
             </div>
@@ -565,14 +564,14 @@ export function HouseholdView({
               </div>
             </div>
 
-            <Button
+            <SoftButton
               type="submit"
               variant="filled"
               disabled={savingProfile}
-              className="w-full justify-center !h-9 text-xs font-semibold"
+              className="w-full !h-9 text-xs font-semibold"
             >
               {savingProfile ? "Saving..." : "Save Profile"}
-            </Button>
+            </SoftButton>
           </form>
         )}
 
@@ -604,14 +603,14 @@ export function HouseholdView({
                 className="mt-2.5 rounded-2xl border border-slate-100 bg-[#FAFBFD] p-3.5 space-y-2.5"
               >
                 <div className="relative">
-                  <Input
+                  <SoftInput
                     type={showNewPw ? "text" : "password"}
                     placeholder="New password (min. 6 characters)"
                     minLength={6}
                     value={newPassword}
                     onValueChange={setNewPassword}
                     icon={<KeyRound className="h-4 w-4 text-slate-400" />}
-                    className="w-full !pr-11"
+                    className="!pr-11"
                     required
                   />
                   <button
@@ -625,14 +624,14 @@ export function HouseholdView({
                 </div>
 
                 <div className="relative">
-                  <Input
+                  <SoftInput
                     type={showConfirmPw ? "text" : "password"}
                     placeholder="Type new password again"
                     minLength={6}
                     value={confirmPassword}
                     onValueChange={setConfirmPassword}
                     icon={<KeyRound className="h-4 w-4 text-slate-400" />}
-                    className="w-full !pr-11"
+                    className="!pr-11"
                     required
                   />
                   <button
@@ -649,14 +648,14 @@ export function HouseholdView({
                   <p className="text-[11px] font-medium text-rose-600">{pwError}</p>
                 )}
 
-                <Button
+                <SoftButton
                   type="submit"
                   variant="filled"
                   disabled={savingPw}
-                  className="w-full justify-center !h-9 text-xs font-semibold"
+                  className="w-full !h-9 text-xs font-semibold"
                 >
                   {savingPw ? "Updating..." : "Update Password"}
-                </Button>
+                </SoftButton>
               </form>
             )}
           </div>
@@ -664,20 +663,20 @@ export function HouseholdView({
 
         {/* Sign Out / Leave House */}
         <div className="grid grid-cols-2 gap-2.5 pt-1">
-          <Button
+          <SoftButton
             onClick={() => void onSignOut()}
             icon={<LogOut className="h-4 w-4" />}
-            className="w-full justify-center"
+            className="w-full text-xs font-semibold"
           >
             {isDemoMode ? "Exit Demo" : "Sign Out"}
-          </Button>
-          <Button
-            destructive
+          </SoftButton>
+          <SoftButton
+            variant="destructive"
             onClick={() => void onLeaveHousehold()}
-            className="w-full justify-center"
+            className="w-full text-xs font-semibold"
           >
             {isDemoMode ? "Reset Demo" : "Leave House"}
-          </Button>
+          </SoftButton>
         </div>
 
         {/* Self-Service Account Deletion */}

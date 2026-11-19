@@ -1,7 +1,8 @@
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Button, Glass } from "glisse";
+import { Glass } from "glisse";
 import { X } from "lucide-react";
+import { SoftButton } from "./LightControls";
 
 export type LegalDocType = "terms" | "privacy";
 
@@ -40,11 +41,14 @@ export function LegalModal({ doc, onClose }: LegalModalProps) {
             </h2>
             <p className="text-[11px] text-slate-400">Keeper Household Management · Updated 2026</p>
           </div>
-          <Button
+          <button
+            type="button"
             aria-label="Close"
             onClick={onClose}
-            icon={<X className="h-4 w-4 text-slate-700" />}
-          />
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200/80 bg-white/80 text-slate-700 hover:bg-slate-100 cursor-pointer"
+          >
+            <X className="h-4 w-4" />
+          </button>
         </div>
 
         <div className="overflow-y-auto no-scrollbar space-y-3.5 pr-1 text-xs leading-relaxed text-slate-600">
@@ -122,13 +126,13 @@ export function LegalModal({ doc, onClose }: LegalModalProps) {
         </div>
 
         <div className="mt-4 pt-3 border-t border-slate-100 shrink-0">
-          <Button
+          <SoftButton
             variant="filled"
             onClick={onClose}
-            className="w-full justify-center !h-10 text-xs font-semibold"
+            className="w-full !h-10 text-xs font-semibold"
           >
             Got it
-          </Button>
+          </SoftButton>
         </div>
       </Glass>
     </div>,

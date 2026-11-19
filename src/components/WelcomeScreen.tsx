@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Button, Glass } from "glisse";
+import { Glass } from "glisse";
 import { ShieldCheck, Smartphone, Sparkles, Users, Wallet } from "lucide-react";
 import { KeeperLogo } from "./KeeperLogo";
 import { LegalModal, type LegalDocType } from "./LegalModal";
+import { SoftButton } from "./LightControls";
 
 interface WelcomeScreenProps {
   isSupabaseReady: boolean;
@@ -118,20 +119,20 @@ export function WelcomeScreen({
 
           {/* Primary Actions */}
           <div className="space-y-2.5">
-            <Button
+            <SoftButton
               variant="filled"
               onClick={onSignUp}
-              className="w-full justify-center !h-11 text-sm font-semibold"
+              className="w-full !h-11 text-sm font-semibold"
             >
               Sign Up
-            </Button>
+            </SoftButton>
 
-            <Button
+            <SoftButton
               onClick={onSignIn}
-              className="w-full justify-center !h-10 text-xs font-semibold"
+              className="w-full !h-10 text-xs font-semibold"
             >
               Sign In
-            </Button>
+            </SoftButton>
 
             {!isSupabaseReady && (
               <button

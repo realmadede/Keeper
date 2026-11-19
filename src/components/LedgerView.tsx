@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
-import { Button, SearchField, SegmentedControl } from "glisse";
-import { Download, RotateCcw, SearchX } from "lucide-react";
+import { SegmentedControl } from "glisse";
+import { Download, RotateCcw, Search, SearchX } from "lucide-react";
 import { buildLedgerCsv, downloadTextFile } from "../lib/export";
 import { formatTZS, toISODate } from "../lib/format";
 import {
@@ -10,6 +10,7 @@ import {
   type Transaction,
 } from "../types";
 import { CategoryIcon } from "./CategoryIcon";
+import { SoftButton, SoftInput } from "./LightControls";
 import { TransactionList } from "./TransactionList";
 
 const PAGE_SIZE = 25;
@@ -105,14 +106,16 @@ export function LedgerView({
   return (
     <div className="space-y-4">
       <div className="space-y-3">
-        <SearchField
+        <SoftInput
+          type="search"
+          clearable
           placeholder="Search description, member, category, TZS..."
           value={query}
           onValueChange={(v) => {
             setQuery(v);
             setVisibleCount(PAGE_SIZE);
           }}
-          className="w-full"
+          icon={<Search className="h-4 w-4 text-slate-400" />}
         />
         <div className="flex justify-center">
           <SegmentedControl
@@ -208,14 +211,14 @@ export function LedgerView({
           </span>
         )}
 
-        <Button
+        <SoftButton
           onClick={handleExportCsv}
           disabled={filtered.length === 0}
           icon={<Download className="h-4 w-4" />}
           className="!h-9 text-xs font-semibold"
         >
           Export CSV ({filtered.length})
-        </Button>
+        </SoftButton>
       </div>
 
       <TransactionList
@@ -253,12 +256,12 @@ export function LedgerView({
       />
 
       {remainingCount > 0 && (
-        <Button
+        <SoftButton
           onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
-          className="w-full justify-center !h-10 text-xs font-semibold"
+          className="w-full !h-10 text-xs font-semibold"
         >
           Load More ({remainingCount} remaining)
-        </Button>
+        </SoftButton>
       )}
     </div>
   );

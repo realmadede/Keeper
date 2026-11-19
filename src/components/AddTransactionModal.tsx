@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Button, Glass, Input, SegmentedControl } from "glisse";
+import { Glass, SegmentedControl } from "glisse";
 import { FileText, X } from "lucide-react";
 import type { TransactionInput } from "../hooks/useKeeperStore";
 import { formatTZS, getInitials, toISODate } from "../lib/format";
@@ -12,6 +12,7 @@ import {
 } from "../types";
 import { CategoryIcon } from "./CategoryIcon";
 import { IosDatePicker } from "./IosDatePicker";
+import { SoftButton, SoftInput } from "./LightControls";
 
 export interface TransactionPrefill {
   type: TransactionType;
@@ -158,11 +159,14 @@ export function AddTransactionModal({
                 : "Visible to all household members in real time"}
             </p>
           </div>
-          <Button
+          <button
+            type="button"
             aria-label="Close"
             onClick={onClose}
-            icon={<X className="h-4 w-4 text-slate-700" />}
-          />
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200/80 bg-white/80 text-slate-700 hover:bg-slate-100 cursor-pointer"
+          >
+            <X className="h-4 w-4" />
+          </button>
         </div>
 
         <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
@@ -188,7 +192,7 @@ export function AddTransactionModal({
                 </span>
               )}
             </div>
-            <Input
+            <SoftInput
               type="number"
               inputMode="numeric"
               min="1"
@@ -197,7 +201,6 @@ export function AddTransactionModal({
               value={amount}
               onValueChange={setAmount}
               icon={<span className="text-xs font-bold text-slate-500">TZS</span>}
-              className="w-full"
               required
             />
             <div className="mt-2 flex flex-wrap gap-1.5">
@@ -283,7 +286,7 @@ export function AddTransactionModal({
             <label className="block text-xs font-semibold text-slate-600 mb-1.5">
               Description
             </label>
-            <Input
+            <SoftInput
               type="text"
               placeholder={
                 type === "contribution"
@@ -293,7 +296,6 @@ export function AddTransactionModal({
               value={description}
               onValueChange={setDescription}
               icon={<FileText className="h-4 w-4 text-slate-400" />}
-              className="w-full"
             />
           </div>
 
@@ -309,12 +311,12 @@ export function AddTransactionModal({
             </div>
           )}
 
-          <Button
+          <SoftButton
             type="submit"
             variant="filled"
             tint={type === "contribution" ? "#16A34A" : "#18181B"}
             disabled={submitting}
-            className="w-full justify-center !h-11 !text-sm font-semibold"
+            className="w-full !h-11 !text-sm font-semibold"
           >
             {submitting
               ? "Saving..."
@@ -323,7 +325,7 @@ export function AddTransactionModal({
                 : type === "contribution"
                   ? "Record Contribution"
                   : "Record Household Expense"}
-          </Button>
+          </SoftButton>
         </form>
       </Glass>
     </div>

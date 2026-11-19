@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import { Glass } from "glisse";
 import { Calendar, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { parseISODate, toISODate } from "../lib/format";
 
@@ -136,23 +135,21 @@ export function IosDatePicker({ value, onChange }: IosDatePickerProps) {
           onClick={toggleOpen}
           aria-expanded={open}
           aria-label="Choose date from calendar"
-          className="cursor-pointer"
+          className="inline-flex items-center gap-1.5 rounded-full border border-slate-200/90 bg-white/90 px-3 py-1.5 text-xs font-semibold text-slate-800 shadow-2xs hover:bg-white cursor-pointer"
         >
-          <Glass className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-slate-800">
-            <Calendar className="h-3.5 w-3.5 text-[#A68756]" />
-            <span className="tabular-nums">{formattedPill}</span>
-            <ChevronDown
-              className={`h-3.5 w-3.5 text-slate-400 transition-transform duration-200 ${
-                open ? "rotate-180" : ""
-              }`}
-            />
-          </Glass>
+          <Calendar className="h-3.5 w-3.5 text-[#A68756]" />
+          <span className="tabular-nums">{formattedPill}</span>
+          <ChevronDown
+            className={`h-3.5 w-3.5 text-slate-400 transition-transform duration-200 ${
+              open ? "rotate-180" : ""
+            }`}
+          />
         </button>
       </div>
 
-      {/* Expandable iOS Inline Liquid Glass Calendar */}
+      {/* Expandable iOS Inline Frosted Calendar */}
       {open && (
-        <Glass className="rounded-[22px] !bg-white/95 p-3.5 shadow-[0_10px_28px_rgba(15,23,42,0.08)]">
+        <div className="rounded-[22px] border border-slate-200/80 bg-white/95 p-3.5 shadow-[0_10px_28px_rgba(15,23,42,0.08)] backdrop-blur-sm">
           {/* Month Header */}
           <div className="mb-3 flex items-center justify-between">
             <span className="text-[13px] font-bold tracking-tight text-slate-900">
@@ -216,7 +213,7 @@ export function IosDatePicker({ value, onChange }: IosDatePickerProps) {
               );
             })}
           </div>
-        </Glass>
+        </div>
       )}
     </div>
   );

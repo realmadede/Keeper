@@ -1,8 +1,9 @@
 import { useState, type FormEvent } from "react";
-import { Button, Glass, Input, SegmentedControl } from "glisse";
+import { Glass, SegmentedControl } from "glisse";
 import { ArrowLeft, Check, Eye, EyeOff, KeyRound, Mail, Sparkles, User } from "lucide-react";
 import { KeeperLogo } from "./KeeperLogo";
 import { LegalModal, type LegalDocType } from "./LegalModal";
+import { SoftButton, SoftInput } from "./LightControls";
 
 interface AuthScreenProps {
   isSupabaseReady: boolean;
@@ -233,13 +234,12 @@ export function AuthScreen({
             {!passwordRecoveryMode && mode === "signup" && (
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Full Name</label>
-                <Input
+                <SoftInput
                   type="text"
                   placeholder="e.g. Amani Juma"
                   value={fullName}
                   onValueChange={setFullName}
                   icon={<User className="h-4 w-4 text-slate-400" />}
-                  className="w-full"
                   required
                 />
               </div>
@@ -248,13 +248,12 @@ export function AuthScreen({
             {!passwordRecoveryMode && (
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Email</label>
-                <Input
+                <SoftInput
                   type="email"
                   placeholder="you@example.com"
                   value={email}
                   onValueChange={setEmail}
                   icon={<Mail className="h-4 w-4 text-slate-400" />}
-                  className="w-full"
                   required
                 />
               </div>
@@ -281,7 +280,7 @@ export function AuthScreen({
                   )}
                 </div>
                 <div className="relative">
-                  <Input
+                  <SoftInput
                     type={showPassword ? "text" : "password"}
                     placeholder={
                       passwordRecoveryMode || mode === "signup"
@@ -295,7 +294,7 @@ export function AuthScreen({
                       if (localError) setLocalError(null);
                     }}
                     icon={<KeyRound className="h-4 w-4 text-slate-400" />}
-                    className="w-full !pr-11"
+                    className="!pr-11"
                     required
                   />
                   <button
@@ -327,7 +326,7 @@ export function AuthScreen({
                   )}
                 </div>
                 <div className="relative">
-                  <Input
+                  <SoftInput
                     type={showConfirmPassword ? "text" : "password"}
                     placeholder="Type your password again"
                     minLength={6}
@@ -337,7 +336,7 @@ export function AuthScreen({
                       if (localError) setLocalError(null);
                     }}
                     icon={<KeyRound className="h-4 w-4 text-slate-400" />}
-                    className="w-full !pr-11"
+                    className="!pr-11"
                     required
                   />
                   <button
@@ -411,11 +410,11 @@ export function AuthScreen({
               </div>
             )}
 
-            <Button
+            <SoftButton
               type="submit"
               variant="filled"
               disabled={submitting || (!passwordRecoveryMode && mode === "signup" && !acceptedTerms)}
-              className="w-full justify-center !h-11 text-sm font-semibold"
+              className="w-full !h-11 text-sm font-semibold"
             >
               {submitting
                 ? "Please wait..."
@@ -426,7 +425,7 @@ export function AuthScreen({
                     : mode === "signin"
                       ? "Sign In to Household"
                       : "Create Keeper Account"}
-            </Button>
+            </SoftButton>
           </form>
 
           {/* Continue with Google OAuth */}
@@ -438,32 +437,32 @@ export function AuthScreen({
                 <div className="h-px flex-1 bg-slate-200" />
               </div>
 
-              <Button
+              <SoftButton
                 type="button"
                 onClick={() => void handleGoogleAuth()}
                 disabled={googleSubmitting || submitting}
                 icon={<GoogleMark />}
-                className="w-full justify-center !h-10 text-xs font-semibold"
+                className="w-full !h-10 text-xs font-semibold"
               >
                 {googleSubmitting
                   ? "Connecting to Google..."
                   : mode === "signup"
                     ? "Sign up with Google"
                     : "Sign in with Google"}
-              </Button>
+              </SoftButton>
             </>
           )}
 
           {/* Auto-hide Demo Mode once real Supabase credentials are configured */}
           {!isSupabaseReady && !passwordRecoveryMode && mode !== "forgot" && (
             <div className="mt-2.5">
-              <Button
+              <SoftButton
                 onClick={onEnterDemo}
                 icon={<Sparkles className="h-4 w-4 text-[#BFA377]" />}
-                className="w-full justify-center !h-10 text-xs font-semibold"
+                className="w-full !h-10 text-xs font-semibold"
               >
                 Preview Demo Household (TZS)
-              </Button>
+              </SoftButton>
             </div>
           )}
         </Glass>

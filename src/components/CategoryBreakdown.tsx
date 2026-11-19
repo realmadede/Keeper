@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Glass } from "glisse";
 import { TrendingDown, TrendingUp } from "lucide-react";
 import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts";
 import type { CategoryBreakdownItem } from "../lib/analytics";
@@ -50,10 +49,10 @@ export function CategoryBreakdown({
         </div>
       ) : (
         <>
-          {/* Donut Chart + Floating Glisse Active Pill */}
+          {/* Donut Chart + Active Category Pill */}
           <div className="relative my-3 flex flex-col items-center">
             {active && (
-              <Glass className="z-10 -mb-3 rounded-xl px-3 py-1.5 text-center shadow-sm">
+              <div className="z-10 -mb-3 rounded-xl border border-slate-200/80 bg-white/95 px-3 py-1.5 text-center shadow-sm backdrop-blur-xs">
                 <div
                   className="text-xs font-bold tabular-nums"
                   style={{ color: active.color }}
@@ -64,7 +63,7 @@ export function CategoryBreakdown({
                   <CategoryIcon category={active.id} className="h-3 w-3" />
                   <span>{active.label}</span>
                 </div>
-              </Glass>
+              </div>
             )}
 
             <div className="h-[188px] w-[210px]">

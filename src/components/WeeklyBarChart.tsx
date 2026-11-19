@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { Glass } from "glisse";
 import { TrendingDown, TrendingUp } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, XAxis, YAxis } from "recharts";
 import type { DailyBarPoint } from "../lib/analytics";
@@ -71,25 +70,25 @@ export function WeeklyBarChart({
         </div>
       ) : (
         <>
-          {/* Floating Glisse Liquid Glass Callout Chips for Selected Day/Week */}
+          {/* Frosted Callout Chips for Selected Day/Week */}
           {activeDay && (
             <div className="mb-3 flex flex-wrap gap-2">
-              <Glass className="rounded-xl px-2.5 py-1.5 flex-1 min-w-[130px]">
+              <div className="flex-1 min-w-[130px] rounded-xl border border-slate-200/80 bg-slate-50/90 px-2.5 py-1.5 shadow-2xs">
                 <div className="text-[12px] font-bold text-emerald-600 tabular-nums">
                   {formatTZS(activeDay.contributed)}
                 </div>
                 <div className="text-[10px] text-slate-500 truncate">
                   Pooled · {activeSubtitle}
                 </div>
-              </Glass>
-              <Glass className="rounded-xl px-2.5 py-1.5 flex-1 min-w-[130px]">
+              </div>
+              <div className="flex-1 min-w-[130px] rounded-xl border border-slate-200/80 bg-slate-50/90 px-2.5 py-1.5 shadow-2xs">
                 <div className="text-[12px] font-bold text-rose-600 tabular-nums">
                   {formatTZS(activeDay.spent)}
                 </div>
                 <div className="text-[10px] text-slate-500 truncate">
                   Spent · {activeSubtitle}
                 </div>
-              </Glass>
+              </div>
             </div>
           )}
 

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Button, Input, SegmentedControl } from "glisse";
+import { SegmentedControl } from "glisse";
 import {
   CalendarClock,
   Check,
@@ -27,6 +27,7 @@ import {
 } from "../types";
 import type { TransactionPrefill } from "./AddTransactionModal";
 import { CategoryIcon } from "./CategoryIcon";
+import { SoftButton, SoftInput } from "./LightControls";
 
 interface BudgetViewProps {
   household: Household;
@@ -237,7 +238,7 @@ export function BudgetView({
             </div>
 
             <div className="mt-3.5 pt-3 border-t border-slate-100">
-              <Button
+              <SoftButton
                 onClick={() => void handleShareSummary()}
                 icon={
                   copiedSummary ? (
@@ -246,10 +247,10 @@ export function BudgetView({
                     <Share2 className="h-4 w-4" />
                   )
                 }
-                className="w-full justify-center !h-10 text-xs font-semibold"
+                className="w-full !h-10 text-xs font-semibold"
               >
                 {copiedSummary ? "Copied Summary for WhatsApp" : "Copy Summary for WhatsApp"}
-              </Button>
+              </SoftButton>
             </div>
           </section>
 
@@ -329,14 +330,13 @@ export function BudgetView({
                 <label className="block text-xs font-semibold text-slate-600 mb-1">
                   Total Weekly Budget (TZS)
                 </label>
-                <Input
+                <SoftInput
                   type="number"
                   min="0"
                   step="1000"
                   value={weeklyTarget}
                   onValueChange={setWeeklyTarget}
                   icon={<span className="text-xs font-bold text-slate-500">TZS</span>}
-                  className="w-full"
                 />
               </div>
 
@@ -344,25 +344,24 @@ export function BudgetView({
                 <label className="block text-xs font-semibold text-slate-600 mb-1">
                   Expected Share per Member (TZS)
                 </label>
-                <Input
+                <SoftInput
                   type="number"
                   min="0"
                   step="1000"
                   value={memberShare}
                   onValueChange={setMemberShare}
                   icon={<span className="text-xs font-bold text-slate-500">TZS</span>}
-                  className="w-full"
                 />
               </div>
 
-              <Button
+              <SoftButton
                 type="submit"
                 variant="filled"
                 disabled={saving}
-                className="w-full justify-center !h-10 text-xs font-semibold"
+                className="w-full !h-10 text-xs font-semibold"
               >
                 {saving ? "Updating..." : "Save Shared Budget"}
-              </Button>
+              </SoftButton>
 
               {savedToast && (
                 <div className="flex items-center justify-center gap-1.5 text-xs font-medium text-emerald-600">
@@ -401,13 +400,12 @@ export function BudgetView({
             >
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Bill Name</label>
-                <Input
+                <SoftInput
                   type="text"
                   maxLength={80}
                   placeholder="e.g. Monthly House Rent, Fiber Wi-Fi"
                   value={billTitle}
                   onValueChange={setBillTitle}
-                  className="w-full"
                   required
                 />
               </div>
@@ -417,14 +415,13 @@ export function BudgetView({
                   <label className="block text-xs font-semibold text-slate-600 mb-1">
                     Amount (TZS)
                   </label>
-                  <Input
+                  <SoftInput
                     type="number"
                     min="1"
                     step="1000"
                     placeholder="70000"
                     value={billAmount}
                     onValueChange={setBillAmount}
-                    className="w-full"
                     required
                   />
                 </div>
@@ -432,13 +429,12 @@ export function BudgetView({
                   <label className="block text-xs font-semibold text-slate-600 mb-1">
                     Due Day (1-31)
                   </label>
-                  <Input
+                  <SoftInput
                     type="number"
                     min="1"
                     max="31"
                     value={billDueDay}
                     onValueChange={setBillDueDay}
-                    className="w-full"
                     required
                   />
                 </div>
@@ -465,14 +461,14 @@ export function BudgetView({
                 })}
               </div>
 
-              <Button
+              <SoftButton
                 type="submit"
                 variant="filled"
                 disabled={addingBill}
-                className="w-full justify-center !h-9 text-xs font-semibold"
+                className="w-full !h-9 text-xs font-semibold"
               >
                 {addingBill ? "Saving..." : "Save Recurring Bill"}
-              </Button>
+              </SoftButton>
             </form>
           )}
 
@@ -602,7 +598,7 @@ export function BudgetView({
           {/* Quick Add Need Form */}
           <form onSubmit={(e) => void handleAddNeed(e)} className="space-y-2.5">
             <div className="flex items-center gap-2">
-              <Input
+              <SoftInput
                 type="text"
                 maxLength={120}
                 placeholder="e.g. Cooking gas, Rice 5kg, Dish soap..."
@@ -611,14 +607,14 @@ export function BudgetView({
                 className="flex-1"
                 required
               />
-              <Button
+              <SoftButton
                 type="submit"
                 variant="filled"
                 disabled={addingNeed}
                 className="shrink-0 !h-10 text-xs font-semibold"
               >
                 Add
-              </Button>
+              </SoftButton>
             </div>
             <div
               data-no-tab-swipe

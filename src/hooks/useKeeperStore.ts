@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getMonthKey } from "../lib/analytics";
 import { createDemoSeed } from "../lib/demoData";
 import {
@@ -114,6 +114,9 @@ export function useKeeperStore(): KeeperStore {
   const [needs, setNeeds] = useState<HouseholdNeed[]>([]);
   const [bills, setBills] = useState<RecurringBill[]>([]);
 
+  const inFlightFetchRef = useRef<Promise<void> | null>(null);
+  const realtimeTimerRef = useRef<number | null>(null);
+
   const clearError = useCallback(() => setError(null), []);
 
   const fetchHouseholdBundle = useCallback(
@@ -122,176 +125,195 @@ export function useKeeperStore(): KeeperStore {
       fallbackUser?: { email?: string | null; user_metadata?: Record<string, unknown> },
     ) => {
       if (!supabase) return;
-
-      const { data: profileRow } = await supabase
-        .from("profiles")
-        .select("id, full_name, email, avatar_color")
-        .eq("id", userId)
-        .maybeSingle();
-
-      if (profileRow) {
-        setProfile(profileRow as Profile);
-      } else if (fallbackUser) {
-        const meta = fallbackUser.user_metadata ?? {};
-        const rawName =
-          (typeof meta.full_name === "string" && meta.full_name.trim()) ||
-          (typeof meta.name === "string" && meta.name.trim()) ||
-          (fallbackUser.email ? fallbackUser.email.split("@")[0] : "Member");
-        setProfile({
-          id: userId,
-          full_name: rawName.slice(0, 80),
-          email: fallbackUser.email ?? "",
-          avatar_color: "#BFA377",
-        });
+      if (inFlightFetchRef.current) {
+        return inFlightFetchRef.current;
       }
 
-    const { data: membershipRows, error: memberErr } = await supabase
-      .from("household_members")
-      .select("household_id")
-      .eq("user_id", userId)
-      .order("joined_at", { ascending: false })
-      .limit(1);
+      const task = (async () => {
+        // Roundtrip 1 (parallelized): profile + active household membership
+        const [profileRes, membershipRes] = await Promise.all([
+          supabase
+            .from("profiles")
+            .select("id, full_name, email, avatar_color")
+            .eq("id", userId)
+            .maybeSingle(),
+          supabase
+            .from("household_members")
+            .select("household_id")
+            .eq("user_id", userId)
+            .order("joined_at", { ascending: false })
+            .limit(1),
+        ]);
 
-    if (memberErr) {
-      setError(memberErr.message);
-      return;
-    }
+        if (profileRes.data) {
+          setProfile(profileRes.data as Profile);
+        } else if (fallbackUser) {
+          const meta = fallbackUser.user_metadata ?? {};
+          const rawName =
+            (typeof meta.full_name === "string" && meta.full_name.trim()) ||
+            (typeof meta.name === "string" && meta.name.trim()) ||
+            (fallbackUser.email ? fallbackUser.email.split("@")[0] : "Member");
+          setProfile({
+            id: userId,
+            full_name: rawName.slice(0, 80),
+            email: fallbackUser.email ?? "",
+            avatar_color: "#BFA377",
+          });
+        }
 
-    const activeHouseholdId = membershipRows?.[0]?.household_id as string | undefined;
-    if (!activeHouseholdId) {
-      setHousehold(null);
-      setMembers([]);
-      setTransactions([]);
-      setNeeds([]);
-      setBills([]);
-      return;
-    }
+        if (membershipRes.error) {
+          setError(membershipRes.error.message);
+          return;
+        }
 
-    const [householdRes, membersRes, txRes, needsRes, billsRes] = await Promise.all([
-      supabase.from("households").select("*").eq("id", activeHouseholdId).single(),
-      supabase
-        .from("household_members")
-        .select("household_id, user_id, role, joined_at, profile:profiles(id, full_name, email, avatar_color)")
-        .eq("household_id", activeHouseholdId)
-        .order("joined_at", { ascending: true }),
-      supabase
-        .from("transactions")
-        .select(
-          "*, recorder:profiles!transactions_recorded_by_fkey(id, full_name, email, avatar_color), payer:profiles!transactions_paid_by_fkey(id, full_name, email, avatar_color)",
-        )
-        .eq("household_id", activeHouseholdId)
-        .order("transaction_date", { ascending: false })
-        .order("created_at", { ascending: false })
-        .limit(500),
-      supabase
-        .from("household_needs")
-        .select("*, adder:profiles!household_needs_added_by_fkey(id, full_name, email, avatar_color)")
-        .eq("household_id", activeHouseholdId)
-        .order("is_bought", { ascending: true })
-        .order("created_at", { ascending: false })
-        .limit(200),
-      supabase
-        .from("recurring_bills")
-        .select("*")
-        .eq("household_id", activeHouseholdId)
-        .order("due_day", { ascending: true })
-        .limit(100),
-    ]);
+        const activeHouseholdId = membershipRes.data?.[0]?.household_id as string | undefined;
+        if (!activeHouseholdId) {
+          setHousehold(null);
+          setMembers([]);
+          setTransactions([]);
+          setNeeds([]);
+          setBills([]);
+          return;
+        }
 
-    if (householdRes.error) {
-      setError(householdRes.error.message);
-      return;
-    }
+        // Roundtrip 2 (parallelized): all household tables at once
+        const [householdRes, membersRes, txRes, needsRes, billsRes] = await Promise.all([
+          supabase.from("households").select("*").eq("id", activeHouseholdId).single(),
+          supabase
+            .from("household_members")
+            .select("household_id, user_id, role, joined_at, profile:profiles(id, full_name, email, avatar_color)")
+            .eq("household_id", activeHouseholdId)
+            .order("joined_at", { ascending: true }),
+          supabase
+            .from("transactions")
+            .select(
+              "*, recorder:profiles!transactions_recorded_by_fkey(id, full_name, email, avatar_color), payer:profiles!transactions_paid_by_fkey(id, full_name, email, avatar_color)",
+            )
+            .eq("household_id", activeHouseholdId)
+            .order("transaction_date", { ascending: false })
+            .order("created_at", { ascending: false })
+            .limit(500),
+          supabase
+            .from("household_needs")
+            .select("*, adder:profiles!household_needs_added_by_fkey(id, full_name, email, avatar_color)")
+            .eq("household_id", activeHouseholdId)
+            .order("is_bought", { ascending: true })
+            .order("created_at", { ascending: false })
+            .limit(200),
+          supabase
+            .from("recurring_bills")
+            .select("*")
+            .eq("household_id", activeHouseholdId)
+            .order("due_day", { ascending: true })
+            .limit(100),
+        ]);
 
-    const h = householdRes.data;
-    setHousehold({
-      ...h,
-      currency: "TZS",
-      weekly_budget_target: Number(h.weekly_budget_target),
-      member_weekly_share: Number(h.member_weekly_share),
-    });
+        if (householdRes.error) {
+          setError(householdRes.error.message);
+          return;
+        }
 
-    const profileMap = new Map<string, Profile>();
-    if (membersRes.data) {
-      const normalizedMembers: HouseholdMember[] = membersRes.data
-        .map((row: Record<string, unknown>) => {
-          const prof = Array.isArray(row.profile) ? row.profile[0] : row.profile;
-          if (!prof) return null;
-          const typedProf = prof as Profile;
-          profileMap.set(typedProf.id, typedProf);
-          return {
+        const h = householdRes.data;
+        setHousehold({
+          ...h,
+          currency: "TZS",
+          weekly_budget_target: Number(h.weekly_budget_target),
+          member_weekly_share: Number(h.member_weekly_share),
+        });
+
+        const profileMap = new Map<string, Profile>();
+        if (membersRes.data) {
+          const normalizedMembers: HouseholdMember[] = membersRes.data
+            .map((row: Record<string, unknown>) => {
+              const prof = Array.isArray(row.profile) ? row.profile[0] : row.profile;
+              if (!prof) return null;
+              const typedProf = prof as Profile;
+              profileMap.set(typedProf.id, typedProf);
+              return {
+                household_id: String(row.household_id),
+                user_id: String(row.user_id),
+                role: row.role === "admin" ? "admin" : "member",
+                joined_at: String(row.joined_at),
+                profile: typedProf,
+              };
+            })
+            .filter((m): m is HouseholdMember => m !== null);
+          setMembers(normalizedMembers);
+        }
+
+        if (txRes.data) {
+          const normalizedTx: Transaction[] = txRes.data.map((row: Record<string, unknown>) => {
+            const rec = Array.isArray(row.recorder) ? row.recorder[0] : row.recorder;
+            const pay = Array.isArray(row.payer) ? row.payer[0] : row.payer;
+            const recordedById = String(row.recorded_by);
+            const paidById = row.paid_by ? String(row.paid_by) : null;
+            return {
+              id: String(row.id),
+              household_id: String(row.household_id),
+              recorded_by: recordedById,
+              paid_by: paidById,
+              type: row.type === "contribution" ? "contribution" : "expense",
+              amount: Number(row.amount),
+              category: row.category as TransactionCategory,
+              description: String(row.description),
+              transaction_date: String(row.transaction_date),
+              created_at: String(row.created_at),
+              updated_at: row.updated_at ? String(row.updated_at) : null,
+              recorder: (rec as Profile | undefined) ?? profileMap.get(recordedById),
+              payer: (pay as Profile | undefined) ?? (paidById ? profileMap.get(paidById) : undefined),
+            };
+          });
+          setTransactions(normalizedTx);
+        }
+
+        if (needsRes.data) {
+          const normalizedNeeds: HouseholdNeed[] = needsRes.data.map((row: Record<string, unknown>) => {
+            const adder = Array.isArray(row.adder) ? row.adder[0] : row.adder;
+            const addedBy = row.added_by ? String(row.added_by) : null;
+            return {
+              id: String(row.id),
+              household_id: String(row.household_id),
+              added_by: addedBy,
+              title: String(row.title),
+              category: row.category as ExpenseCategoryId,
+              is_bought: Boolean(row.is_bought),
+              bought_at: row.bought_at ? String(row.bought_at) : null,
+              created_at: String(row.created_at),
+              adder: (adder as Profile | undefined) ?? (addedBy ? profileMap.get(addedBy) : undefined),
+            };
+          });
+          setNeeds(normalizedNeeds);
+        }
+
+        if (billsRes.data) {
+          const normalizedBills: RecurringBill[] = billsRes.data.map((row: Record<string, unknown>) => ({
+            id: String(row.id),
             household_id: String(row.household_id),
-            user_id: String(row.user_id),
-            role: row.role === "admin" ? "admin" : "member",
-            joined_at: String(row.joined_at),
-            profile: typedProf,
-          };
-        })
-        .filter((m): m is HouseholdMember => m !== null);
-      setMembers(normalizedMembers);
-    }
+            created_by: row.created_by ? String(row.created_by) : null,
+            title: String(row.title),
+            amount: Number(row.amount),
+            category: row.category as ExpenseCategoryId,
+            due_day: Number(row.due_day),
+            last_paid_month: row.last_paid_month ? String(row.last_paid_month) : null,
+            created_at: String(row.created_at),
+          }));
+          setBills(normalizedBills);
+        }
+      })();
 
-    if (txRes.data) {
-      const normalizedTx: Transaction[] = txRes.data.map((row: Record<string, unknown>) => {
-        const rec = Array.isArray(row.recorder) ? row.recorder[0] : row.recorder;
-        const pay = Array.isArray(row.payer) ? row.payer[0] : row.payer;
-        const recordedById = String(row.recorded_by);
-        const paidById = row.paid_by ? String(row.paid_by) : null;
-        return {
-          id: String(row.id),
-          household_id: String(row.household_id),
-          recorded_by: recordedById,
-          paid_by: paidById,
-          type: row.type === "contribution" ? "contribution" : "expense",
-          amount: Number(row.amount),
-          category: row.category as TransactionCategory,
-          description: String(row.description),
-          transaction_date: String(row.transaction_date),
-          created_at: String(row.created_at),
-          updated_at: row.updated_at ? String(row.updated_at) : null,
-          recorder: (rec as Profile | undefined) ?? profileMap.get(recordedById),
-          payer: (pay as Profile | undefined) ?? (paidById ? profileMap.get(paidById) : undefined),
-        };
-      });
-      setTransactions(normalizedTx);
-    }
+      inFlightFetchRef.current = task;
+      try {
+        await task;
+      } finally {
+        if (inFlightFetchRef.current === task) {
+          inFlightFetchRef.current = null;
+        }
+      }
+    },
+    [],
+  );
 
-    if (needsRes.data) {
-      const normalizedNeeds: HouseholdNeed[] = needsRes.data.map((row: Record<string, unknown>) => {
-        const adder = Array.isArray(row.adder) ? row.adder[0] : row.adder;
-        const addedBy = row.added_by ? String(row.added_by) : null;
-        return {
-          id: String(row.id),
-          household_id: String(row.household_id),
-          added_by: addedBy,
-          title: String(row.title),
-          category: row.category as ExpenseCategoryId,
-          is_bought: Boolean(row.is_bought),
-          bought_at: row.bought_at ? String(row.bought_at) : null,
-          created_at: String(row.created_at),
-          adder: (adder as Profile | undefined) ?? (addedBy ? profileMap.get(addedBy) : undefined),
-        };
-      });
-      setNeeds(normalizedNeeds);
-    }
-
-    if (billsRes.data) {
-      const normalizedBills: RecurringBill[] = billsRes.data.map((row: Record<string, unknown>) => ({
-        id: String(row.id),
-        household_id: String(row.household_id),
-        created_by: row.created_by ? String(row.created_by) : null,
-        title: String(row.title),
-        amount: Number(row.amount),
-        category: row.category as ExpenseCategoryId,
-        due_day: Number(row.due_day),
-        last_paid_month: row.last_paid_month ? String(row.last_paid_month) : null,
-        created_at: String(row.created_at),
-      }));
-      setBills(normalizedBills);
-    }
-  }, []);
-
-  // Bootstrap Supabase session listener
+  // Bootstrap Supabase session listener (single INITIAL_SESSION path — no duplicate startup fetch)
   useEffect(() => {
     if (!supabase) {
       setLoading(false);
@@ -299,14 +321,6 @@ export function useKeeperStore(): KeeperStore {
     }
 
     let mounted = true;
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (!mounted) return;
-      if (data.session?.user) {
-        await fetchHouseholdBundle(data.session.user.id, data.session.user);
-      }
-      if (mounted) setLoading(false);
-    });
-
     const { data: authSub } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
       if (event === "PASSWORD_RECOVERY") {
@@ -323,7 +337,7 @@ export function useKeeperStore(): KeeperStore {
         setNeeds([]);
         setBills([]);
       }
-      setLoading(false);
+      if (mounted) setLoading(false);
     });
 
     return () => {
@@ -332,7 +346,7 @@ export function useKeeperStore(): KeeperStore {
     };
   }, [fetchHouseholdBundle]);
 
-  // Supabase Realtime sync for the active household
+  // Supabase Realtime sync for the active household (debounced to coalesce bursts)
   useEffect(() => {
     if (!supabase || isDemoMode || !household?.id || !profile?.id) {
       setRealtimeConnected(false);
@@ -342,55 +356,51 @@ export function useKeeperStore(): KeeperStore {
     const householdId = household.id;
     const userId = profile.id;
 
+    const scheduleSync = () => {
+      if (realtimeTimerRef.current) window.clearTimeout(realtimeTimerRef.current);
+      realtimeTimerRef.current = window.setTimeout(() => {
+        void fetchHouseholdBundle(userId);
+      }, 250);
+    };
+
     const channel = supabase
       .channel(`keeper-household-${householdId}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "transactions", filter: `household_id=eq.${householdId}` },
-        () => {
-          void fetchHouseholdBundle(userId);
-        },
+        scheduleSync,
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "households", filter: `id=eq.${householdId}` },
-        () => {
-          void fetchHouseholdBundle(userId);
-        },
+        scheduleSync,
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "household_members", filter: `household_id=eq.${householdId}` },
-        () => {
-          void fetchHouseholdBundle(userId);
-        },
+        scheduleSync,
       )
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "profiles" },
-        () => {
-          void fetchHouseholdBundle(userId);
-        },
+        scheduleSync,
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "household_needs", filter: `household_id=eq.${householdId}` },
-        () => {
-          void fetchHouseholdBundle(userId);
-        },
+        scheduleSync,
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "recurring_bills", filter: `household_id=eq.${householdId}` },
-        () => {
-          void fetchHouseholdBundle(userId);
-        },
+        scheduleSync,
       )
       .subscribe((status) => {
         setRealtimeConnected(status === "SUBSCRIBED");
       });
 
     return () => {
+      if (realtimeTimerRef.current) window.clearTimeout(realtimeTimerRef.current);
       void supabase?.removeChannel(channel);
       setRealtimeConnected(false);
     };

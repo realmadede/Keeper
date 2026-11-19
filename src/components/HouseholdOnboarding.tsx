@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Button, Glass, Input, SegmentedControl } from "glisse";
+import { Glass, SegmentedControl } from "glisse";
 import { Home, Key, LogOut } from "lucide-react";
 import type { Profile } from "../types";
 import { KeeperLogo } from "./KeeperLogo";
+import { SoftButton, SoftInput } from "./LightControls";
 
 interface HouseholdOnboardingProps {
   profile: Profile;
@@ -85,13 +86,12 @@ export function HouseholdOnboarding({
                   <label className="block text-xs font-semibold text-slate-600 mb-1">
                     Household Name
                   </label>
-                  <Input
+                  <SoftInput
                     type="text"
                     placeholder="e.g. Sinza House 14"
                     value={houseName}
                     onValueChange={setHouseName}
                     icon={<Home className="h-4 w-4 text-slate-400" />}
-                    className="w-full"
                     required
                   />
                 </div>
@@ -99,14 +99,13 @@ export function HouseholdOnboarding({
                   <label className="block text-xs font-semibold text-slate-600 mb-1">
                     Weekly Budget Target (TZS)
                   </label>
-                  <Input
+                  <SoftInput
                     type="number"
                     min="0"
                     step="1000"
                     value={weeklyBudget}
                     onValueChange={setWeeklyBudget}
                     icon={<span className="text-xs font-bold text-slate-500">TZS</span>}
-                    className="w-full"
                     required
                   />
                 </div>
@@ -114,14 +113,13 @@ export function HouseholdOnboarding({
                   <label className="block text-xs font-semibold text-slate-600 mb-1">
                     Weekly Share per Member (TZS)
                   </label>
-                  <Input
+                  <SoftInput
                     type="number"
                     min="0"
                     step="1000"
                     value={memberShare}
                     onValueChange={setMemberShare}
                     icon={<span className="text-xs font-bold text-slate-500">TZS</span>}
-                    className="w-full"
                     required
                   />
                 </div>
@@ -129,15 +127,15 @@ export function HouseholdOnboarding({
             ) : (
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  6-Character Invite Code
+                  Invite Code
                 </label>
-                <Input
+                <SoftInput
                   type="text"
-                  placeholder="e.g. SNZ414"
+                  placeholder="e.g. SNZ414KP"
                   value={inviteCode}
                   onValueChange={(v) => setInviteCode(v.toUpperCase())}
                   icon={<Key className="h-4 w-4 text-slate-400" />}
-                  className="w-full uppercase tracking-widest"
+                  className="uppercase tracking-widest"
                   required
                 />
               </div>
@@ -149,18 +147,18 @@ export function HouseholdOnboarding({
               </div>
             )}
 
-            <Button
+            <SoftButton
               type="submit"
               variant="filled"
               disabled={submitting}
-              className="w-full justify-center !h-11 text-sm font-semibold"
+              className="w-full !h-11 text-sm font-semibold"
             >
               {submitting
                 ? "Setting up..."
                 : mode === "create"
                   ? "Create Shared Household"
                   : "Join Household"}
-            </Button>
+            </SoftButton>
           </form>
 
           <div className="mt-4 flex justify-center">
