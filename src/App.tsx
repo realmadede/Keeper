@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Menu } from "glisse";
-import { Calendar, ChevronLeft } from "lucide-react";
+import { Calendar, Check, ChevronLeft } from "lucide-react";
 import { AddTransactionModal } from "./components/AddTransactionModal";
 import { AuthScreen } from "./components/AuthScreen";
 import { BottomDock } from "./components/BottomDock";
@@ -42,6 +42,11 @@ export function App() {
     );
   }, [store.household, store.members, store.transactions, weekOffset]);
 
+  const handleSelectTab = (tab: ActiveTab) => {
+    setActiveTab(tab);
+    window.scrollTo({ top: 0, behavior: "instant" });
+  };
+
   if (store.loading) {
     return (
       <div className="min-h-dvh flex items-center justify-center">
@@ -56,7 +61,6 @@ export function App() {
   if (!store.profile) {
     return (
       <AuthScreen
-        isSupabaseReady={store.isSupabaseReady}
         error={store.error}
         onSignIn={store.signIn}
         onSignUp={store.signUp}
@@ -80,8 +84,13 @@ export function App() {
   const weekMenuItems = [0, -1, -2, -3].map((offset) => {
     const win = getWeekWindow(offset);
     return {
-      label: offset === weekOffset ? `✓ ${win.label}` : win.label,
-      icon: <Calendar className="h-3.5 w-3.5" />,
+      label: win.label,
+      icon:
+        offset === weekOffset ? (
+          <Check className="h-3.5 w-3.5" />
+        ) : (
+          <Calendar className="h-3.5 w-3.5" />
+        ),
       onSelect: () => setWeekOffset(offset),
     };
   });
@@ -98,7 +107,7 @@ export function App() {
               <button
                 type="button"
                 aria-label="Back to Overview"
-                onClick={() => setActiveTab("overview")}
+                onClick={() => handleSelectTab("overview")}
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-slate-700 shadow-xs border border-slate-100 hover:bg-slate-50 cursor-pointer"
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -162,7 +171,7 @@ export function App() {
               categories={summary.categories}
               totalSpent={summary.totalSpent}
               spentDeltaPct={summary.spentDeltaPct}
-              onViewAll={() => setActiveTab("ledger")}
+              onViewAll={() => handleSelectTab("ledger")}
             />
 
             <TransactionList
@@ -171,7 +180,7 @@ export function App() {
               currentUserId={store.profile.id}
               onDelete={store.deleteTransaction}
               maxItems={5}
-              onViewAll={() => setActiveTab("ledger")}
+              onViewAll={() => handleSelectTab("ledger")}
             />
           </main>
         )}
@@ -216,7 +225,7 @@ export function App() {
       {/* Floating Dark Liquid Glass Navigation Bar */}
       <BottomDock
         activeTab={activeTab}
-        onSelectTab={setActiveTab}
+        onSelectTab={handleSelectTab}
         onOpenAdd={() => setAddOpen(true)}
       />
 

@@ -1,4 +1,12 @@
-import { ArrowDownLeft, ArrowUpRight, Clock, ShieldCheck, Wallet } from "lucide-react";
+import {
+  ArrowDownLeft,
+  ArrowUpRight,
+  Clock,
+  ShieldCheck,
+  TrendingDown,
+  TrendingUp,
+  Wallet,
+} from "lucide-react";
 import { formatTZS } from "../lib/format";
 
 interface KpiCardsProps {
@@ -18,13 +26,13 @@ function DeltaLabel({ pct, invertGood = false }: { pct: number | null; invertGoo
   const isGood = invertGood ? !isUp : isUp;
   return (
     <span
-      className={`inline-flex items-center gap-0.5 text-[11px] font-medium ${
+      className={`inline-flex items-center gap-1 text-[11px] font-medium ${
         isGood ? "text-emerald-600" : "text-rose-500"
       }`}
     >
-      <span>{isUp ? "▲" : "▼"}</span>
+      {isUp ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
       <span>{Math.abs(pct)}%</span>
-      <span className="text-slate-500 font-normal ml-0.5">From last week</span>
+      <span className="text-slate-500 font-normal">From last week</span>
     </span>
   );
 }

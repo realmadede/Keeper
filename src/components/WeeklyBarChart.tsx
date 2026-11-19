@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Glass } from "glisse";
+import { TrendingDown, TrendingUp } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, XAxis, YAxis } from "recharts";
 import type { DailyBarPoint } from "../lib/analytics";
 import { formatCompactTZS, formatFullDayLabel, formatTZS } from "../lib/format";
@@ -133,11 +134,16 @@ export function WeeklyBarChart({ dailySeries, spentDeltaPct }: WeeklyBarChartPro
         </div>
         {spentDeltaPct !== null && (
           <span
-            className={`text-[11px] font-medium ${
+            className={`inline-flex items-center gap-1 text-[11px] font-medium ${
               spentDeltaPct <= 0 ? "text-emerald-600" : "text-rose-500"
             }`}
           >
-            {spentDeltaPct >= 0 ? "▲" : "▼"} {Math.abs(spentDeltaPct)}%{" "}
+            {spentDeltaPct >= 0 ? (
+              <TrendingUp className="h-3 w-3" />
+            ) : (
+              <TrendingDown className="h-3 w-3" />
+            )}
+            <span>{Math.abs(spentDeltaPct)}%</span>
             <span className="text-slate-400 font-normal">from last week</span>
           </span>
         )}

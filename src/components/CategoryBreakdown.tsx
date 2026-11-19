@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { Glass } from "glisse";
+import { TrendingDown, TrendingUp } from "lucide-react";
 import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts";
 import type { CategoryBreakdownItem } from "../lib/analytics";
 import { formatTZS } from "../lib/format";
+import { CategoryIcon } from "./CategoryIcon";
 
 interface CategoryBreakdownProps {
   categories: CategoryBreakdownItem[];
@@ -52,8 +54,9 @@ export function CategoryBreakdown({
                 >
                   {formatTZS(active.amount)}
                 </div>
-                <div className="text-[10px] font-medium text-slate-600">
-                  {active.emoji} {active.label}
+                <div className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-600">
+                  <CategoryIcon category={active.id} className="h-3 w-3" />
+                  <span>{active.label}</span>
                 </div>
               </Glass>
             )}
@@ -103,7 +106,12 @@ export function CategoryBreakdown({
                 >
                   <div className="flex items-center justify-between text-xs mb-1.5">
                     <span className="inline-flex items-center gap-2 font-medium text-slate-800">
-                      <span className="text-base leading-none">{cat.emoji}</span>
+                      <span
+                        className="flex h-6 w-6 items-center justify-center rounded-lg"
+                        style={{ backgroundColor: `${cat.color}18`, color: cat.color }}
+                      >
+                        <CategoryIcon category={cat.id} className="h-3.5 w-3.5" />
+                      </span>
                       <span>{cat.label}</span>
                     </span>
                     <span className="inline-flex items-center gap-2.5 tabular-nums">
@@ -131,11 +139,16 @@ export function CategoryBreakdown({
       <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-2.5 text-xs">
         {spentDeltaPct !== null ? (
           <span
-            className={`text-[11px] font-medium ${
+            className={`inline-flex items-center gap-1 text-[11px] font-medium ${
               spentDeltaPct <= 0 ? "text-emerald-600" : "text-rose-500"
             }`}
           >
-            {spentDeltaPct >= 0 ? "▲" : "▼"} {Math.abs(spentDeltaPct)}%{" "}
+            {spentDeltaPct >= 0 ? (
+              <TrendingUp className="h-3 w-3" />
+            ) : (
+              <TrendingDown className="h-3 w-3" />
+            )}
+            <span>{Math.abs(spentDeltaPct)}%</span>
             <span className="text-slate-400 font-normal">From last week</span>
           </span>
         ) : (

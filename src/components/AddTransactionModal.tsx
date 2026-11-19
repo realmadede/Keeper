@@ -4,6 +4,7 @@ import { Calendar, FileText, X } from "lucide-react";
 import type { NewTransactionInput } from "../hooks/useKeeperStore";
 import { toISODate } from "../lib/format";
 import { EXPENSE_CATEGORIES, type ExpenseCategoryId, type TransactionType } from "../types";
+import { CategoryIcon } from "./CategoryIcon";
 
 interface AddTransactionModalProps {
   open: boolean;
@@ -141,7 +142,7 @@ export function AddTransactionModal({ open, onClose, onSubmit }: AddTransactionM
                           : "border-slate-200 bg-white/80 text-slate-700 hover:border-slate-300"
                       }`}
                     >
-                      <span className="text-sm leading-none">{cat.emoji}</span>
+                      <CategoryIcon category={cat.id} className="h-3.5 w-3.5 shrink-0" />
                       <span className="truncate">{cat.label}</span>
                     </button>
                   );

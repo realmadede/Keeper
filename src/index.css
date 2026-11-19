@@ -5,6 +5,7 @@
     font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     background-color: #f5f6fa;
     color: #111827;
+    scrollbar-gutter: stable;
   }
 
   body {
@@ -44,6 +45,18 @@
   --lg-edge: rgba(255, 255, 255, 0.14);
   --lg-drop: rgba(0, 0, 0, 0.28);
   --lg-rim-shine: 0.22;
+}
+
+.keeper-tab-bar.lg-tab-bar[data-icons] {
+  --lg-tab-width: 66px;
+  --lg-tab-height: 50px;
+  --lg-tab-inset: 4px;
+  --lg-tab-selected: #e4cca0;
+}
+
+.keeper-tab-bar.lg-tab-bar[data-icons] .lg-tab-icon > svg {
+  width: 20px;
+  height: 20px;
 }
 
 .lg-input {

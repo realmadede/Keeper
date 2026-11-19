@@ -11,7 +11,7 @@ Real-world code examples demonstrating the four principles. Each example shows w
 
 **User Request:** "Add a feature to export user data"
 
-**❌ What LLMs Do (Wrong Assumptions)**
+**What LLMs Do (Wrong Assumptions)**
 
 ```python
 def export_users(format='json'):
@@ -36,7 +36,7 @@ def export_users(format='json'):
 - Assumed which fields to include
 - Assumed CSV fieldnames without checking actual data structure
 
-**✅ What Should Happen (Surface Assumptions)**
+**What Should Happen (Surface Assumptions)**
 
 ```
 Before implementing, I need to clarify:
@@ -59,7 +59,7 @@ What's your preference?
 
 **User Request:** "Make the search faster"
 
-**❌ What LLMs Do (Pick Silently)**
+**What LLMs Do (Pick Silently)**
 
 ```python
 # Adds caching, database indexes, and async processing
@@ -69,7 +69,7 @@ async def search(query: str) -> List[Result]:
     # ... 200 lines of optimization code
 ```
 
-**✅ What Should Happen**
+**What Should Happen**
 
 ```
 "Make the search faster" could mean:
@@ -101,7 +101,7 @@ Which aspect matters most for your use case?
 
 **User Request:** "Add a function to calculate discount"
 
-**❌ What LLMs Do (Overengineered)**
+**What LLMs Do (Overengineered)**
 
 ```python
 from abc import ABC, abstractmethod
@@ -147,7 +147,7 @@ class DiscountCalculator:
 # Usage requires 30+ lines of setup for a simple calculation
 ```
 
-**✅ What Should Happen (Simple)**
+**What Should Happen (Simple)**
 
 ```python
 def calculate_discount(amount: float, percent: float) -> float:
@@ -164,7 +164,7 @@ discount = calculate_discount(100.0, 10.0)  # $10 off
 
 **User Request:** "Save user preferences to database"
 
-**❌ What LLMs Do (Unnecessary Features)**
+**What LLMs Do (Unnecessary Features)**
 
 ```python
 class PreferenceManager:
@@ -208,7 +208,7 @@ class PreferenceManager:
         pass
 ```
 
-**✅ What Should Happen (Just What Was Asked)**
+**What Should Happen (Just What Was Asked)**
 
 ```python
 def save_preferences(db, user_id: int, preferences: dict):
@@ -229,7 +229,7 @@ def save_preferences(db, user_id: int, preferences: dict):
 
 **User Request:** "Fix the bug where empty emails crash the validator"
 
-**❌ What LLMs Do (Too Much)**
+**What LLMs Do (Too Much)**
 
 ```diff
   def validate_user(user_data):
@@ -267,7 +267,7 @@ def save_preferences(db, user_id: int, preferences: dict):
 - Changed comments
 - Added docstring
 
-**✅ What Should Happen (Surgical)**
+**What Should Happen (Surgical)**
 
 ```diff
   def validate_user(user_data):
@@ -295,7 +295,7 @@ def save_preferences(db, user_id: int, preferences: dict):
 
 **User Request:** "Add logging to the upload function"
 
-**❌ What LLMs Do (Reformat Everything)**
+**What LLMs Do (Reformat Everything)**
 
 ```diff
 - def upload_file(file_path, destination):
@@ -337,7 +337,7 @@ def save_preferences(db, user_id: int, preferences: dict):
 - Reformatted whitespace
 - Changed boolean return logic
 
-**✅ What Should Happen (Match Existing Style)**
+**What Should Happen (Match Existing Style)**
 
 ```diff
 + import logging
@@ -374,7 +374,7 @@ def save_preferences(db, user_id: int, preferences: dict):
 
 **User Request:** "Fix the authentication system"
 
-**❌ What LLMs Do (Vague Approach)**
+**What LLMs Do (Vague Approach)**
 
 ```
 I'll fix the authentication system by:
@@ -386,7 +386,7 @@ I'll fix the authentication system by:
 [Proceeds to make changes without clear success criteria]
 ```
 
-**✅ What Should Happen (Verifiable Goals)**
+**What Should Happen (Verifiable Goals)**
 
 ```
 To "fix authentication," I need to define success criteria. 
@@ -415,7 +415,7 @@ What's the specific auth issue you're seeing?
 
 **User Request:** "Add rate limiting to the API"
 
-**❌ What LLMs Do (All at Once)**
+**What LLMs Do (All at Once)**
 
 ```python
 # Implements full rate limiting with Redis, multiple strategies,
@@ -423,7 +423,7 @@ What's the specific auth issue you're seeing?
 # No clear verification steps
 ```
 
-**✅ What Should Happen (Incremental with Verification)**
+**What Should Happen (Incremental with Verification)**
 
 ```
 Plan for rate limiting:
@@ -456,7 +456,7 @@ Start with step 1?
 
 **User Request:** "The sorting breaks when there are duplicate scores"
 
-**❌ What LLMs Do (Fix Without Reproducing)**
+**What LLMs Do (Fix Without Reproducing)**
 
 ```python
 # Immediately changes sort logic without confirming the bug
@@ -464,7 +464,7 @@ def sort_scores(scores):
     return sorted(scores, key=lambda x: (-x['score'], x['name']))
 ```
 
-**✅ What Should Happen (Reproduce First)**
+**What Should Happen (Reproduce First)**
 
 ```python
 # 1. First, write a test that reproduces the issue
@@ -528,13 +528,13 @@ The "simple" versions are:
 
 ### Task: "Validate that the user input email is valid before submitting the form"
 
-#### ❌ Unguided Agent Execution (Diff Bloat & Overengineering)
+#### Unguided Agent Execution (Diff Bloat & Overengineering)
 1. **Unsolicited Architecture**: Creates an `AbstractValidator`, `ValidatorFactory`, and `RegexValidationStrategy`.
 2. **Orthogonal Edits**: Re-indents the surrounding form component and removes unrelated comments.
 3. **Diff Size**: +142 lines across 3 new files and 2 existing files.
 4. **Verification**: "Done! I have refactored your validation system." (No tests written or executed).
 
-#### ✅ Skarp-Guided Agent Execution (Surgical & Goal-Driven)
+#### Skarp-Guided Agent Execution (Surgical & Goal-Driven)
 1. **Formulate Verifiable Plan**:
    ```text
    1. Add unit test for invalid email formats -> verify: pytest tests/test_validation.py fails

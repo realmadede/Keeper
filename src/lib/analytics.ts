@@ -25,7 +25,6 @@ export interface DailyBarPoint {
 export interface CategoryBreakdownItem {
   id: ExpenseCategoryId;
   label: string;
-  emoji: string;
   color: string;
   amount: number;
   percent: number;
@@ -160,7 +159,6 @@ export function computeWeeklySummary(
     return {
       id: cat.id,
       label: cat.label,
-      emoji: cat.emoji,
       color: cat.color,
       amount,
       percent,

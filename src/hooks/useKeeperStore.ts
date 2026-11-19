@@ -21,7 +21,6 @@ export interface NewTransactionInput {
 export interface KeeperStore {
   loading: boolean;
   isDemoMode: boolean;
-  isSupabaseReady: boolean;
   realtimeConnected: boolean;
   error: string | null;
   clearError: () => void;
@@ -480,7 +479,6 @@ export function useKeeperStore(): KeeperStore {
   return {
     loading,
     isDemoMode,
-    isSupabaseReady: isSupabaseConfigured,
     realtimeConnected,
     error,
     clearError,

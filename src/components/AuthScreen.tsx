@@ -4,7 +4,6 @@ import { KeyRound, Mail, Sparkles, User } from "lucide-react";
 import { KeeperLogo } from "./KeeperLogo";
 
 interface AuthScreenProps {
-  isSupabaseReady: boolean;
   error: string | null;
   onSignIn: (email: string, password: string) => Promise<void>;
   onSignUp: (fullName: string, email: string, password: string) => Promise<void>;
@@ -12,7 +11,6 @@ interface AuthScreenProps {
 }
 
 export function AuthScreen({
-  isSupabaseReady,
   error,
   onSignIn,
   onSignUp,
@@ -48,7 +46,7 @@ export function AuthScreen({
           <KeeperLogo size={60} className="mx-auto mb-3 drop-shadow-[0_8px_20px_rgba(15,23,42,0.18)]" />
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">Keeper</h1>
           <p className="mt-1 text-xs text-slate-500">
-            One household, one shared TZS budget, complete transparency.
+            One household, one shared budget, complete transparency.
           </p>
         </div>
 
@@ -141,13 +139,6 @@ export function AuthScreen({
           >
             Preview Demo Household (TZS)
           </Button>
-
-          {!isSupabaseReady && (
-            <p className="mt-3 text-center text-[11px] text-slate-400">
-              Supabase keys not set in <code className="text-slate-600">.env</code> yet — try Demo
-              Mode now or add your keys to enable live accounts.
-            </p>
-          )}
         </Glass>
       </div>
     </div>
