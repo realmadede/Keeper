@@ -1,5 +1,5 @@
--- Keeper — Hardened Supabase PostgreSQL Schema, RLS Policies, Triggers & Realtime
--- Safe to run on both fresh databases and upgrades in Supabase Dashboard -> SQL Editor.
+-- Keeper — Final Hardened Supabase PostgreSQL Schema, RLS Policies, Triggers & Realtime
+-- Safe to run once on a fresh Supabase project (and idempotent on upgrades) in SQL Editor.
 
 create extension if not exists pgcrypto;
 
@@ -28,8 +28,12 @@ create table if not exists public.profiles (
   full_name text not null check (char_length(trim(full_name)) between 1 and 80),
   email text not null,
   avatar_color text not null default '#BFA377' check (avatar_color ~ '^#[0-9A-Fa-f]{6}$'),
+  accepted_terms_at timestamptz,
   created_at timestamptz not null default now()
 );
+
+alter table public.profiles
+  add column if not exists accepted_terms_at timestamptz;
 
 -- 2. Households (one household, one shared weekly budget in TZS)
 create table if not exists public.households (
@@ -39,7 +43,7 @@ create table if not exists public.households (
   weekly_budget_target bigint not null default 200000 check (weekly_budget_target between 0 and 10000000000),
   member_weekly_share bigint not null default 50000 check (member_weekly_share between 0 and 10000000000),
   invite_code text not null unique default public.generate_invite_code(),
-  created_by uuid not null references public.profiles(id) on delete cascade,
+  created_by uuid references public.profiles(id) on delete set null,
   created_at timestamptz not null default now()
 );
 
@@ -59,7 +63,7 @@ create table if not exists public.household_members (
 create table if not exists public.transactions (
   id uuid primary key default gen_random_uuid(),
   household_id uuid not null references public.households(id) on delete cascade,
-  recorded_by uuid not null references public.profiles(id) on delete cascade,
+  recorded_by uuid references public.profiles(id) on delete set null,
   paid_by uuid references public.profiles(id) on delete set null,
   type text not null check (type in ('contribution', 'expense')),
   amount bigint not null check (amount > 0 and amount <= 10000000000),
@@ -116,9 +120,13 @@ declare
     coalesce(nullif(trim(new.raw_user_meta_data->>'full_name'), ''), split_part(new.email, '@', 1)),
     80
   );
+  terms_ts timestamptz := case
+    when coalesce((new.raw_user_meta_data->>'accepted_terms')::boolean, false) then now()
+    else null
+  end;
 begin
-  insert into public.profiles (id, full_name, email, avatar_color)
-  values (new.id, safe_name, new.email, chosen_color)
+  insert into public.profiles (id, full_name, email, avatar_color, accepted_terms_at)
+  values (new.id, safe_name, new.email, chosen_color, terms_ts)
   on conflict (id) do nothing;
   return new;
 end;
@@ -129,7 +137,7 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
--- Integrity triggers: prevent client tampering with protected/audit columns and flood writes
+-- Integrity triggers: lock protected/audit columns and enforce DB write rate limit
 create or replace function public.guard_profile_update()
 returns trigger
 language plpgsql
@@ -138,6 +146,7 @@ begin
   new.id := old.id;
   new.email := old.email;
   new.created_at := old.created_at;
+  new.accepted_terms_at := old.accepted_terms_at;
   new.full_name := left(trim(new.full_name), 80);
   return new;
 end;
@@ -159,6 +168,9 @@ begin
   new.created_at := old.created_at;
   if coalesce(current_setting('keeper.allow_invite_rotation', true), '') <> 'true' then
     new.invite_code := old.invite_code;
+  end if;
+  if coalesce(current_setting('keeper.allow_household_rename', true), '') <> 'true' then
+    new.name := old.name;
   end if;
   return new;
 end;
@@ -316,7 +328,6 @@ begin
     raise exception 'Not authenticated';
   end if;
 
-  -- Prune expired attempts and enforce per-user brute-force rate limit
   delete from public.invite_join_attempts
   where user_id = auth.uid()
     and attempted_at < now() - interval '15 minutes';
@@ -355,7 +366,7 @@ begin
 end;
 $$;
 
--- Atomic Admin-Only RPC: Rotate household invite code to revoke leaked codes
+-- Admin-only RPC: Rotate household invite code to revoke leaked codes
 create or replace function public.regenerate_invite_code(target_household_id uuid)
 returns text
 language plpgsql
@@ -393,6 +404,169 @@ begin
 end;
 $$;
 
+-- Admin-only RPC: Rename household
+create or replace function public.rename_household(target_household_id uuid, new_name text)
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  is_admin boolean;
+  clean_name text := left(trim(coalesce(new_name, '')), 80);
+begin
+  if auth.uid() is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  if char_length(clean_name) < 1 then
+    raise exception 'Household name cannot be empty';
+  end if;
+
+  select exists (
+    select 1
+    from public.household_members
+    where household_id = target_household_id
+      and user_id = auth.uid()
+      and role = 'admin'
+  ) into is_admin;
+
+  if not is_admin then
+    raise exception 'Only household admins can rename the household';
+  end if;
+
+  perform set_config('keeper.allow_household_rename', 'true', true);
+
+  update public.households
+  set name = clean_name
+  where id = target_household_id;
+
+  return clean_name;
+end;
+$$;
+
+-- Admin-only RPC: Promote a roommate to admin
+create or replace function public.promote_household_member(target_household_id uuid, target_user_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  is_admin boolean;
+begin
+  if auth.uid() is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  select exists (
+    select 1
+    from public.household_members
+    where household_id = target_household_id
+      and user_id = auth.uid()
+      and role = 'admin'
+  ) into is_admin;
+
+  if not is_admin then
+    raise exception 'Only household admins can promote members';
+  end if;
+
+  update public.household_members
+  set role = 'admin'
+  where household_id = target_household_id
+    and user_id = target_user_id;
+end;
+$$;
+
+-- Admin-only RPC: Remove a former roommate from the household
+create or replace function public.remove_household_member(target_household_id uuid, target_user_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  is_admin boolean;
+begin
+  if auth.uid() is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  if target_user_id = auth.uid() then
+    raise exception 'Use Leave Household to remove yourself';
+  end if;
+
+  select exists (
+    select 1
+    from public.household_members
+    where household_id = target_household_id
+      and user_id = auth.uid()
+      and role = 'admin'
+  ) into is_admin;
+
+  if not is_admin then
+    raise exception 'Only household admins can remove members';
+  end if;
+
+  delete from public.household_members
+  where household_id = target_household_id
+    and user_id = target_user_id;
+end;
+$$;
+
+-- Self-service RPC: Permanently delete own account without stranding shared households
+create or replace function public.delete_own_account()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid := auth.uid();
+  rec record;
+  other_admin_count int;
+  next_member_id uuid;
+begin
+  if uid is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  -- Ensure no household with remaining roommates is left without an admin
+  for rec in
+    select household_id, role
+    from public.household_members
+    where user_id = uid
+  loop
+    select count(*) into other_admin_count
+    from public.household_members
+    where household_id = rec.household_id
+      and user_id <> uid
+      and role = 'admin';
+
+    if other_admin_count = 0 then
+      select user_id into next_member_id
+      from public.household_members
+      where household_id = rec.household_id
+        and user_id <> uid
+      order by joined_at asc
+      limit 1;
+
+      if next_member_id is not null then
+        update public.household_members
+        set role = 'admin'
+        where household_id = rec.household_id
+          and user_id = next_member_id;
+      else
+        -- Last member in household: remove empty household cleanly
+        delete from public.households where id = rec.household_id;
+      end if;
+    end if;
+  end loop;
+
+  delete from auth.users where id = uid;
+end;
+$$;
+
 -- Least-privilege EXECUTE grants (block unauthenticated anon role from calling RPCs)
 revoke all on function public.generate_invite_code() from public, anon, authenticated;
 revoke all on function public.handle_new_user() from public, anon, authenticated;
@@ -401,12 +575,20 @@ revoke all on function public.is_user_in_household(uuid, uuid) from public, anon
 revoke all on function public.create_household(text, bigint, bigint) from public, anon;
 revoke all on function public.join_household_by_code(text) from public, anon;
 revoke all on function public.regenerate_invite_code(uuid) from public, anon;
+revoke all on function public.rename_household(uuid, text) from public, anon;
+revoke all on function public.promote_household_member(uuid, uuid) from public, anon;
+revoke all on function public.remove_household_member(uuid, uuid) from public, anon;
+revoke all on function public.delete_own_account() from public, anon;
 
 grant execute on function public.is_household_member(uuid) to authenticated;
 grant execute on function public.is_user_in_household(uuid, uuid) to authenticated;
 grant execute on function public.create_household(text, bigint, bigint) to authenticated;
 grant execute on function public.join_household_by_code(text) to authenticated;
 grant execute on function public.regenerate_invite_code(uuid) to authenticated;
+grant execute on function public.rename_household(uuid, text) to authenticated;
+grant execute on function public.promote_household_member(uuid, uuid) to authenticated;
+grant execute on function public.remove_household_member(uuid, uuid) to authenticated;
+grant execute on function public.delete_own_account() to authenticated;
 
 -- Row-Level Security (RLS)
 alter table public.profiles enable row level security;
@@ -496,6 +678,12 @@ create policy "Recorder can delete own transaction"
   );
 
 -- Enable Supabase Realtime safely (idempotent)
+do $$
+begin
+  alter publication supabase_realtime add table public.profiles;
+exception when duplicate_object then null;
+end $$;
+
 do $$
 begin
   alter publication supabase_realtime add table public.households;

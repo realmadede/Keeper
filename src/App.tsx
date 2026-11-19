@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type TouchEvent } from "react";
 import { Menu } from "glisse";
-import { Calendar, Check, ChevronLeft } from "lucide-react";
+import { Calendar, Check, ChevronLeft, WifiOff } from "lucide-react";
 import { AddTransactionModal } from "./components/AddTransactionModal";
 import { AuthScreen } from "./components/AuthScreen";
 import { BottomDock } from "./components/BottomDock";
@@ -55,6 +55,20 @@ export function App() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
   const [pendingJoinCode, setPendingJoinCode] = useState<string | null>(() => readInitialJoinCode());
+  const [isOffline, setIsOffline] = useState(() =>
+    typeof navigator !== "undefined" ? !navigator.onLine : false,
+  );
+
+  useEffect(() => {
+    const goOnline = () => setIsOffline(false);
+    const goOffline = () => setIsOffline(true);
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    return () => {
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", goOffline);
+    };
+  }, []);
 
   const paneRefs = useRef<(HTMLDivElement | null)[]>([]);
   const touchStart = useRef<{ x: number; y: number; blocked: boolean } | null>(null);
@@ -225,6 +239,13 @@ export function App() {
           </div>
         </header>
 
+        {isOffline && (
+          <div className="mx-4 mb-2 shrink-0 flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3.5 py-2 text-xs font-medium text-amber-800">
+            <WifiOff className="h-3.5 w-3.5 shrink-0" />
+            <span>You are offline — reconnect to sync household changes.</span>
+          </div>
+        )}
+
         {store.error && (
           <div className="mx-4 mb-2 shrink-0 flex items-center justify-between rounded-2xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs font-medium text-rose-700">
             <span>{store.error}</span>
@@ -336,8 +357,14 @@ export function App() {
                 members={store.members}
                 isDemoMode={store.isDemoMode}
                 realtimeConnected={store.realtimeConnected}
+                onUpdateProfile={store.updateProfile}
+                onUpdatePassword={store.updatePassword}
+                onRenameHousehold={store.renameHousehold}
+                onPromoteMember={store.promoteMember}
+                onRemoveMember={store.removeMember}
                 onRegenerateInviteCode={store.regenerateInviteCode}
                 onLeaveHousehold={store.leaveHousehold}
+                onDeleteAccount={store.deleteAccount}
                 onSignOut={store.signOut}
               />
             </div>

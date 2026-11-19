@@ -45,10 +45,15 @@ export interface KeeperStore {
   signUp: (fullName: string, email: string, password: string) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   updatePassword: (newPassword: string) => Promise<void>;
+  updateProfile: (fullName: string, avatarColor: string) => Promise<void>;
+  deleteAccount: () => Promise<void>;
   signOut: () => Promise<void>;
   createHousehold: (name: string, weeklyBudget: number, memberShare: number) => Promise<void>;
   joinHousehold: (inviteCode: string) => Promise<void>;
   regenerateInviteCode: () => Promise<void>;
+  renameHousehold: (newName: string) => Promise<void>;
+  promoteMember: (userId: string) => Promise<void>;
+  removeMember: (userId: string) => Promise<void>;
   addTransaction: (input: TransactionInput) => Promise<void>;
   updateTransaction: (id: string, input: TransactionInput) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
@@ -269,6 +274,13 @@ export function useKeeperStore(): KeeperStore {
           void fetchHouseholdBundle(userId);
         },
       )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "profiles" },
+        () => {
+          void fetchHouseholdBundle(userId);
+        },
+      )
       .subscribe((status) => {
         setRealtimeConnected(status === "SUBSCRIBED");
       });
@@ -339,7 +351,12 @@ export function useKeeperStore(): KeeperStore {
     const { data, error: err } = await supabase.auth.signUp({
       email: email.trim(),
       password,
-      options: { data: { full_name: fullName.trim().slice(0, 80) } },
+      options: {
+        data: {
+          full_name: fullName.trim().slice(0, 80),
+          accepted_terms: true,
+        },
+      },
     });
     if (err) {
       setError(err.message);
@@ -374,6 +391,9 @@ export function useKeeperStore(): KeeperStore {
 
   const updatePassword = useCallback(async (newPassword: string) => {
     setError(null);
+    if (isDemoMode) {
+      return;
+    }
     if (!supabase) return;
     const { error: err } = await supabase.auth.updateUser({ password: newPassword });
     if (err) {
@@ -381,7 +401,75 @@ export function useKeeperStore(): KeeperStore {
       throw err;
     }
     setPasswordRecoveryMode(false);
-  }, []);
+  }, [isDemoMode]);
+
+  const updateProfile = useCallback(
+    async (fullName: string, avatarColor: string) => {
+      setError(null);
+      if (!profile) return;
+      const cleanName = fullName.trim().slice(0, 80);
+      if (!cleanName) {
+        const msg = "Display name cannot be empty.";
+        setError(msg);
+        throw new Error(msg);
+      }
+      const cleanColor = /^#[0-9A-Fa-f]{6}$/.test(avatarColor)
+        ? avatarColor
+        : profile.avatar_color;
+
+      if (isDemoMode) {
+        const updated: Profile = {
+          ...profile,
+          full_name: cleanName,
+          avatar_color: cleanColor,
+        };
+        setProfile(updated);
+        setMembers((prev) =>
+          prev.map((m) => (m.user_id === profile.id ? { ...m, profile: updated } : m)),
+        );
+        setTransactions((prev) =>
+          prev.map((tx) => ({
+            ...tx,
+            recorder: tx.recorded_by === profile.id ? updated : tx.recorder,
+            payer: tx.paid_by === profile.id ? updated : tx.payer,
+          })),
+        );
+        return;
+      }
+
+      if (!supabase) return;
+      const { error: err } = await supabase
+        .from("profiles")
+        .update({ full_name: cleanName, avatar_color: cleanColor })
+        .eq("id", profile.id);
+      if (err) {
+        setError(err.message);
+        throw err;
+      }
+      await fetchHouseholdBundle(profile.id);
+    },
+    [fetchHouseholdBundle, isDemoMode, profile],
+  );
+
+  const deleteAccount = useCallback(async () => {
+    setError(null);
+    if (isDemoMode) {
+      localStorage.removeItem(DEMO_STORAGE_KEY);
+      setIsDemoMode(false);
+      setProfile(null);
+      setHousehold(null);
+      setMembers([]);
+      setTransactions([]);
+      return;
+    }
+    if (!supabase) return;
+    const { error: err } = await supabase.rpc("delete_own_account");
+    if (err) {
+      setError(err.message);
+      throw err;
+    }
+    await supabase.auth.signOut();
+  }, [isDemoMode]);
 
   const signOut = useCallback(async () => {
     setError(null);
@@ -468,6 +556,86 @@ export function useKeeperStore(): KeeperStore {
     }
     await fetchHouseholdBundle(profile.id);
   }, [fetchHouseholdBundle, household, isDemoMode, profile]);
+
+  const renameHousehold = useCallback(
+    async (newName: string) => {
+      setError(null);
+      if (!household) return;
+      const cleanName = newName.trim().slice(0, 80);
+      if (!cleanName) {
+        const msg = "Household name cannot be empty.";
+        setError(msg);
+        throw new Error(msg);
+      }
+
+      if (isDemoMode) {
+        setHousehold((prev) => (prev ? { ...prev, name: cleanName } : prev));
+        return;
+      }
+
+      if (!supabase || !profile) return;
+      const { error: err } = await supabase.rpc("rename_household", {
+        target_household_id: household.id,
+        new_name: cleanName,
+      });
+      if (err) {
+        setError(err.message);
+        throw err;
+      }
+      await fetchHouseholdBundle(profile.id);
+    },
+    [fetchHouseholdBundle, household, isDemoMode, profile],
+  );
+
+  const promoteMember = useCallback(
+    async (userId: string) => {
+      setError(null);
+      if (!household) return;
+
+      if (isDemoMode) {
+        setMembers((prev) =>
+          prev.map((m) => (m.user_id === userId ? { ...m, role: "admin" } : m)),
+        );
+        return;
+      }
+
+      if (!supabase || !profile) return;
+      const { error: err } = await supabase.rpc("promote_household_member", {
+        target_household_id: household.id,
+        target_user_id: userId,
+      });
+      if (err) {
+        setError(err.message);
+        throw err;
+      }
+      await fetchHouseholdBundle(profile.id);
+    },
+    [fetchHouseholdBundle, household, isDemoMode, profile],
+  );
+
+  const removeMember = useCallback(
+    async (userId: string) => {
+      setError(null);
+      if (!household) return;
+
+      if (isDemoMode) {
+        setMembers((prev) => prev.filter((m) => m.user_id !== userId));
+        return;
+      }
+
+      if (!supabase || !profile) return;
+      const { error: err } = await supabase.rpc("remove_household_member", {
+        target_household_id: household.id,
+        target_user_id: userId,
+      });
+      if (err) {
+        setError(err.message);
+        throw err;
+      }
+      await fetchHouseholdBundle(profile.id);
+    },
+    [fetchHouseholdBundle, household, isDemoMode, profile],
+  );
 
   const addTransaction = useCallback(
     async (input: TransactionInput) => {
@@ -672,10 +840,15 @@ export function useKeeperStore(): KeeperStore {
     signUp,
     resetPassword,
     updatePassword,
+    updateProfile,
+    deleteAccount,
     signOut,
     createHousehold,
     joinHousehold,
     regenerateInviteCode,
+    renameHousehold,
+    promoteMember,
+    removeMember,
     addTransaction,
     updateTransaction,
     deleteTransaction,

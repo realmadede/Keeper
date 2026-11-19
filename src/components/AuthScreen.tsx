@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Button, Glass, Input, SegmentedControl } from "glisse";
 import { ArrowLeft, Check, Eye, EyeOff, KeyRound, Mail, Sparkles, User } from "lucide-react";
 import { KeeperLogo } from "./KeeperLogo";
+import { LegalModal, type LegalDocType } from "./LegalModal";
 
 interface AuthScreenProps {
   isSupabaseReady: boolean;
@@ -33,6 +34,8 @@ export function AuthScreen({
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [legalDoc, setLegalDoc] = useState<LegalDocType | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [resetSent, setResetSent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -86,6 +89,11 @@ export function AuthScreen({
 
     if (mode === "signup" && password !== confirmPassword) {
       setLocalError("Passwords do not match. Please type your chosen password again.");
+      return;
+    }
+
+    if (mode === "signup" && !acceptedTerms) {
+      setLocalError("Please agree to the Terms of Service and Privacy Policy to create an account.");
       return;
     }
 
@@ -291,6 +299,47 @@ export function AuthScreen({
               </div>
             )}
 
+            {!passwordRecoveryMode && mode === "signup" && (
+              <div className="flex items-start gap-2.5 rounded-2xl border border-slate-200/80 bg-slate-50/70 px-3 py-2.5">
+                <button
+                  type="button"
+                  role="checkbox"
+                  aria-checked={acceptedTerms}
+                  aria-label="Agree to Terms of Service and Privacy Policy"
+                  onClick={() => {
+                    setAcceptedTerms((prev) => !prev);
+                    if (localError) setLocalError(null);
+                  }}
+                  className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-[5px] border transition-colors cursor-pointer ${
+                    acceptedTerms
+                      ? "border-[#1C1C1E] bg-[#1C1C1E] text-white"
+                      : "border-slate-300 bg-white text-transparent hover:border-slate-500"
+                  }`}
+                >
+                  <Check className="h-3 w-3" strokeWidth={3} />
+                </button>
+                <p className="text-[11px] leading-snug text-slate-600">
+                  I agree to the{" "}
+                  <button
+                    type="button"
+                    onClick={() => setLegalDoc("terms")}
+                    className="font-semibold text-slate-900 underline underline-offset-2 hover:text-[#A68756] cursor-pointer"
+                  >
+                    Terms of Service
+                  </button>{" "}
+                  and{" "}
+                  <button
+                    type="button"
+                    onClick={() => setLegalDoc("privacy")}
+                    className="font-semibold text-slate-900 underline underline-offset-2 hover:text-[#A68756] cursor-pointer"
+                  >
+                    Privacy Policy
+                  </button>
+                  .
+                </p>
+              </div>
+            )}
+
             {resetSent && mode === "forgot" && (
               <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">
                 Password reset link sent to <strong>{email}</strong>. Check your inbox.
@@ -306,7 +355,7 @@ export function AuthScreen({
             <Button
               type="submit"
               variant="filled"
-              disabled={submitting}
+              disabled={submitting || (!passwordRecoveryMode && mode === "signup" && !acceptedTerms)}
               className="w-full justify-center !h-11 text-sm font-semibold"
             >
               {submitting
@@ -341,6 +390,8 @@ export function AuthScreen({
           )}
         </Glass>
       </div>
+
+      <LegalModal doc={legalDoc} onClose={() => setLegalDoc(null)} />
     </div>
   );
 }
