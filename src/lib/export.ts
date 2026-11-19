@@ -44,10 +44,12 @@ export function buildWeeklyWhatsAppSummary(
 }
 
 function escapeCsvCell(value: string): string {
-  if (/[",\r\n]/.test(value)) {
-    return `"${value.replace(/"/g, '""')}"`;
+  // Prevent CSV formula / DDE injection in Excel, LibreOffice, and Google Sheets
+  const neutralized = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+  if (/[",\r\n]/.test(neutralized)) {
+    return `"${neutralized.replace(/"/g, '""')}"`;
   }
-  return value;
+  return neutralized;
 }
 
 export function buildLedgerCsv(transactions: Transaction[]): string {

@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { createDemoSeed } from "../lib/demoData";
+import {
+  createRateLimiter,
+  generateClientInviteCode,
+  sanitizeInviteCode,
+} from "../lib/security";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
+
+const authRateLimiter = createRateLimiter(5, 5 * 60 * 1000);
+const resetRateLimiter = createRateLimiter(3, 10 * 60 * 1000);
+const joinRateLimiter = createRateLimiter(5, 15 * 60 * 1000);
 import type {
   Household,
   HouseholdMember,
@@ -39,6 +48,7 @@ export interface KeeperStore {
   signOut: () => Promise<void>;
   createHousehold: (name: string, weeklyBudget: number, memberShare: number) => Promise<void>;
   joinHousehold: (inviteCode: string) => Promise<void>;
+  regenerateInviteCode: () => Promise<void>;
   addTransaction: (input: TransactionInput) => Promise<void>;
   updateTransaction: (id: string, input: TransactionInput) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
@@ -294,27 +304,42 @@ export function useKeeperStore(): KeeperStore {
 
   const signIn = useCallback(async (email: string, password: string) => {
     setError(null);
+    const rate = authRateLimiter.check();
+    if (!rate.allowed) {
+      const msg = `Too many sign-in attempts. Please wait ${rate.retryAfterSec}s and try again.`;
+      setError(msg);
+      throw new Error(msg);
+    }
     if (!supabase) {
       setError("Supabase is not configured yet. Add your project URL and key in .env.");
       return;
     }
+    authRateLimiter.record();
     const { error: err } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
     if (err) {
       setError(err.message);
       throw err;
     }
+    authRateLimiter.reset();
   }, []);
 
   const signUp = useCallback(async (fullName: string, email: string, password: string) => {
     setError(null);
+    const rate = authRateLimiter.check();
+    if (!rate.allowed) {
+      const msg = `Too many attempts. Please wait ${rate.retryAfterSec}s and try again.`;
+      setError(msg);
+      throw new Error(msg);
+    }
     if (!supabase) {
       setError("Supabase is not configured yet. Add your project URL and key in .env.");
       return;
     }
+    authRateLimiter.record();
     const { data, error: err } = await supabase.auth.signUp({
       email: email.trim(),
       password,
-      options: { data: { full_name: fullName.trim() } },
+      options: { data: { full_name: fullName.trim().slice(0, 80) } },
     });
     if (err) {
       setError(err.message);
@@ -327,10 +352,17 @@ export function useKeeperStore(): KeeperStore {
 
   const resetPassword = useCallback(async (email: string) => {
     setError(null);
+    const rate = resetRateLimiter.check();
+    if (!rate.allowed) {
+      const msg = `Too many reset requests. Please wait ${rate.retryAfterSec}s and try again.`;
+      setError(msg);
+      throw new Error(msg);
+    }
     if (!supabase) {
       setError("Supabase is not configured yet. Add your project URL and key in .env.");
       throw new Error("Supabase not configured");
     }
+    resetRateLimiter.record();
     const { error: err } = await supabase.auth.resetPasswordForEmail(email.trim(), {
       redirectTo: window.location.origin,
     });
@@ -388,18 +420,54 @@ export function useKeeperStore(): KeeperStore {
   const joinHousehold = useCallback(
     async (inviteCode: string) => {
       setError(null);
+      const rate = joinRateLimiter.check();
+      if (!rate.allowed) {
+        const msg = `Too many invite attempts. Please wait ${rate.retryAfterSec}s and try again.`;
+        setError(msg);
+        throw new Error(msg);
+      }
+      const cleanCode = sanitizeInviteCode(inviteCode);
+      if (!cleanCode) {
+        joinRateLimiter.record();
+        const msg = "Invalid invite code format. Use 6-12 letters and numbers.";
+        setError(msg);
+        throw new Error(msg);
+      }
       if (!supabase || !profile) return;
       const { error: err } = await supabase.rpc("join_household_by_code", {
-        code: inviteCode.trim().toUpperCase(),
+        code: cleanCode,
       });
       if (err) {
+        joinRateLimiter.record();
         setError(err.message);
         throw err;
       }
+      joinRateLimiter.reset();
       await fetchHouseholdBundle(profile.id);
     },
     [fetchHouseholdBundle, profile],
   );
+
+  const regenerateInviteCode = useCallback(async () => {
+    setError(null);
+    if (!household) return;
+
+    if (isDemoMode) {
+      const nextCode = generateClientInviteCode();
+      setHousehold((prev) => (prev ? { ...prev, invite_code: nextCode } : prev));
+      return;
+    }
+
+    if (!supabase || !profile) return;
+    const { error: err } = await supabase.rpc("regenerate_invite_code", {
+      target_household_id: household.id,
+    });
+    if (err) {
+      setError(err.message);
+      throw err;
+    }
+    await fetchHouseholdBundle(profile.id);
+  }, [fetchHouseholdBundle, household, isDemoMode, profile]);
 
   const addTransaction = useCallback(
     async (input: TransactionInput) => {
@@ -496,10 +564,9 @@ export function useKeeperStore(): KeeperStore {
           type: input.type,
           amount: Math.round(input.amount),
           category: input.type === "contribution" ? "contribution" : input.category,
-          description: input.description.trim(),
+          description: input.description.trim().slice(0, 200),
           transaction_date: input.transaction_date,
           paid_by: paidById,
-          updated_at: nowIso,
         })
         .eq("id", id);
       if (err) {
@@ -608,6 +675,7 @@ export function useKeeperStore(): KeeperStore {
     signOut,
     createHousehold,
     joinHousehold,
+    regenerateInviteCode,
     addTransaction,
     updateTransaction,
     deleteTransaction,

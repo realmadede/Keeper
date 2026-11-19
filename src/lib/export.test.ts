@@ -108,4 +108,29 @@ describe("paid_by crediting, rollover balance, WhatsApp summary & CSV export", (
     expect(lines[1]).toContain('"Cash pool, collected by Amani",60000,Neema Hassan,Amani Juma,No');
     expect(lines[2]).toContain('"LUKU ""Prepaid"" Tokens",25000,Amani Juma,Amani Juma,Yes');
   });
+
+  it("neutralizes CSV formula injection payloads (=, +, -, @, tab)", () => {
+    const dangerous: Transaction[] = [
+      {
+        ...TRANSACTIONS[1],
+        id: "t-inj-1",
+        description: '=HYPERLINK("https://evil.example","Click")',
+      },
+      {
+        ...TRANSACTIONS[1],
+        id: "t-inj-2",
+        description: "+SUM(A1:A10)",
+      },
+      {
+        ...TRANSACTIONS[1],
+        id: "t-inj-3",
+        description: "@cmd|' /C calc'!A0",
+      },
+    ];
+    const csv = buildLedgerCsv(dangerous);
+    const lines = csv.split("\n");
+    expect(lines[1]).toContain('"\'=HYPERLINK(""https://evil.example"",""Click"")"');
+    expect(lines[2]).toContain("'+SUM(A1:A10)");
+    expect(lines[3]).toContain("'@cmd|' /C calc'!A0");
+  });
 });

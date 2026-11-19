@@ -15,6 +15,7 @@ import { TransactionList } from "./components/TransactionList";
 import { WeeklyBarChart } from "./components/WeeklyBarChart";
 import { useKeeperStore } from "./hooks/useKeeperStore";
 import { computeWeeklySummary, getWeekWindow } from "./lib/analytics";
+import { sanitizeInviteCode } from "./lib/security";
 import type { ActiveTab, Transaction } from "./types";
 
 const TAB_ORDER: ActiveTab[] = ["overview", "ledger", "budget", "household"];
@@ -30,14 +31,18 @@ const TAB_TITLES: Record<ActiveTab, string> = {
 function readInitialJoinCode(): string | null {
   try {
     const params = new URLSearchParams(window.location.search);
-    const fromUrl = params.get("join")?.trim().toUpperCase();
-    if (fromUrl) {
-      sessionStorage.setItem(PENDING_JOIN_KEY, fromUrl);
+    const rawParam = params.get("join");
+    if (rawParam !== null) {
       const cleanUrl = window.location.pathname + window.location.hash;
       window.history.replaceState({}, "", cleanUrl);
-      return fromUrl;
+      const valid = sanitizeInviteCode(rawParam);
+      if (valid) {
+        sessionStorage.setItem(PENDING_JOIN_KEY, valid);
+        return valid;
+      }
+      return null;
     }
-    return sessionStorage.getItem(PENDING_JOIN_KEY);
+    return sanitizeInviteCode(sessionStorage.getItem(PENDING_JOIN_KEY));
   } catch {
     return null;
   }
@@ -331,6 +336,7 @@ export function App() {
                 members={store.members}
                 isDemoMode={store.isDemoMode}
                 realtimeConnected={store.realtimeConnected}
+                onRegenerateInviteCode={store.regenerateInviteCode}
                 onLeaveHousehold={store.leaveHousehold}
                 onSignOut={store.signOut}
               />

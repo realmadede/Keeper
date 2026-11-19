@@ -18,7 +18,7 @@ export function createDemoSeed() {
     currency: "TZS",
     weekly_budget_target: 240000,
     member_weekly_share: 60000,
-    invite_code: "SNZ414",
+    invite_code: "SNZ414KP",
     created_by: "demo-1",
     created_at: new Date().toISOString(),
   };

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button, Glass } from "glisse";
-import { Check, Copy, Link2, LogOut, Radio, Shield, Users } from "lucide-react";
+import { Check, Copy, Link2, LogOut, Radio, RefreshCw, Shield, Users } from "lucide-react";
 import { getInitials } from "../lib/format";
 import type { Household, HouseholdMember, Profile } from "../types";
 
@@ -10,6 +10,7 @@ interface HouseholdViewProps {
   members: HouseholdMember[];
   isDemoMode: boolean;
   realtimeConnected: boolean;
+  onRegenerateInviteCode: () => Promise<void>;
   onLeaveHousehold: () => Promise<void>;
   onSignOut: () => Promise<void>;
 }
@@ -20,11 +21,26 @@ export function HouseholdView({
   members,
   isDemoMode,
   realtimeConnected,
+  onRegenerateInviteCode,
   onLeaveHousehold,
   onSignOut,
 }: HouseholdViewProps) {
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [confirmRotate, setConfirmRotate] = useState(false);
+  const [rotating, setRotating] = useState(false);
+
+  const isAdmin = members.some((m) => m.user_id === profile.id && m.role === "admin");
+
+  const handleRotate = async () => {
+    setRotating(true);
+    try {
+      await onRegenerateInviteCode();
+      setConfirmRotate(false);
+    } finally {
+      setRotating(false);
+    }
+  };
 
   const copyCode = async () => {
     try {
@@ -124,6 +140,42 @@ export function HouseholdView({
           >
             {copiedLink ? "Invite Link Copied" : "Copy Direct Invite Link"}
           </Button>
+
+          {isAdmin && (
+            <div className="pt-2 border-t border-slate-200/70">
+              {confirmRotate ? (
+                <div className="flex items-center justify-between gap-2 text-[11px]">
+                  <span className="text-slate-600">Revoke old invite code?</span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setConfirmRotate(false)}
+                      className="rounded-lg bg-slate-100 px-2.5 py-1 font-semibold text-slate-600 hover:bg-slate-200 cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={rotating}
+                      onClick={() => void handleRotate()}
+                      className="rounded-lg bg-slate-900 px-2.5 py-1 font-semibold text-white hover:bg-slate-800 disabled:opacity-50 cursor-pointer"
+                    >
+                      {rotating ? "Rotating..." : "Confirm"}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmRotate(true)}
+                  className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 hover:text-slate-900 cursor-pointer"
+                >
+                  <RefreshCw className="h-3 w-3" />
+                  Rotate invite code (revokes old code)
+                </button>
+              )}
+            </div>
+          )}
         </Glass>
         <p className="mt-2 text-[11px] text-slate-400">
           Share the code or direct link privately with roommates so they can join and see the shared
