@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState, type TouchEvent } from "react";
 import { Menu } from "glisse";
 import { Calendar, Check, ChevronLeft } from "lucide-react";
 import { AddTransactionModal } from "./components/AddTransactionModal";
@@ -17,6 +17,8 @@ import { useKeeperStore } from "./hooks/useKeeperStore";
 import { computeWeeklySummary, getWeekWindow } from "./lib/analytics";
 import type { ActiveTab } from "./types";
 
+const TAB_ORDER: ActiveTab[] = ["overview", "ledger", "budget", "household"];
+
 const TAB_TITLES: Record<ActiveTab, string> = {
   overview: "Expense Overview",
   ledger: "Household Ledger",
@@ -30,6 +32,10 @@ export function App() {
   const [weekOffset, setWeekOffset] = useState(0);
   const [addOpen, setAddOpen] = useState(false);
 
+  const paneRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const touchStart = useRef<{ x: number; y: number; blocked: boolean } | null>(null);
+
+  const activeIndex = TAB_ORDER.indexOf(activeTab);
   const weekWindow = useMemo(() => getWeekWindow(weekOffset), [weekOffset]);
 
   const summary = useMemo(() => {
@@ -44,7 +50,32 @@ export function App() {
 
   const handleSelectTab = (tab: ActiveTab) => {
     setActiveTab(tab);
-    window.scrollTo({ top: 0, behavior: "instant" });
+    const idx = TAB_ORDER.indexOf(tab);
+    paneRefs.current[idx]?.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleTouchStart = (e: TouchEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement | null;
+    const blocked = Boolean(target?.closest("[data-no-tab-swipe]"));
+    const t = e.touches[0];
+    touchStart.current = { x: t.clientX, y: t.clientY, blocked };
+  };
+
+  const handleTouchEnd = (e: TouchEvent<HTMLDivElement>) => {
+    const start = touchStart.current;
+    touchStart.current = null;
+    if (!start || start.blocked) return;
+
+    const t = e.changedTouches[0];
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    if (Math.abs(dx) < 56 || Math.abs(dx) < Math.abs(dy) * 1.4) return;
+
+    if (dx < 0 && activeIndex < TAB_ORDER.length - 1) {
+      handleSelectTab(TAB_ORDER[activeIndex + 1]);
+    } else if (dx > 0 && activeIndex > 0) {
+      handleSelectTab(TAB_ORDER[activeIndex - 1]);
+    }
   };
 
   if (store.loading) {
@@ -96,10 +127,10 @@ export function App() {
   });
 
   return (
-    <div className="min-h-dvh pb-28">
-      <div className="mx-auto w-full max-w-[440px] px-4 pt-4">
-        {/* Top App Header — matches mockup's crisp light header + right week pill */}
-        <header className="mb-4 flex items-center justify-between gap-2">
+    <div className="h-dvh overflow-hidden flex flex-col">
+      <div className="mx-auto flex h-full w-full max-w-[440px] flex-col">
+        {/* Anchored Phone Top Bar */}
+        <header className="shrink-0 px-4 pt-4 pb-3 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2.5 min-w-0">
             {activeTab === "overview" ? (
               <KeeperLogo size={38} className="shrink-0 drop-shadow-xs" />
@@ -138,7 +169,7 @@ export function App() {
         </header>
 
         {store.error && (
-          <div className="mb-3 flex items-center justify-between rounded-2xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs font-medium text-rose-700">
+          <div className="mx-4 mb-2 shrink-0 flex items-center justify-between rounded-2xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs font-medium text-rose-700">
             <span>{store.error}</span>
             <button
               type="button"
@@ -150,76 +181,107 @@ export function App() {
           </div>
         )}
 
-        {/* Active View */}
-        {activeTab === "overview" && (
-          <main className="space-y-4">
-            <KpiCards
-              totalSpent={summary.totalSpent}
-              totalContributed={summary.totalContributed}
-              remainingBalance={summary.remainingBalance}
-              weeklyBudgetTarget={store.household.weekly_budget_target}
-              spentDeltaPct={summary.spentDeltaPct}
-              contributedDeltaPct={summary.contributedDeltaPct}
-            />
+        {/* Horizontal 4-Screen Phone Pager (slides horizontally between Home, Ledger, Budget, House) */}
+        <div
+          className="relative flex-1 overflow-hidden"
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+        >
+          <div
+            className="flex h-full w-full transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform"
+            style={{ transform: `translate3d(-${activeIndex * 100}%, 0, 0)` }}
+          >
+            {/* Screen 1: Home / Overview */}
+            <div
+              ref={(el) => {
+                paneRefs.current[0] = el;
+              }}
+              aria-hidden={activeTab !== "overview"}
+              className="h-full w-full shrink-0 overflow-y-auto no-scrollbar px-4 pb-28 space-y-4"
+            >
+              <KpiCards
+                totalSpent={summary.totalSpent}
+                totalContributed={summary.totalContributed}
+                remainingBalance={summary.remainingBalance}
+                weeklyBudgetTarget={store.household.weekly_budget_target}
+                spentDeltaPct={summary.spentDeltaPct}
+                contributedDeltaPct={summary.contributedDeltaPct}
+              />
 
-            <WeeklyBarChart
-              dailySeries={summary.dailySeries}
-              spentDeltaPct={summary.spentDeltaPct}
-            />
+              <WeeklyBarChart
+                dailySeries={summary.dailySeries}
+                spentDeltaPct={summary.spentDeltaPct}
+              />
 
-            <CategoryBreakdown
-              categories={summary.categories}
-              totalSpent={summary.totalSpent}
-              spentDeltaPct={summary.spentDeltaPct}
-              onViewAll={() => handleSelectTab("ledger")}
-            />
+              <CategoryBreakdown
+                categories={summary.categories}
+                totalSpent={summary.totalSpent}
+                spentDeltaPct={summary.spentDeltaPct}
+                onViewAll={() => handleSelectTab("ledger")}
+              />
 
-            <TransactionList
-              title="Recent Transactions"
-              transactions={summary.weekTransactions}
-              currentUserId={store.profile.id}
-              onDelete={store.deleteTransaction}
-              maxItems={5}
-              onViewAll={() => handleSelectTab("ledger")}
-            />
-          </main>
-        )}
+              <TransactionList
+                title="Recent Transactions"
+                transactions={summary.weekTransactions}
+                currentUserId={store.profile.id}
+                onDelete={store.deleteTransaction}
+                maxItems={5}
+                onViewAll={() => handleSelectTab("ledger")}
+              />
+            </div>
 
-        {activeTab === "ledger" && (
-          <main>
-            <LedgerView
-              transactions={store.transactions}
-              currentUserId={store.profile.id}
-              onDelete={store.deleteTransaction}
-            />
-          </main>
-        )}
+            {/* Screen 2: Ledger */}
+            <div
+              ref={(el) => {
+                paneRefs.current[1] = el;
+              }}
+              aria-hidden={activeTab !== "ledger"}
+              className="h-full w-full shrink-0 overflow-y-auto no-scrollbar px-4 pb-28"
+            >
+              <LedgerView
+                transactions={store.transactions}
+                currentUserId={store.profile.id}
+                onDelete={store.deleteTransaction}
+              />
+            </div>
 
-        {activeTab === "budget" && (
-          <main>
-            <BudgetView
-              household={store.household}
-              totalContributed={summary.totalContributed}
-              totalSpent={summary.totalSpent}
-              memberStatuses={summary.memberStatuses}
-              onUpdateBudget={store.updateBudget}
-            />
-          </main>
-        )}
+            {/* Screen 3: Budget */}
+            <div
+              ref={(el) => {
+                paneRefs.current[2] = el;
+              }}
+              aria-hidden={activeTab !== "budget"}
+              className="h-full w-full shrink-0 overflow-y-auto no-scrollbar px-4 pb-28"
+            >
+              <BudgetView
+                household={store.household}
+                totalContributed={summary.totalContributed}
+                totalSpent={summary.totalSpent}
+                memberStatuses={summary.memberStatuses}
+                onUpdateBudget={store.updateBudget}
+              />
+            </div>
 
-        {activeTab === "household" && (
-          <main>
-            <HouseholdView
-              household={store.household}
-              profile={store.profile}
-              members={store.members}
-              isDemoMode={store.isDemoMode}
-              realtimeConnected={store.realtimeConnected}
-              onLeaveHousehold={store.leaveHousehold}
-              onSignOut={store.signOut}
-            />
-          </main>
-        )}
+            {/* Screen 4: Household */}
+            <div
+              ref={(el) => {
+                paneRefs.current[3] = el;
+              }}
+              aria-hidden={activeTab !== "household"}
+              className="h-full w-full shrink-0 overflow-y-auto no-scrollbar px-4 pb-28"
+            >
+              <HouseholdView
+                household={store.household}
+                profile={store.profile}
+                members={store.members}
+                isDemoMode={store.isDemoMode}
+                realtimeConnected={store.realtimeConnected}
+                onLeaveHousehold={store.leaveHousehold}
+                onSignOut={store.signOut}
+              />
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Floating Dark Liquid Glass Navigation Bar */}

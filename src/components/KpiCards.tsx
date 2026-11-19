@@ -49,7 +49,10 @@ export function KpiCards({
     weeklyBudgetTarget > 0 ? Math.min(100, Math.round((totalContributed / weeklyBudgetTarget) * 100)) : 0;
 
   return (
-    <div className="flex gap-3 overflow-x-auto no-scrollbar pb-1 -mx-4 px-4">
+    <div
+      data-no-tab-swipe
+      className="flex gap-3 overflow-x-auto no-scrollbar pb-1 -mx-4 px-4"
+    >
       {/* Spent Card — Warm Orange/Peach tint matching mockup Payable card */}
       <div className="min-w-[168px] flex-1 rounded-2xl border border-[#F3CFAF] bg-[#FFF8F2] p-3.5 shadow-[0_2px_10px_rgba(234,88,12,0.05)]">
         <div className="flex items-center justify-between mb-1.5">
