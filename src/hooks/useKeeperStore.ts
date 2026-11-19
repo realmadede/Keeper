@@ -51,6 +51,7 @@ export interface KeeperStore {
   enterDemoMode: () => void;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (fullName: string, email: string, password: string) => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   updatePassword: (newPassword: string) => Promise<void>;
   updateProfile: (fullName: string, avatarColor: string) => Promise<void>;
@@ -469,7 +470,25 @@ export function useKeeperStore(): KeeperStore {
       throw err;
     }
     if (!data.session) {
-      setError("Account created! Check your email to confirm your address, then sign in.");
+      setError("Account created! Sign in with your email and password to continue.");
+    }
+  }, []);
+
+  const signInWithGoogle = useCallback(async () => {
+    setError(null);
+    if (!supabase) {
+      setError("Supabase is not configured yet. Add your project URL and key in .env.");
+      return;
+    }
+    const { error: err } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: window.location.origin,
+      },
+    });
+    if (err) {
+      setError(err.message);
+      throw err;
     }
   }, []);
 
@@ -1115,6 +1134,7 @@ export function useKeeperStore(): KeeperStore {
     enterDemoMode,
     signIn,
     signUp,
+    signInWithGoogle,
     resetPassword,
     updatePassword,
     updateProfile,

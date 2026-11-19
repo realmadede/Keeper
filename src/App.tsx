@@ -330,6 +330,7 @@ export function App() {
         onBack={pendingJoinCode ? undefined : () => setAuthView("welcome")}
         onSignIn={store.signIn}
         onSignUp={store.signUp}
+        onSignInWithGoogle={store.signInWithGoogle}
         onResetPassword={store.resetPassword}
         onUpdatePassword={store.updatePassword}
         onEnterDemo={store.enterDemoMode}

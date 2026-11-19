@@ -15,5 +15,18 @@ enabled = true
 enable_signup = true
 minimum_password_length = 6
 
+[auth.email]
+enable_signup = true
+enable_confirmations = false
+
+[auth.email.template.recovery]
+subject = "Reset your Keeper password"
+content_path = "./supabase/templates/recovery.html"
+
+[auth.external.google]
+enabled = true
+client_id = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET)"
+
 [realtime]
 enabled = true

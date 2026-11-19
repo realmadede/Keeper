@@ -13,9 +13,33 @@ interface AuthScreenProps {
   onBack?: () => void;
   onSignIn: (email: string, password: string) => Promise<void>;
   onSignUp: (fullName: string, email: string, password: string) => Promise<void>;
+  onSignInWithGoogle: () => Promise<void>;
   onResetPassword: (email: string) => Promise<void>;
   onUpdatePassword: (newPassword: string) => Promise<void>;
   onEnterDemo: () => void;
+}
+
+function GoogleMark() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" aria-hidden="true">
+      <path
+        fill="#4285F4"
+        d="M23.49 12.27c0-.79-.07-1.55-.2-2.27H12v4.3h6.44a5.5 5.5 0 0 1-2.39 3.61v3h3.87c2.26-2.08 3.57-5.15 3.57-8.64Z"
+      />
+      <path
+        fill="#34A853"
+        d="M12 24c3.24 0 5.96-1.07 7.95-2.91l-3.87-3c-1.07.72-2.45 1.15-4.08 1.15-3.14 0-5.8-2.12-6.75-4.97H1.25v3.1A12 12 0 0 0 12 24Z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M5.25 14.27a7.21 7.21 0 0 1 0-4.54v-3.1H1.25a12 12 0 0 0 0 10.74l4-3.1Z"
+      />
+      <path
+        fill="#EA4335"
+        d="M12 4.77c1.76 0 3.34.61 4.58 1.8l3.44-3.44C17.95 1.19 15.23 0 12 0A12 12 0 0 0 1.25 6.63l4 3.1c.95-2.85 3.61-4.96 6.75-4.96Z"
+      />
+    </svg>
+  );
 }
 
 export function AuthScreen({
@@ -27,6 +51,7 @@ export function AuthScreen({
   onBack,
   onSignIn,
   onSignUp,
+  onSignInWithGoogle,
   onResetPassword,
   onUpdatePassword,
   onEnterDemo,
@@ -43,6 +68,23 @@ export function AuthScreen({
   const [localError, setLocalError] = useState<string | null>(null);
   const [resetSent, setResetSent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [googleSubmitting, setGoogleSubmitting] = useState(false);
+
+  const handleGoogleAuth = async () => {
+    setLocalError(null);
+    if (mode === "signup" && !acceptedTerms) {
+      setLocalError("Please agree to the Terms of Service and Privacy Policy first.");
+      return;
+    }
+    setGoogleSubmitting(true);
+    try {
+      await onSignInWithGoogle();
+    } catch {
+      // Error surfaced via store
+    } finally {
+      setGoogleSubmitting(false);
+    }
+  };
 
   const passwordsMatch =
     confirmPassword.length > 0 && password === confirmPassword;
@@ -387,8 +429,8 @@ export function AuthScreen({
             </Button>
           </form>
 
-          {/* Auto-hide Demo Mode once real Supabase credentials are configured */}
-          {!isSupabaseReady && !passwordRecoveryMode && mode !== "forgot" && (
+          {/* Continue with Google OAuth */}
+          {!passwordRecoveryMode && mode !== "forgot" && (
             <>
               <div className="my-4 flex items-center gap-3">
                 <div className="h-px flex-1 bg-slate-200" />
@@ -397,13 +439,32 @@ export function AuthScreen({
               </div>
 
               <Button
+                type="button"
+                onClick={() => void handleGoogleAuth()}
+                disabled={googleSubmitting || submitting}
+                icon={<GoogleMark />}
+                className="w-full justify-center !h-10 text-xs font-semibold"
+              >
+                {googleSubmitting
+                  ? "Connecting to Google..."
+                  : mode === "signup"
+                    ? "Sign up with Google"
+                    : "Sign in with Google"}
+              </Button>
+            </>
+          )}
+
+          {/* Auto-hide Demo Mode once real Supabase credentials are configured */}
+          {!isSupabaseReady && !passwordRecoveryMode && mode !== "forgot" && (
+            <div className="mt-2.5">
+              <Button
                 onClick={onEnterDemo}
                 icon={<Sparkles className="h-4 w-4 text-[#BFA377]" />}
                 className="w-full justify-center !h-10 text-xs font-semibold"
               >
                 Preview Demo Household (TZS)
               </Button>
-            </>
+            </div>
           )}
         </Glass>
       </div>
