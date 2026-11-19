@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+@layer base {
+  html {
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background-color: #f5f6fa;
+    color: #111827;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    background:
+      radial-gradient(circle at 12% 8%, rgba(191, 163, 119, 0.14), transparent 36%),
+      radial-gradient(circle at 88% 12%, rgba(59, 130, 246, 0.1), transparent 38%),
+      radial-gradient(circle at 50% 92%, rgba(20, 184, 166, 0.08), transparent 42%),
+      #f5f6fa;
+  }
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Custom Glisse theme accents tailored to Keeper */
+:root[data-theme="light"] {
+  --lg-fill: #1c1c1e;
+  --lg-glass: rgba(255, 255, 255, 0.72);
+  --lg-edge: rgba(17, 24, 39, 0.08);
+  --lg-drop: rgba(17, 24, 39, 0.06);
+}
+
+.keeper-dock[data-theme="dark"] {
+  --lg-glass: rgba(24, 24, 27, 0.86);
+  --lg-edge: rgba(255, 255, 255, 0.14);
+  --lg-drop: rgba(0, 0, 0, 0.28);
+  --lg-rim-shine: 0.22;
+}
+
+.lg-input {
+  max-width: 100%;
+}
+
+.keeper-segmented-2.lg-segmented {
+  --lg-tab-width: 154px;
+  --lg-tab-height: 36px;
+}
+
+.keeper-segmented-3.lg-segmented {
+  --lg-tab-width: 112px;
+  --lg-tab-height: 34px;
+}
