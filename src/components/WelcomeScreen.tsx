@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { Button, Glass } from "glisse";
-import { ShieldCheck, Sparkles, Users, Wallet } from "lucide-react";
+import { ShieldCheck, Smartphone, Sparkles, Users, Wallet } from "lucide-react";
 import { KeeperLogo } from "./KeeperLogo";
+import { LegalModal, type LegalDocType } from "./LegalModal";
 
 interface WelcomeScreenProps {
   isSupabaseReady: boolean;
@@ -15,10 +17,12 @@ export function WelcomeScreen({
   onSignIn,
   onEnterDemo,
 }: WelcomeScreenProps) {
+  const [legalDoc, setLegalDoc] = useState<LegalDocType | null>(null);
+
   return (
     <div className="min-h-dvh flex flex-col items-center justify-center px-4 py-8">
-      <div className="w-full max-w-[400px] space-y-5">
-        <Glass className="rounded-[32px] !bg-white/85 p-6 shadow-[0_14px_40px_rgba(15,23,42,0.08)] space-y-6">
+      <div className="w-full max-w-[400px] space-y-4">
+        <Glass className="rounded-[32px] !bg-white/85 p-6 shadow-[0_14px_40px_rgba(15,23,42,0.08)] space-y-5">
           {/* Identity */}
           <div className="text-center space-y-2.5">
             <KeeperLogo
@@ -38,6 +42,34 @@ export function WelcomeScreen({
             A private shared ledger for roommates living together — stay in sync on weekly TZS
             contributions, household purchases, recurring bills, and what the house needs.
           </p>
+
+          {/* Compact 3-Step Flow */}
+          <div className="grid grid-cols-3 gap-1.5 rounded-2xl border border-slate-100 bg-slate-50/80 p-2 text-center">
+            <div className="px-1 py-1">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-[#8F703F]">
+                1. House
+              </div>
+              <div className="mt-0.5 text-[11px] font-medium leading-tight text-slate-700">
+                Create or join
+              </div>
+            </div>
+            <div className="border-x border-slate-200/70 px-1 py-1">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-[#8F703F]">
+                2. Record
+              </div>
+              <div className="mt-0.5 text-[11px] font-medium leading-tight text-slate-700">
+                Pool & spend TZS
+              </div>
+            </div>
+            <div className="px-1 py-1">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-[#8F703F]">
+                3. Sync
+              </div>
+              <div className="mt-0.5 text-[11px] font-medium leading-tight text-slate-700">
+                See live balance
+              </div>
+            </div>
+          </div>
 
           {/* 3 Quiet Apple-Style Feature Rows */}
           <div className="space-y-2.5 border-y border-slate-100 py-4">
@@ -78,6 +110,12 @@ export function WelcomeScreen({
             </div>
           </div>
 
+          {/* Plain "Not a bank" reassurance */}
+          <p className="rounded-2xl bg-slate-50/90 px-3 py-2 text-center text-[11px] leading-snug text-slate-500">
+            Keeper only tracks shared house records — it never links to M-Pesa, bank accounts, or
+            moves real money.
+          </p>
+
           {/* Primary Actions */}
           <div className="space-y-2.5">
             <Button
@@ -106,8 +144,35 @@ export function WelcomeScreen({
               </button>
             )}
           </div>
+
+          {/* Install Tip & Quiet Legal Links */}
+          <div className="space-y-2 border-t border-slate-100 pt-3 text-center">
+            <p className="inline-flex items-center justify-center gap-1.5 text-[11px] text-slate-400">
+              <Smartphone className="h-3 w-3 shrink-0" />
+              <span>Works best added to your phone&apos;s Home Screen.</span>
+            </p>
+            <div className="flex items-center justify-center gap-3 text-[11px] text-slate-400">
+              <button
+                type="button"
+                onClick={() => setLegalDoc("terms")}
+                className="underline underline-offset-2 hover:text-slate-700 cursor-pointer"
+              >
+                Terms of Service
+              </button>
+              <span>·</span>
+              <button
+                type="button"
+                onClick={() => setLegalDoc("privacy")}
+                className="underline underline-offset-2 hover:text-slate-700 cursor-pointer"
+              >
+                Privacy Policy
+              </button>
+            </div>
+          </div>
         </Glass>
       </div>
+
+      <LegalModal doc={legalDoc} onClose={() => setLegalDoc(null)} />
     </div>
   );
 }
