@@ -2,11 +2,12 @@ import { useMemo, useState } from "react";
 import { SegmentedControl } from "glisse";
 import { Download, RotateCcw, Search, SearchX } from "lucide-react";
 import { buildLedgerCsv, downloadTextFile } from "../lib/export";
-import { formatTZS, toISODate } from "../lib/format";
+import { formatTZS, getInitials, toISODate } from "../lib/format";
 import {
   EXPENSE_CATEGORIES,
   getCategoryMeta,
   type ExpenseCategoryId,
+  type HouseholdMember,
   type Transaction,
 } from "../types";
 import { CategoryIcon } from "./CategoryIcon";
@@ -15,9 +16,19 @@ import { TransactionList } from "./TransactionList";
 
 const PAGE_SIZE = 25;
 
+function formatMonthChip(ym: string): string {
+  const [y, m] = ym.split("-").map(Number);
+  if (!y || !m) return ym;
+  return new Date(y, m - 1, 1).toLocaleDateString("en-US", {
+    month: "short",
+    year: "numeric",
+  });
+}
+
 interface LedgerViewProps {
   householdName: string;
   transactions: Transaction[];
+  members?: HouseholdMember[];
   currentUserId: string;
   newTransactionIds?: Set<string>;
   onEdit: (tx: Transaction) => void;
@@ -27,6 +38,7 @@ interface LedgerViewProps {
 export function LedgerView({
   householdName,
   transactions,
+  members = [],
   currentUserId,
   newTransactionIds,
   onEdit,
@@ -35,15 +47,32 @@ export function LedgerView({
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "contribution" | "expense">("all");
   const [categoryFilter, setCategoryFilter] = useState<"all" | ExpenseCategoryId>("all");
+  const [memberFilter, setMemberFilter] = useState<string>("all");
+  const [monthFilter, setMonthFilter] = useState<string>("all");
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
+  const availableMonths = useMemo(() => {
+    const set = new Set<string>();
+    for (const tx of transactions) {
+      const ym = tx.transaction_date.slice(0, 7);
+      if (/^\d{4}-\d{2}$/.test(ym)) set.add(ym);
+    }
+    return Array.from(set).sort((a, b) => (a > b ? -1 : 1));
+  }, [transactions]);
+
   const hasActiveFilters =
-    query.trim().length > 0 || filter !== "all" || categoryFilter !== "all";
+    query.trim().length > 0 ||
+    filter !== "all" ||
+    categoryFilter !== "all" ||
+    memberFilter !== "all" ||
+    monthFilter !== "all";
 
   const resetFilters = () => {
     setQuery("");
     setFilter("all");
     setCategoryFilter("all");
+    setMemberFilter("all");
+    setMonthFilter("all");
     setVisibleCount(PAGE_SIZE);
   };
 
@@ -54,6 +83,11 @@ export function LedgerView({
     return transactions.filter((tx) => {
       if (filter !== "all" && tx.type !== filter) return false;
       if (categoryFilter !== "all" && tx.category !== categoryFilter) return false;
+      if (memberFilter !== "all") {
+        const creditedId = tx.type === "contribution" ? tx.paid_by || tx.recorded_by : tx.recorded_by;
+        if (creditedId !== memberFilter && tx.recorded_by !== memberFilter) return false;
+      }
+      if (monthFilter !== "all" && !tx.transaction_date.startsWith(monthFilter)) return false;
       if (!q) return true;
 
       const cat = getCategoryMeta(tx.category).label.toLowerCase();
@@ -72,7 +106,7 @@ export function LedgerView({
         (numericQuery.length > 0 && amountRaw.includes(numericQuery))
       );
     });
-  }, [categoryFilter, filter, query, transactions]);
+  }, [categoryFilter, filter, memberFilter, monthFilter, query, transactions]);
 
   const paginated = useMemo(
     () => filtered.slice(0, visibleCount),
@@ -105,7 +139,7 @@ export function LedgerView({
 
   return (
     <div className="space-y-4">
-      <div className="space-y-3">
+      <div className="space-y-2.5">
         <SoftInput
           type="search"
           clearable
@@ -134,6 +168,99 @@ export function LedgerView({
             ]}
           />
         </div>
+
+        {/* Roommate Filter Chips */}
+        {members.length > 0 && (
+          <div
+            data-no-tab-swipe
+            className="flex items-center gap-1.5 overflow-x-auto no-scrollbar -mx-4 px-4 pb-0.5"
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setMemberFilter("all");
+                setVisibleCount(PAGE_SIZE);
+              }}
+              className={`shrink-0 rounded-xl px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
+                memberFilter === "all"
+                  ? "bg-[#1C1C1E] text-white"
+                  : "border border-stone-900/10 bg-white text-[#52525B] hover:bg-stone-50"
+              }`}
+            >
+              All members
+            </button>
+            {members.map((m) => {
+              const active = memberFilter === m.user_id;
+              const firstName = m.profile.full_name.split(" ")[0];
+              return (
+                <button
+                  key={m.user_id}
+                  type="button"
+                  onClick={() => {
+                    setMemberFilter(active ? "all" : m.user_id);
+                    setVisibleCount(PAGE_SIZE);
+                  }}
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
+                    active
+                      ? "bg-[#1C1C1E] text-white"
+                      : "border border-stone-900/10 bg-white text-[#52525B] hover:bg-stone-50"
+                  }`}
+                >
+                  <span
+                    className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-semibold text-white"
+                    style={{ backgroundColor: m.profile.avatar_color }}
+                  >
+                    {getInitials(m.profile.full_name)}
+                  </span>
+                  <span>{firstName}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Month Filter Chips */}
+        {availableMonths.length > 0 && (
+          <div
+            data-no-tab-swipe
+            className="flex items-center gap-1.5 overflow-x-auto no-scrollbar -mx-4 px-4 pb-0.5"
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setMonthFilter("all");
+                setVisibleCount(PAGE_SIZE);
+              }}
+              className={`shrink-0 rounded-xl px-3 py-1 text-xs font-medium transition-colors cursor-pointer ${
+                monthFilter === "all"
+                  ? "bg-[#1C1C1E] text-white"
+                  : "border border-stone-900/10 bg-white text-[#52525B] hover:bg-stone-50"
+              }`}
+            >
+              All months
+            </button>
+            {availableMonths.map((ym) => {
+              const active = monthFilter === ym;
+              return (
+                <button
+                  key={ym}
+                  type="button"
+                  onClick={() => {
+                    setMonthFilter(active ? "all" : ym);
+                    setVisibleCount(PAGE_SIZE);
+                  }}
+                  className={`shrink-0 rounded-xl px-3 py-1 font-mono text-xs font-medium transition-colors cursor-pointer ${
+                    active
+                      ? "bg-[#1C1C1E] text-white"
+                      : "border border-stone-900/10 bg-white text-[#52525B] hover:bg-stone-50"
+                  }`}
+                >
+                  {formatMonthChip(ym)}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* Category Filter Chips (hidden when viewing Pooled contributions only) */}
         {filter !== "contribution" && (
@@ -246,7 +373,7 @@ export function LedgerView({
                 <p className="text-xs text-[#8E8E93] mt-0.5">
                   {query.trim()
                     ? `No transactions found for "${query.trim()}"`
-                    : "Try switching or clearing your active category filters"}
+                    : "Try switching or clearing your active filters"}
                 </p>
               </div>
               <button

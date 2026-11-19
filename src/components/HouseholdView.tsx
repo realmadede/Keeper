@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   Check,
   CheckCircle2,
@@ -9,6 +9,7 @@ import {
   Link2,
   LogOut,
   Pencil,
+  QrCode,
   RefreshCw,
   ShieldPlus,
   Trash2,
@@ -16,6 +17,7 @@ import {
   UserMinus,
 } from "lucide-react";
 import { getInitials } from "../lib/format";
+import { generateQrMatrix } from "../lib/qr";
 import type { Household, HouseholdMember, Profile } from "../types";
 import { LegalModal, type LegalDocType } from "./LegalModal";
 import { SoftButton, SoftInput } from "./LightControls";
@@ -66,8 +68,15 @@ export function HouseholdView({
 }: HouseholdViewProps) {
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [showQr, setShowQr] = useState(false);
   const [confirmRotate, setConfirmRotate] = useState(false);
   const [rotating, setRotating] = useState(false);
+
+  const inviteUrl = `${typeof window !== "undefined" ? window.location.origin : "https://keeper.vercel.app"}/?join=${encodeURIComponent(household.invite_code)}`;
+  const qrMatrix = useMemo(
+    () => (showQr ? generateQrMatrix(inviteUrl) : null),
+    [inviteUrl, showQr],
+  );
 
   // Admin: Rename household
   const [renamingHouse, setRenamingHouse] = useState(false);
@@ -318,19 +327,61 @@ export function HouseholdView({
                 {household.invite_code}
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => void copyCode()}
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-white/15 bg-white/10 px-3 text-xs font-medium text-white transition-colors hover:bg-white/15 cursor-pointer"
-            >
-              {copiedCode ? (
-                <Check className="h-3.5 w-3.5 text-[#E4CCA0]" />
-              ) : (
-                <Copy className="h-3.5 w-3.5 text-[#E4CCA0]" />
-              )}
-              <span>{copiedCode ? "Copied" : "Copy code"}</span>
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setShowQr((v) => !v)}
+                aria-label={showQr ? "Hide QR invite key" : "Show QR invite key"}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-white/15 bg-white/10 px-2.5 text-xs font-medium text-white transition-colors hover:bg-white/15 cursor-pointer"
+              >
+                <QrCode className="h-3.5 w-3.5 text-[#E4CCA0]" />
+                <span>{showQr ? "Hide QR" : "QR key"}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => void copyCode()}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-white/15 bg-white/10 px-3 text-xs font-medium text-white transition-colors hover:bg-white/15 cursor-pointer"
+              >
+                {copiedCode ? (
+                  <Check className="h-3.5 w-3.5 text-[#E4CCA0]" />
+                ) : (
+                  <Copy className="h-3.5 w-3.5 text-[#E4CCA0]" />
+                )}
+                <span>{copiedCode ? "Copied" : "Copy code"}</span>
+              </button>
+            </div>
           </div>
+
+          {showQr && qrMatrix && (
+            <div className="flex flex-col items-center rounded-lg bg-white p-3 text-[#1C1C1E]">
+              <svg
+                viewBox={`0 0 ${qrMatrix.length + 8} ${qrMatrix.length + 8}`}
+                className="h-44 w-44"
+                shapeRendering="crispEdges"
+                role="img"
+                aria-label={`QR code to join ${household.name}`}
+              >
+                <rect width={qrMatrix.length + 8} height={qrMatrix.length + 8} fill="#FFFFFF" />
+                {qrMatrix.map((row, r) =>
+                  row.map((dark, c) =>
+                    dark ? (
+                      <rect
+                        key={`${r}-${c}`}
+                        x={c + 4}
+                        y={r + 4}
+                        width={1}
+                        height={1}
+                        fill="#1C1C1E"
+                      />
+                    ) : null,
+                  ),
+                )}
+              </svg>
+              <p className="mt-1.5 text-[11px] font-medium text-[#52525B]">
+                Scan with phone camera to join {household.name}
+              </p>
+            </div>
+          )}
 
           <button
             type="button"

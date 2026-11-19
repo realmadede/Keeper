@@ -134,6 +134,33 @@ describe("computeWeeklySummary", () => {
     expect(monthly.dailySeries[1].spent).toBe(40000); // Nov 12 -> W2
     expect(monthly.dailySeries[2].spent).toBe(50000); // Nov 18 & 19 -> W3
   });
+
+  it("carries over lump-sum member contribution surplus across subsequent weeks", () => {
+    const lumpSumTxns: Transaction[] = [
+      {
+        id: "t-lump",
+        household_id: "h1",
+        recorded_by: "u1",
+        paid_by: "u1",
+        type: "contribution",
+        amount: 60000, // 4 weeks of a 15,000/wk share paid in week Nov 9-15
+        category: "contribution",
+        description: "4-week advance contribution",
+        transaction_date: "2026-11-10",
+        created_at: "2026-11-10T09:00:00Z",
+      },
+    ];
+    // Current week is Nov 16-22 (REF_DATE = Nov 19), u1 pays 0 new cash this week
+    const summary = computeWeeklySummary(lumpSumTxns, MEMBERS, 15000, 0, REF_DATE);
+    const amani = summary.memberStatuses.find((s) => s.member.user_id === "u1")!;
+    expect(amani.contributedThisWeek).toBe(0);
+    expect(amani.carryOverCredit).toBe(45000); // 60k - 15k used in prior week
+    expect(amani.effectiveContributed).toBe(45000);
+    expect(amani.coveredByAdvance).toBe(true);
+    expect(amani.advanceBalance).toBe(30000); // 45k - 15k used this week = 30k ahead
+    expect(amani.weeksCoveredAhead).toBe(2);
+    expect(amani.percentOfShare).toBe(100);
+  });
 });
 
 describe("getBillDueStatus", () => {

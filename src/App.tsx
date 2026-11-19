@@ -90,6 +90,7 @@ export function App() {
   const [authView, setAuthView] = useState<"welcome" | "signin" | "signup">(
     pendingJoinCode ? "signup" : "welcome",
   );
+  const autoJoinedCodeRef = useRef<string | null>(null);
   const [lastSeenAt, setLastSeenAt] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const toastTimerRef = useRef<number | null>(null);
@@ -185,7 +186,7 @@ export function App() {
   const activeIndex = TAB_ORDER.indexOf(activeTab);
   const periodWindow = useMemo(() => getPeriodWindow(periodKey), [periodKey]);
 
-  // Clear pending invite code once the user is inside a household
+  // Clear pending invite code once the user is inside a household, or auto-join right after auth
   useEffect(() => {
     if (store.household && pendingJoinCode) {
       setPendingJoinCode(null);
@@ -194,8 +195,32 @@ export function App() {
       } catch {
         // Ignore storage errors
       }
+      return;
     }
-  }, [pendingJoinCode, store.household]);
+    if (
+      store.profile &&
+      !store.household &&
+      !store.loading &&
+      pendingJoinCode &&
+      autoJoinedCodeRef.current !== pendingJoinCode
+    ) {
+      autoJoinedCodeRef.current = pendingJoinCode;
+      void store.joinHousehold(pendingJoinCode).catch(() => {
+        // Falls back to HouseholdOnboarding with error visible and code pre-filled
+      });
+    }
+  }, [pendingJoinCode, store.household, store.joinHousehold, store.loading, store.profile]);
+
+  const handleStartJoinWithCode = useCallback((cleanCode: string) => {
+    autoJoinedCodeRef.current = null;
+    setPendingJoinCode(cleanCode);
+    try {
+      sessionStorage.setItem(PENDING_JOIN_KEY, cleanCode);
+    } catch {
+      // Ignore storage errors
+    }
+    setAuthView("signup");
+  }, []);
 
   const summary = useMemo(() => {
     if (!store.household) return null;
@@ -258,13 +283,28 @@ export function App() {
   const handleAddTransaction = async (
     input: TransactionInput,
     prefill?: TransactionPrefill | null,
+    options?: { outOfPocketBy?: string },
   ) => {
     await store.addTransaction(input);
+    if (input.type === "expense" && options?.outOfPocketBy) {
+      await store.addTransaction({
+        type: "contribution",
+        amount: input.amount,
+        category: "contribution",
+        description: `Out-of-pocket: ${input.description}`.slice(0, 200),
+        transaction_date: input.transaction_date,
+        paid_by: options.outOfPocketBy,
+      });
+    }
     if (prefill?.needId) {
       await store.toggleNeed(prefill.needId, true);
     }
     if (prefill?.billId) {
       await store.markBillPaid(prefill.billId);
+    }
+    if (input.type === "expense" && options?.outOfPocketBy) {
+      showToast(`Recorded ${formatTZS(input.amount)} expense & credited share`);
+      return;
     }
     const verb = input.type === "contribution" ? "contribution" : "expense";
     showToast(`Recorded ${formatTZS(input.amount)} ${verb}`);
@@ -329,6 +369,7 @@ export function App() {
           isSupabaseReady={store.isSupabaseReady}
           onSignUp={() => setAuthView("signup")}
           onSignIn={() => setAuthView("signin")}
+          onJoinWithCode={handleStartJoinWithCode}
           onEnterDemo={store.enterDemoMode}
         />
       );
@@ -341,7 +382,15 @@ export function App() {
         passwordRecoveryMode={store.passwordRecoveryMode}
         pendingInviteCode={pendingJoinCode}
         error={store.error}
-        onBack={pendingJoinCode ? undefined : () => setAuthView("welcome")}
+        onBack={() => {
+          setPendingJoinCode(null);
+          try {
+            sessionStorage.removeItem(PENDING_JOIN_KEY);
+          } catch {
+            // Ignore storage errors
+          }
+          setAuthView("welcome");
+        }}
         onSignIn={store.signIn}
         onSignUp={store.signUp}
         onSignInWithGoogle={store.signInWithGoogle}
@@ -652,6 +701,7 @@ export function App() {
                 <LedgerView
                   householdName={store.household.name}
                   transactions={store.transactions}
+                  members={store.members}
                   currentUserId={store.profile.id}
                   newTransactionIds={newTransactionIds}
                   onEdit={handleOpenEdit}

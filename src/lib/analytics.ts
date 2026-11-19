@@ -39,6 +39,11 @@ export interface CategoryBreakdownItem {
 export interface MemberContributionStatus {
   member: HouseholdMember;
   contributedThisWeek: number;
+  carryOverCredit: number;
+  effectiveContributed: number;
+  advanceBalance: number;
+  weeksCoveredAhead: number;
+  coveredByAdvance: boolean;
   spentRecordedThisWeek: number;
   expectedShare: number;
   percentOfShare: number;
@@ -339,6 +344,27 @@ export function computePeriodSummary(
   const shareMultiplier = currentPeriod.kind === "month" ? 4 : 1;
   const expectedShare = memberWeeklyShare * shareMultiplier;
 
+  const toMondayMs = (iso: string): number => {
+    const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+    const dt = new Date(Date.UTC(y || 2026, (m || 1) - 1, d || 1));
+    const day = dt.getUTCDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    dt.setUTCDate(dt.getUTCDate() + diff);
+    return dt.getTime();
+  };
+
+  const priorTransactions = transactions.filter(
+    (t) => t.transaction_date < currentPeriod.startISO,
+  );
+  let earliestPriorISO: string | null = null;
+  for (const t of priorTransactions) {
+    if (!earliestPriorISO || t.transaction_date < earliestPriorISO) {
+      earliestPriorISO = t.transaction_date;
+    }
+  }
+  const currentStartMondayMs = toMondayMs(currentPeriod.startISO);
+  const WEEK_MS = 7 * 24 * 3600 * 1000;
+
   const memberStatuses: MemberContributionStatus[] = members.map((member) => {
     let contributedThisWeek = 0;
     let spentRecordedThisWeek = 0;
@@ -350,13 +376,62 @@ export function computePeriodSummary(
         spentRecordedThisWeek += t.amount;
       }
     }
+
+    let priorContributed = 0;
+    let earliestMemberPriorISO: string | null = null;
+    for (const t of priorTransactions) {
+      if (t.type === "contribution") {
+        const creditedUserId = t.paid_by || t.recorded_by;
+        if (creditedUserId === member.user_id) {
+          priorContributed += t.amount;
+          if (!earliestMemberPriorISO || t.transaction_date < earliestMemberPriorISO) {
+            earliestMemberPriorISO = t.transaction_date;
+          }
+        }
+      }
+    }
+
+    let carryOverCredit = 0;
+    if (memberWeeklyShare > 0 && priorContributed > 0 && earliestPriorISO) {
+      const joinedISO = member.joined_at ? member.joined_at.slice(0, 10) : earliestPriorISO;
+      const anchorISO =
+        earliestMemberPriorISO && earliestMemberPriorISO < joinedISO
+          ? earliestMemberPriorISO
+          : joinedISO > earliestPriorISO
+            ? joinedISO
+            : earliestPriorISO;
+      const elapsedWeeks = Math.max(
+        1,
+        Math.round((currentStartMondayMs - toMondayMs(anchorISO)) / WEEK_MS),
+      );
+      const priorExpected = elapsedWeeks * memberWeeklyShare;
+      carryOverCredit = Math.max(0, priorContributed - priorExpected);
+    }
+
+    const effectiveContributed = contributedThisWeek + carryOverCredit;
+    const advanceBalance =
+      expectedShare > 0 ? Math.max(0, effectiveContributed - expectedShare) : 0;
+    const weeksCoveredAhead =
+      memberWeeklyShare > 0 && advanceBalance > 0
+        ? Math.floor(advanceBalance / memberWeeklyShare)
+        : 0;
+    const coveredByAdvance =
+      expectedShare > 0 &&
+      contributedThisWeek < expectedShare &&
+      effectiveContributed >= expectedShare;
+
     const percentOfShare =
       expectedShare > 0
-        ? Math.min(100, Math.round((contributedThisWeek / expectedShare) * 100))
+        ? Math.min(100, Math.round((effectiveContributed / expectedShare) * 100))
         : 100;
     return {
       member,
       contributedThisWeek,
+      carryOverCredit,
+      effectiveContributed,
+      advanceBalance,
+      weeksCoveredAhead,
+      coveredByAdvance,
       spentRecordedThisWeek,
       expectedShare,
       percentOfShare,

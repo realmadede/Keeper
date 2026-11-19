@@ -269,8 +269,8 @@ export function BudgetView({
             <div className="divide-y divide-stone-900/[0.06]">
               {summary.memberStatuses.map((status) => {
                 const done =
-                  status.contributedThisWeek >= status.expectedShare && status.expectedShare > 0;
-                const partial = status.contributedThisWeek > 0 && !done;
+                  status.effectiveContributed >= status.expectedShare && status.expectedShare > 0;
+                const partial = status.effectiveContributed > 0 && !done;
                 return (
                   <div key={status.member.user_id} className="py-3 first:pt-1 last:pb-0">
                     <div className="flex items-center justify-between gap-2 mb-2">
@@ -288,11 +288,26 @@ export function BudgetView({
                           <div className="text-xs text-[#8E8E93] tabular-nums">
                             {formatTZS(status.contributedThisWeek)} /{" "}
                             {formatTZS(status.expectedShare)}
+                            {status.carryOverCredit > 0 && (
+                              <span className="ml-1.5 text-[#8F703F]">
+                                (+{formatTZS(status.carryOverCredit)} carry-over)
+                              </span>
+                            )}
                           </div>
+                          {status.advanceBalance > 0 && (
+                            <div className="mt-0.5 text-[11px] font-medium text-[#8F703F] tabular-nums">
+                              Advance +{formatTZS(status.advanceBalance)}
+                              {status.weeksCoveredAhead > 0
+                                ? ` · covers ${status.weeksCoveredAhead} ${
+                                    status.weeksCoveredAhead === 1 ? "week" : "weeks"
+                                  } ahead`
+                                : ""}
+                            </div>
+                          )}
                         </div>
                       </div>
                       <span
-                        className={`inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium ${
+                        className={`inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium ${
                           done
                             ? "bg-emerald-50 text-emerald-700"
                             : partial
@@ -309,7 +324,13 @@ export function BudgetView({
                                 : "bg-stone-400"
                           }`}
                         />
-                        {done ? "Paid" : partial ? "Partial" : "Pending"}
+                        {status.coveredByAdvance
+                          ? "Covered"
+                          : done
+                            ? "Paid"
+                            : partial
+                              ? "Partial"
+                              : "Pending"}
                       </span>
                     </div>
                     <div className="h-1 w-full rounded-full bg-stone-100 overflow-hidden">

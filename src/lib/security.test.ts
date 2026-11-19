@@ -1,5 +1,18 @@
 import { describe, expect, it } from "vitest";
+import { generateQrMatrix } from "./qr";
 import { createRateLimiter, generateClientInviteCode, sanitizeInviteCode } from "./security";
+
+describe("generateQrMatrix", () => {
+  it("generates a square ISO QR matrix with 7x7 finder corners for an invite URL", () => {
+    const matrix = generateQrMatrix("https://keeper.vercel.app/?join=SNZ414KP");
+    expect(matrix.length).toBeGreaterThanOrEqual(25);
+    expect(matrix[0].length).toBe(matrix.length);
+    // Top-left finder outer corner and 3x3 center core must be dark (true)
+    expect(matrix[0][0]).toBe(true);
+    expect(matrix[3][3]).toBe(true);
+    expect(matrix[1][1]).toBe(false);
+  });
+});
 
 describe("sanitizeInviteCode", () => {
   it("accepts valid 6-to-12 alphanumeric codes and full ?join= invite links", () => {

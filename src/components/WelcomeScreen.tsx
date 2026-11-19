@@ -1,14 +1,21 @@
-import { useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Glass } from "glisse";
-import { ArrowRight, ShieldCheck, Smartphone, Users, Wallet } from "lucide-react";
+import { ArrowRight, Download, Key, ShieldCheck, Smartphone, Users, Wallet } from "lucide-react";
+import { sanitizeInviteCode } from "../lib/security";
 import { KeeperLogo } from "./KeeperLogo";
 import { LegalModal, type LegalDocType } from "./LegalModal";
-import { SoftButton } from "./LightControls";
+import { SoftButton, SoftInput } from "./LightControls";
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+}
 
 interface WelcomeScreenProps {
   isSupabaseReady: boolean;
   onSignUp: () => void;
   onSignIn: () => void;
+  onJoinWithCode: (cleanCode: string) => void;
   onEnterDemo: () => void;
 }
 
@@ -16,9 +23,54 @@ export function WelcomeScreen({
   isSupabaseReady,
   onSignUp,
   onSignIn,
+  onJoinWithCode,
   onEnterDemo,
 }: WelcomeScreenProps) {
   const [legalDoc, setLegalDoc] = useState<LegalDocType | null>(null);
+  const [inviteInput, setInviteInput] = useState("");
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [showInstallGuide, setShowInstallGuide] = useState(false);
+  const [isStandalone, setIsStandalone] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const standalone =
+      window.matchMedia?.("(display-mode: standalone)")?.matches ||
+      Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone);
+    setIsStandalone(standalone);
+
+    const onBeforeInstall = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e as BeforeInstallPromptEvent);
+    };
+    window.addEventListener("beforeinstallprompt", onBeforeInstall);
+    return () => window.removeEventListener("beforeinstallprompt", onBeforeInstall);
+  }, []);
+
+  const handleInviteSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    setInviteError(null);
+    const clean = sanitizeInviteCode(inviteInput);
+    if (!clean) {
+      setInviteError("Enter a valid 6-12 character invite key or link");
+      return;
+    }
+    onJoinWithCode(clean);
+  };
+
+  const handleInstallClick = async () => {
+    if (deferredPrompt) {
+      await deferredPrompt.prompt();
+      const choice = await deferredPrompt.userChoice.catch(() => null);
+      if (choice?.outcome === "accepted") {
+        setDeferredPrompt(null);
+        setIsStandalone(true);
+      }
+      return;
+    }
+    setShowInstallGuide((v) => !v);
+  };
 
   return (
     <div className="min-h-dvh flex flex-col items-center justify-center px-4 py-8">
@@ -59,6 +111,39 @@ export function WelcomeScreen({
               <div className="mt-0.5 text-[11px] text-[#52525B]">See live balance</div>
             </div>
           </div>
+
+          {/* Direct "Have an invite key or link?" Quick Entry */}
+          <form
+            onSubmit={handleInviteSubmit}
+            className="rounded-xl border border-stone-900/[0.08] bg-[#F6F5F2] p-3 space-y-2"
+          >
+            <label className="block text-xs font-medium text-[#1C1C1E]">
+              Have a household invite key or link?
+            </label>
+            <div className="flex items-center gap-2">
+              <SoftInput
+                type="text"
+                placeholder="Paste invite code or link"
+                value={inviteInput}
+                onValueChange={(v) => {
+                  setInviteInput(v);
+                  if (inviteError) setInviteError(null);
+                }}
+                icon={<Key className="h-4 w-4" />}
+                className="flex-1"
+              />
+              <SoftButton
+                type="submit"
+                variant="filled"
+                className="shrink-0 !h-10 !px-3.5 text-xs font-medium"
+              >
+                Join
+              </SoftButton>
+            </div>
+            {inviteError && (
+              <p className="text-[11px] font-medium text-rose-700">{inviteError}</p>
+            )}
+          </form>
 
           {/* 3 Quiet Feature Rows — Uniform 16px Line Icons in Muted Ink */}
           <div className="space-y-3 border-y border-stone-900/[0.06] py-4">
@@ -134,12 +219,31 @@ export function WelcomeScreen({
             )}
           </div>
 
-          {/* Install Tip & Quiet Legal Links */}
-          <div className="space-y-2 border-t border-stone-900/[0.06] pt-3 text-center">
-            <p className="inline-flex items-center justify-center gap-1.5 text-[11px] text-[#8E8E93]">
-              <Smartphone className="h-3.5 w-3.5 shrink-0" />
-              <span>Works best added to your phone&apos;s Home Screen</span>
-            </p>
+          {/* 1-Tap PWA Install Prompt & Quiet Legal Links */}
+          <div className="space-y-2.5 border-t border-stone-900/[0.06] pt-3 text-center">
+            {!isStandalone && (
+              <div>
+                <button
+                  type="button"
+                  onClick={() => void handleInstallClick()}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#F6F5F2] px-3 py-1.5 text-xs font-medium text-[#1C1C1E] hover:bg-stone-200/70 transition-colors cursor-pointer"
+                >
+                  {deferredPrompt ? (
+                    <Download className="h-3.5 w-3.5 text-[#8F703F]" />
+                  ) : (
+                    <Smartphone className="h-3.5 w-3.5 text-[#8F703F]" />
+                  )}
+                  <span>Add Keeper to Home Screen</span>
+                </button>
+                {showInstallGuide && !deferredPrompt && (
+                  <div className="mt-2 rounded-xl border border-stone-900/[0.08] bg-[#F6F5F2] p-2.5 text-left text-xs text-[#52525B] space-y-1">
+                    <div className="font-medium text-[#1C1C1E]">Install on your phone</div>
+                    <div>1. Tap the Share or browser menu button</div>
+                    <div>2. Select Add to Home Screen</div>
+                  </div>
+                )}
+              </div>
+            )}
             <div className="flex items-center justify-center gap-3 text-[11px] text-[#8E8E93]">
               <button
                 type="button"

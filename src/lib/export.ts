@@ -21,14 +21,18 @@ export function buildWeeklyWhatsAppSummary(
   ];
 
   for (const status of summary.memberStatuses) {
-    const label =
-      status.contributedThisWeek >= status.expectedShare && status.expectedShare > 0
+    const effective = status.effectiveContributed ?? status.contributedThisWeek;
+    const label = status.coveredByAdvance
+      ? "Covered via advance"
+      : effective >= status.expectedShare && status.expectedShare > 0
         ? "Paid"
-        : status.contributedThisWeek > 0
+        : effective > 0
           ? "Partial"
           : "Pending";
+    const advanceNote =
+      (status.advanceBalance ?? 0) > 0 ? ` · Advance +${formatTZS(status.advanceBalance)}` : "";
     lines.push(
-      `- ${status.member.profile.full_name}: ${formatTZS(status.contributedThisWeek)} / ${formatTZS(status.expectedShare)} (${label})`,
+      `- ${status.member.profile.full_name}: ${formatTZS(status.contributedThisWeek)} / ${formatTZS(status.expectedShare)} (${label}${advanceNote})`,
     );
   }
 

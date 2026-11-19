@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Glass, SegmentedControl } from "glisse";
-import { FileText, X } from "lucide-react";
+import { Check, FileText, X } from "lucide-react";
 import type { TransactionInput } from "../hooks/useKeeperStore";
 import { formatTZS, getInitials, toISODate } from "../lib/format";
 import {
@@ -31,7 +31,11 @@ interface AddTransactionModalProps {
   currentUserId: string;
   editingTransaction?: Transaction | null;
   onClose: () => void;
-  onSubmit: (input: TransactionInput, prefill?: TransactionPrefill | null) => Promise<void>;
+  onSubmit: (
+    input: TransactionInput,
+    prefill?: TransactionPrefill | null,
+    options?: { outOfPocketBy?: string },
+  ) => Promise<void>;
   onUpdate?: (id: string, input: TransactionInput) => Promise<void>;
 }
 
@@ -52,6 +56,7 @@ export function AddTransactionModal({
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState<ExpenseCategoryId>("food");
   const [paidBy, setPaidBy] = useState(currentUserId);
+  const [paidOutOfPocket, setPaidOutOfPocket] = useState(false);
   const [description, setDescription] = useState("");
   const [date, setDate] = useState(() => toISODate(new Date()));
   const [submitting, setSubmitting] = useState(false);
@@ -73,6 +78,7 @@ export function AddTransactionModal({
   useEffect(() => {
     if (!open) return;
     setFormError(null);
+    setPaidOutOfPocket(false);
     if (editingTransaction) {
       setType(editingTransaction.type);
       setAmount(String(editingTransaction.amount));
@@ -129,7 +135,11 @@ export function AddTransactionModal({
       if (editingTransaction && onUpdate) {
         await onUpdate(editingTransaction.id, payload);
       } else {
-        await onSubmit(payload, prefillDraft);
+        await onSubmit(
+          payload,
+          prefillDraft,
+          type === "expense" && paidOutOfPocket ? { outOfPocketBy: paidBy } : undefined,
+        );
       }
       onClose();
     } catch (err) {
@@ -217,42 +227,75 @@ export function AddTransactionModal({
             </div>
           </div>
 
-          {/* Paid By Picker (Contributions — supports treasurer logging on behalf of roommates) */}
-          {type === "contribution" && members.length > 0 && (
-            <div>
-              <label className="block text-xs font-medium text-[#52525B] mb-1.5">
-                Contributed by
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                {members.map((m) => {
-                  const selected = paidBy === m.user_id;
-                  return (
-                    <button
-                      key={m.user_id}
-                      type="button"
-                      onClick={() => setPaidBy(m.user_id)}
-                      className={`flex items-center gap-2 rounded-xl border px-2.5 py-2 text-left text-xs font-medium transition-colors cursor-pointer ${
-                        selected
-                          ? "border-[#1C1C1E] bg-[#1C1C1E] text-white"
-                          : "border-stone-900/10 bg-white text-[#52525B] hover:border-stone-900/25"
-                      }`}
-                    >
-                      <span
-                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold text-white"
-                        style={{ backgroundColor: m.profile.avatar_color }}
-                      >
-                        {getInitials(m.profile.full_name)}
-                      </span>
-                      <span className="truncate">
-                        {m.profile.full_name}
-                        {m.user_id === currentUserId ? " (You)" : ""}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
+          {/* Out-of-Pocket Toggle (Expenses only, when creating a new entry) */}
+          {!isEditing && type === "expense" && (
+            <div className="rounded-xl border border-stone-900/[0.08] bg-[#F6F5F2] p-3 space-y-2.5">
+              <button
+                type="button"
+                role="checkbox"
+                aria-checked={paidOutOfPocket}
+                onClick={() => setPaidOutOfPocket((v) => !v)}
+                className="flex w-full items-start gap-2.5 text-left cursor-pointer"
+              >
+                <span
+                  className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border transition-colors ${
+                    paidOutOfPocket
+                      ? "border-[#1C1C1E] bg-[#1C1C1E] text-white"
+                      : "border-stone-300 bg-white text-transparent"
+                  }`}
+                >
+                  <Check className="h-3 w-3" strokeWidth={2.5} />
+                </span>
+                <div className="min-w-0">
+                  <div className="text-xs font-medium text-[#1C1C1E]">
+                    Paid from own pocket (count toward weekly share)
+                  </div>
+                  <p className="text-[11px] text-[#52525B] mt-0.5">
+                    Logs the expense and credits a matching contribution so the cash box balance
+                    stays exact
+                  </p>
+                </div>
+              </button>
             </div>
           )}
+
+          {/* Paid By Picker (Contributions OR Out-of-Pocket Expenses) */}
+          {(type === "contribution" || (!isEditing && type === "expense" && paidOutOfPocket)) &&
+            members.length > 0 && (
+              <div>
+                <label className="block text-xs font-medium text-[#52525B] mb-1.5">
+                  {type === "contribution" ? "Contributed by" : "Paid out-of-pocket by"}
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {members.map((m) => {
+                    const selected = paidBy === m.user_id;
+                    return (
+                      <button
+                        key={m.user_id}
+                        type="button"
+                        onClick={() => setPaidBy(m.user_id)}
+                        className={`flex items-center gap-2 rounded-xl border px-2.5 py-2 text-left text-xs font-medium transition-colors cursor-pointer ${
+                          selected
+                            ? "border-[#1C1C1E] bg-[#1C1C1E] text-white"
+                            : "border-stone-900/10 bg-white text-[#52525B] hover:border-stone-900/25"
+                        }`}
+                      >
+                        <span
+                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold text-white"
+                          style={{ backgroundColor: m.profile.avatar_color }}
+                        >
+                          {getInitials(m.profile.full_name)}
+                        </span>
+                        <span className="truncate">
+                          {m.profile.full_name}
+                          {m.user_id === currentUserId ? " (You)" : ""}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
           {/* Category Picker (Expenses only) */}
           {type === "expense" && (
@@ -323,7 +366,9 @@ export function AddTransactionModal({
                 ? "Save changes"
                 : type === "contribution"
                   ? "Record contribution"
-                  : "Record expense"}
+                  : paidOutOfPocket
+                    ? "Record expense & credit share"
+                    : "Record expense"}
           </SoftButton>
         </form>
       </Glass>
