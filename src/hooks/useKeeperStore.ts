@@ -116,18 +116,34 @@ export function useKeeperStore(): KeeperStore {
 
   const clearError = useCallback(() => setError(null), []);
 
-  const fetchHouseholdBundle = useCallback(async (userId: string) => {
-    if (!supabase) return;
+  const fetchHouseholdBundle = useCallback(
+    async (
+      userId: string,
+      fallbackUser?: { email?: string | null; user_metadata?: Record<string, unknown> },
+    ) => {
+      if (!supabase) return;
 
-    const { data: profileRow } = await supabase
-      .from("profiles")
-      .select("id, full_name, email, avatar_color")
-      .eq("id", userId)
-      .maybeSingle();
+      const { data: profileRow } = await supabase
+        .from("profiles")
+        .select("id, full_name, email, avatar_color")
+        .eq("id", userId)
+        .maybeSingle();
 
-    if (profileRow) {
-      setProfile(profileRow as Profile);
-    }
+      if (profileRow) {
+        setProfile(profileRow as Profile);
+      } else if (fallbackUser) {
+        const meta = fallbackUser.user_metadata ?? {};
+        const rawName =
+          (typeof meta.full_name === "string" && meta.full_name.trim()) ||
+          (typeof meta.name === "string" && meta.name.trim()) ||
+          (fallbackUser.email ? fallbackUser.email.split("@")[0] : "Member");
+        setProfile({
+          id: userId,
+          full_name: rawName.slice(0, 80),
+          email: fallbackUser.email ?? "",
+          avatar_color: "#BFA377",
+        });
+      }
 
     const { data: membershipRows, error: memberErr } = await supabase
       .from("household_members")
@@ -286,7 +302,7 @@ export function useKeeperStore(): KeeperStore {
     supabase.auth.getSession().then(async ({ data }) => {
       if (!mounted) return;
       if (data.session?.user) {
-        await fetchHouseholdBundle(data.session.user.id);
+        await fetchHouseholdBundle(data.session.user.id, data.session.user);
       }
       if (mounted) setLoading(false);
     });
@@ -298,12 +314,14 @@ export function useKeeperStore(): KeeperStore {
       }
       if (session?.user) {
         setIsDemoMode(false);
-        await fetchHouseholdBundle(session.user.id);
+        await fetchHouseholdBundle(session.user.id, session.user);
       } else {
         setProfile(null);
         setHousehold(null);
         setMembers([]);
         setTransactions([]);
+        setNeeds([]);
+        setBills([]);
       }
       setLoading(false);
     });
@@ -411,7 +429,7 @@ export function useKeeperStore(): KeeperStore {
     try {
       const { data } = await supabase.auth.getSession();
       if (data.session?.user) {
-        await fetchHouseholdBundle(data.session.user.id);
+        await fetchHouseholdBundle(data.session.user.id, data.session.user);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not sync household data.");
@@ -434,13 +452,20 @@ export function useKeeperStore(): KeeperStore {
       return;
     }
     authRateLimiter.record();
-    const { error: err } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    const { data, error: err } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
     if (err) {
       setError(err.message);
       throw err;
     }
     authRateLimiter.reset();
-  }, []);
+    if (data.session?.user) {
+      setIsDemoMode(false);
+      await fetchHouseholdBundle(data.session.user.id, data.session.user);
+    }
+  }, [fetchHouseholdBundle]);
 
   const signUp = useCallback(async (fullName: string, email: string, password: string) => {
     setError(null);
@@ -455,8 +480,9 @@ export function useKeeperStore(): KeeperStore {
       return;
     }
     authRateLimiter.record();
+    const cleanEmail = email.trim();
     const { data, error: err } = await supabase.auth.signUp({
-      email: email.trim(),
+      email: cleanEmail,
       password,
       options: {
         data: {
@@ -469,10 +495,35 @@ export function useKeeperStore(): KeeperStore {
       setError(err.message);
       throw err;
     }
-    if (!data.session) {
-      setError("Account created! Sign in with your email and password to continue.");
+
+    if (data.session?.user) {
+      authRateLimiter.reset();
+      setIsDemoMode(false);
+      await fetchHouseholdBundle(data.session.user.id, data.session.user);
+      return;
     }
-  }, []);
+
+    // Attempt immediate sign-in if Supabase created the account without returning a session yet
+    const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({
+      email: cleanEmail,
+      password,
+    });
+    if (signInData.session?.user) {
+      authRateLimiter.reset();
+      setIsDemoMode(false);
+      await fetchHouseholdBundle(signInData.session.user.id, signInData.session.user);
+      return;
+    }
+
+    if (signInErr?.message.toLowerCase().includes("confirm")) {
+      setError(
+        "Email confirmation is still ON in Supabase. Turn off 'Confirm email' in Supabase Dashboard -> Authentication -> Providers -> Email to enter Keeper directly.",
+      );
+      return;
+    }
+
+    setError(signInErr?.message ?? "Account created! Please sign in to continue.");
+  }, [fetchHouseholdBundle]);
 
   const signInWithGoogle = useCallback(async () => {
     setError(null);
