@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from "react";
 import { Button, Glass, Input, SegmentedControl } from "glisse";
-import { Home, Key, LogOut, Users } from "lucide-react";
+import { Home, Key, LogOut } from "lucide-react";
 import type { Profile } from "../types";
+import { KeeperLogo } from "./KeeperLogo";
 
 interface HouseholdOnboardingProps {
   profile: Profile;
@@ -45,9 +46,7 @@ export function HouseholdOnboarding({
     <div className="min-h-dvh flex flex-col items-center justify-center px-4 py-10">
       <div className="w-full max-w-[420px] space-y-5">
         <div className="text-center">
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#1C1C1E] text-[#BFA377]">
-            <Users className="h-6 w-6" />
-          </div>
+          <KeeperLogo size={54} className="mx-auto mb-3 drop-shadow-[0_6px_16px_rgba(15,23,42,0.16)]" />
           <h1 className="text-xl font-bold text-slate-900">Welcome, {profile.full_name}</h1>
           <p className="mt-1 text-xs text-slate-500">
             Create your shared household or join your roommates with an invite code.

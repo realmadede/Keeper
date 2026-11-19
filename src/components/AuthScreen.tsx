@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Button, Glass, Input, SegmentedControl } from "glisse";
-import { Home, KeyRound, Mail, Sparkles, User } from "lucide-react";
+import { KeyRound, Mail, Sparkles, User } from "lucide-react";
+import { KeeperLogo } from "./KeeperLogo";
 
 interface AuthScreenProps {
   isSupabaseReady: boolean;
@@ -44,9 +45,7 @@ export function AuthScreen({
       <div className="w-full max-w-[400px] space-y-5">
         {/* Brand Header */}
         <div className="text-center">
-          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-[20px] bg-[#1C1C1E] text-[#BFA377] shadow-lg">
-            <Home className="h-7 w-7" />
-          </div>
+          <KeeperLogo size={60} className="mx-auto mb-3 drop-shadow-[0_8px_20px_rgba(15,23,42,0.18)]" />
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">Keeper</h1>
           <p className="mt-1 text-xs text-slate-500">
             One household, one shared TZS budget, complete transparency.

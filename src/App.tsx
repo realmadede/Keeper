@@ -8,6 +8,7 @@ import { BudgetView } from "./components/BudgetView";
 import { CategoryBreakdown } from "./components/CategoryBreakdown";
 import { HouseholdOnboarding } from "./components/HouseholdOnboarding";
 import { HouseholdView } from "./components/HouseholdView";
+import { KeeperLogo } from "./components/KeeperLogo";
 import { KpiCards } from "./components/KpiCards";
 import { LedgerView } from "./components/LedgerView";
 import { TransactionList } from "./components/TransactionList";
@@ -91,14 +92,18 @@ export function App() {
         {/* Top App Header — matches mockup's crisp light header + right week pill */}
         <header className="mb-4 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2.5 min-w-0">
-            <button
-              type="button"
-              aria-label="Back to Overview"
-              onClick={() => setActiveTab("overview")}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-slate-700 shadow-xs border border-slate-100 hover:bg-slate-50 cursor-pointer"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
+            {activeTab === "overview" ? (
+              <KeeperLogo size={38} className="shrink-0 drop-shadow-xs" />
+            ) : (
+              <button
+                type="button"
+                aria-label="Back to Overview"
+                onClick={() => setActiveTab("overview")}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-slate-700 shadow-xs border border-slate-100 hover:bg-slate-50 cursor-pointer"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+            )}
             <div className="min-w-0">
               <h1 className="truncate text-[16px] font-bold tracking-tight text-slate-900 leading-tight">
                 {TAB_TITLES[activeTab]}
