@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { Button, Glass } from "glisse";
 import { X } from "lucide-react";
 
@@ -23,9 +24,9 @@ export function LegalModal({ doc, onClose }: LegalModalProps) {
 
   const isTerms = doc === "terms";
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-xs p-3 sm:p-4"
+      className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-xs p-3 sm:p-4"
       onClick={onClose}
     >
       <Glass
@@ -130,6 +131,7 @@ export function LegalModal({ doc, onClose }: LegalModalProps) {
           </Button>
         </div>
       </Glass>
-    </div>
+    </div>,
+    document.body,
   );
 }
