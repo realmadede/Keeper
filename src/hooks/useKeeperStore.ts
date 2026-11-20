@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getMonthKey } from "../lib/analytics";
 import { createDemoSeed } from "../lib/demoData";
+import { toISODate } from "../lib/format";
 import {
   createRateLimiter,
   generateClientInviteCode,
@@ -66,7 +67,21 @@ export interface KeeperStore {
   addTransaction: (input: TransactionInput) => Promise<void>;
   updateTransaction: (id: string, input: TransactionInput) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
-  addNeed: (title: string, category: ExpenseCategoryId) => Promise<void>;
+  addNeed: (
+    title: string,
+    category: ExpenseCategoryId,
+    options?: { quantity?: string | null; estimatedAmount?: number | null },
+  ) => Promise<void>;
+  markNeedBought: (
+    id: string,
+    options: {
+      actualAmount?: number | null;
+      paidMode?: "all" | "single";
+      paidBy?: string | null;
+      poolAmountUsed?: number;
+    },
+  ) => Promise<void>;
+  toggleNeedMemberSettled: (needId: string, memberUserId: string) => Promise<void>;
   toggleNeed: (id: string, isBought: boolean) => Promise<void>;
   deleteNeed: (id: string) => Promise<void>;
   addBill: (
@@ -78,12 +93,14 @@ export interface KeeperStore {
     paidDateISO?: string | null,
     paidMode?: "all" | "single",
     paidBy?: string | null,
+    poolAmountUsed?: number,
   ) => Promise<void>;
   markBillPaid: (
     id: string,
     paidDateOrMonthKey?: string,
     paidMode?: "all" | "single",
     paidBy?: string | null,
+    poolAmountUsed?: number,
   ) => Promise<void>;
   toggleBillMemberSettled: (billId: string, memberUserId: string) => Promise<void>;
   deleteBill: (id: string) => Promise<void>;
@@ -282,14 +299,65 @@ export function useKeeperStore(): KeeperStore {
         }
 
         if (needsRes.data) {
+          type LocalNeedMeta = {
+            quantity?: string | null;
+            estimated_amount?: number | null;
+            actual_amount?: number | null;
+            paid_mode?: "all" | "single";
+            paid_by?: string | null;
+            settled_by?: string[];
+            pool_amount_used?: number;
+          };
+          let localNeedMeta: Record<string, LocalNeedMeta> = {};
+          try {
+            const rawNeedMeta = localStorage.getItem("keeper_need_meta_v1");
+            if (rawNeedMeta) localNeedMeta = JSON.parse(rawNeedMeta) as Record<string, LocalNeedMeta>;
+          } catch {
+            // Ignore localStorage parse error
+          }
           const normalizedNeeds: HouseholdNeed[] = needsRes.data.map((row: Record<string, unknown>) => {
+            const id = String(row.id);
             const adder = Array.isArray(row.adder) ? row.adder[0] : row.adder;
             const addedBy = row.added_by ? String(row.added_by) : null;
+            const meta = localNeedMeta[id];
+            const dbEst = row.estimated_amount != null ? Number(row.estimated_amount) : null;
+            const dbAct = row.actual_amount != null ? Number(row.actual_amount) : null;
+            const dbPool = row.pool_amount_used != null ? Number(row.pool_amount_used) : null;
+            const paidMode: "all" | "single" =
+              row.paid_mode === "single" || row.paid_mode === "all"
+                ? row.paid_mode
+                : meta?.paid_mode ?? "all";
+            const paidBy =
+              typeof row.paid_by === "string" ? row.paid_by : meta?.paid_by ?? null;
+            const settledBy = Array.isArray(row.settled_by)
+              ? row.settled_by.map(String)
+              : Array.isArray(meta?.settled_by)
+                ? meta.settled_by
+                : [];
             return {
-              id: String(row.id),
+              id,
               household_id: String(row.household_id),
               added_by: addedBy,
               title: String(row.title),
+              quantity:
+                typeof row.quantity === "string"
+                  ? row.quantity
+                  : meta?.quantity ?? null,
+              estimated_amount:
+                dbEst !== null && Number.isFinite(dbEst) && dbEst > 0
+                  ? dbEst
+                  : meta?.estimated_amount ?? null,
+              actual_amount:
+                dbAct !== null && Number.isFinite(dbAct) && dbAct > 0
+                  ? dbAct
+                  : meta?.actual_amount ?? null,
+              paid_mode: paidMode,
+              paid_by: paidMode === "single" ? paidBy : null,
+              settled_by: settledBy,
+              pool_amount_used:
+                dbPool !== null && Number.isFinite(dbPool) && dbPool >= 0
+                  ? dbPool
+                  : meta?.pool_amount_used ?? 0,
               category: row.category as ExpenseCategoryId,
               is_bought: Boolean(row.is_bought),
               bought_at: row.bought_at ? String(row.bought_at) : null,
@@ -304,7 +372,12 @@ export function useKeeperStore(): KeeperStore {
           let localIntervals: Record<string, number> = {};
           let localMeta: Record<
             string,
-            { paid_mode?: "all" | "single"; paid_by?: string | null; settled_by?: string[] }
+            {
+              paid_mode?: "all" | "single";
+              paid_by?: string | null;
+              settled_by?: string[];
+              pool_amount_used?: number;
+            }
           > = {};
           try {
             const rawMap = localStorage.getItem("keeper_bill_intervals_v1");
@@ -313,7 +386,12 @@ export function useKeeperStore(): KeeperStore {
             if (rawMeta) {
               localMeta = JSON.parse(rawMeta) as Record<
                 string,
-                { paid_mode?: "all" | "single"; paid_by?: string | null; settled_by?: string[] }
+                {
+                  paid_mode?: "all" | "single";
+                  paid_by?: string | null;
+                  settled_by?: string[];
+                  pool_amount_used?: number;
+                }
               >;
             }
           } catch {
@@ -342,6 +420,11 @@ export function useKeeperStore(): KeeperStore {
               : Array.isArray(meta?.settled_by)
                 ? meta.settled_by
                 : [];
+            const dbPool = row.pool_amount_used != null ? Number(row.pool_amount_used) : null;
+            const poolAmountUsed =
+              dbPool !== null && Number.isFinite(dbPool) && dbPool >= 0
+                ? dbPool
+                : meta?.pool_amount_used ?? 0;
             return {
               id,
               household_id: String(row.household_id),
@@ -355,6 +438,7 @@ export function useKeeperStore(): KeeperStore {
               paid_mode: paidMode,
               paid_by: paidMode === "single" ? paidBy : null,
               settled_by: settledBy,
+              pool_amount_used: poolAmountUsed,
               created_at: String(row.created_at),
             };
           });
@@ -1026,11 +1110,21 @@ export function useKeeperStore(): KeeperStore {
   );
 
   const addNeed = useCallback(
-    async (title: string, category: ExpenseCategoryId) => {
+    async (
+      title: string,
+      category: ExpenseCategoryId,
+      options?: { quantity?: string | null; estimatedAmount?: number | null },
+    ) => {
       setError(null);
       if (!household || !profile) return;
       const cleanTitle = title.trim().slice(0, 120);
       if (!cleanTitle) return;
+      const cleanQty = options?.quantity?.trim().slice(0, 40) || null;
+      const estRaw = options?.estimatedAmount;
+      const safeEst =
+        typeof estRaw === "number" && Number.isFinite(estRaw) && estRaw > 0
+          ? Math.round(estRaw)
+          : null;
 
       if (isDemoMode) {
         const next: HouseholdNeed = {
@@ -1038,6 +1132,13 @@ export function useKeeperStore(): KeeperStore {
           household_id: household.id,
           added_by: profile.id,
           title: cleanTitle,
+          quantity: cleanQty,
+          estimated_amount: safeEst,
+          actual_amount: null,
+          paid_mode: "all",
+          paid_by: null,
+          settled_by: [],
+          pool_amount_used: 0,
           category,
           is_bought: false,
           bought_at: null,
@@ -1049,28 +1150,221 @@ export function useKeeperStore(): KeeperStore {
       }
 
       if (!supabase) return;
-      let { error: err } = await supabase.from("household_needs").insert({
-        household_id: household.id,
-        added_by: profile.id,
-        title: cleanTitle,
-        category,
-      });
-      if (err && category === "wifi_internet") {
-        const retry = await supabase.from("household_needs").insert({
+      let { data: inserted, error: err } = await supabase
+        .from("household_needs")
+        .insert({
           household_id: household.id,
           added_by: profile.id,
           title: cleanTitle,
-          category: "security_internet",
-        });
+          quantity: cleanQty,
+          estimated_amount: safeEst,
+          category,
+        })
+        .select("id")
+        .single();
+      if (err) {
+        const fallbackCategory = category === "wifi_internet" ? "security_internet" : category;
+        const retry = await supabase
+          .from("household_needs")
+          .insert({
+            household_id: household.id,
+            added_by: profile.id,
+            title: cleanTitle,
+            category: fallbackCategory,
+          })
+          .select("id")
+          .single();
+        inserted = retry.data;
         err = retry.error;
       }
       if (err) {
         setError(err.message);
         throw err;
       }
+      if (inserted?.id && (cleanQty || safeEst)) {
+        try {
+          const raw = localStorage.getItem("keeper_need_meta_v1");
+          const map = raw ? (JSON.parse(raw) as Record<string, Record<string, unknown>>) : {};
+          map[String(inserted.id)] = {
+            quantity: cleanQty,
+            estimated_amount: safeEst,
+          };
+          localStorage.setItem("keeper_need_meta_v1", JSON.stringify(map));
+        } catch {
+          // Ignore storage error
+        }
+      }
       await fetchHouseholdBundle(profile.id);
     },
     [fetchHouseholdBundle, household, isDemoMode, profile],
+  );
+
+  const markNeedBought = useCallback(
+    async (
+      id: string,
+      options: {
+        actualAmount?: number | null;
+        paidMode?: "all" | "single";
+        paidBy?: string | null;
+        poolAmountUsed?: number;
+      },
+    ) => {
+      setError(null);
+      if (!household || !profile) return;
+      const existing = needs.find((n) => n.id === id);
+      if (!existing) return;
+
+      const rawAct = options.actualAmount ?? existing.actual_amount ?? existing.estimated_amount ?? null;
+      const safeAct =
+        typeof rawAct === "number" && Number.isFinite(rawAct) && rawAct > 0
+          ? Math.round(rawAct)
+          : null;
+      const safePool = Math.max(
+        0,
+        Math.min(safeAct ?? 0, Math.round(options.poolAmountUsed ?? 0)),
+      );
+      const safeMode: "all" | "single" = options.paidMode === "single" ? "single" : "all";
+      const safePaidBy = safeMode === "single" ? options.paidBy || profile.id : null;
+      const boughtAt = new Date().toISOString();
+      const prevPool = existing.is_bought ? (existing.pool_amount_used ?? 0) : 0;
+      const poolDelta = Math.max(0, safePool - prevPool);
+      const resetSettled =
+        !existing.is_bought ||
+        existing.paid_mode !== safeMode ||
+        existing.paid_by !== safePaidBy ||
+        existing.actual_amount !== safeAct ||
+        existing.pool_amount_used !== safePool;
+      const nextSettled = resetSettled ? [] : existing.settled_by ?? [];
+
+      if (isDemoMode) {
+        setNeeds((prev) =>
+          prev
+            .map((n) =>
+              n.id === id
+                ? {
+                    ...n,
+                    is_bought: true,
+                    bought_at: boughtAt,
+                    actual_amount: safeAct,
+                    paid_mode: safeMode,
+                    paid_by: safePaidBy,
+                    settled_by: nextSettled,
+                    pool_amount_used: safePool,
+                  }
+                : n,
+            )
+            .sort((a, b) => Number(a.is_bought) - Number(b.is_bought)),
+        );
+        if (poolDelta > 0) {
+          await addTransaction({
+            type: "expense",
+            amount: poolDelta,
+            category: existing.category,
+            description: `${existing.title}${existing.quantity ? ` (${existing.quantity})` : ""} (from pool)`.slice(0, 200),
+            transaction_date: toISODate(new Date()),
+          });
+        }
+        return;
+      }
+
+      if (!supabase) return;
+      let { error: err } = await supabase
+        .from("household_needs")
+        .update({
+          is_bought: true,
+          bought_at: boughtAt,
+          actual_amount: safeAct,
+          paid_mode: safeMode,
+          paid_by: safePaidBy,
+          settled_by: nextSettled,
+          pool_amount_used: safePool,
+        })
+        .eq("id", id);
+
+      if (err) {
+        const retry = await supabase
+          .from("household_needs")
+          .update({ is_bought: true, bought_at: boughtAt })
+          .eq("id", id);
+        err = retry.error;
+      }
+      if (err) {
+        setError(err.message);
+        throw err;
+      }
+
+      try {
+        const raw = localStorage.getItem("keeper_need_meta_v1");
+        const map = raw ? (JSON.parse(raw) as Record<string, Record<string, unknown>>) : {};
+        map[id] = {
+          ...(map[id] ?? {}),
+          quantity: existing.quantity ?? null,
+          estimated_amount: existing.estimated_amount ?? null,
+          actual_amount: safeAct,
+          paid_mode: safeMode,
+          paid_by: safePaidBy,
+          settled_by: nextSettled,
+          pool_amount_used: safePool,
+        };
+        localStorage.setItem("keeper_need_meta_v1", JSON.stringify(map));
+      } catch {
+        // Ignore storage error
+      }
+
+      if (poolDelta > 0) {
+        await addTransaction({
+          type: "expense",
+          amount: poolDelta,
+          category: existing.category,
+          description: `${existing.title}${existing.quantity ? ` (${existing.quantity})` : ""} (from pool)`.slice(0, 200),
+          transaction_date: toISODate(new Date()),
+        });
+      } else {
+        await fetchHouseholdBundle(profile.id);
+      }
+    },
+    [addTransaction, fetchHouseholdBundle, household, isDemoMode, needs, profile],
+  );
+
+  const toggleNeedMemberSettled = useCallback(
+    async (needId: string, memberUserId: string) => {
+      setError(null);
+      const target = needs.find((n) => n.id === needId);
+      if (!target) return;
+      const current = target.settled_by ?? [];
+      const nextSettled = current.includes(memberUserId)
+        ? current.filter((uid) => uid !== memberUserId)
+        : [...current, memberUserId];
+
+      setNeeds((prev) =>
+        prev.map((n) => (n.id === needId ? { ...n, settled_by: nextSettled } : n)),
+      );
+
+      try {
+        const raw = localStorage.getItem("keeper_need_meta_v1");
+        const map = raw ? (JSON.parse(raw) as Record<string, Record<string, unknown>>) : {};
+        map[needId] = {
+          ...(map[needId] ?? {}),
+          quantity: target.quantity ?? null,
+          estimated_amount: target.estimated_amount ?? null,
+          actual_amount: target.actual_amount ?? null,
+          paid_mode: target.paid_mode ?? "all",
+          paid_by: target.paid_by ?? null,
+          settled_by: nextSettled,
+          pool_amount_used: target.pool_amount_used ?? 0,
+        };
+        localStorage.setItem("keeper_need_meta_v1", JSON.stringify(map));
+      } catch {
+        // Ignore storage error
+      }
+
+      if (isDemoMode || !supabase || !profile) return;
+      await supabase
+        .from("household_needs")
+        .update({ settled_by: nextSettled })
+        .eq("id", needId);
+    },
+    [isDemoMode, needs, profile],
   );
 
   const toggleNeed = useCallback(
@@ -1127,6 +1421,7 @@ export function useKeeperStore(): KeeperStore {
       paidDateISO: string | null = null,
       paidMode: "all" | "single" = "all",
       paidBy: string | null = null,
+      poolAmountUsed = 0,
     ) => {
       setError(null);
       if (!household || !profile) return;
@@ -1142,6 +1437,9 @@ export function useKeeperStore(): KeeperStore {
         paidDateISO && /^\d{4}-\d{2}/.test(paidDateISO) ? paidDateISO.slice(0, 7) : null;
       const safeMode: "all" | "single" = paidMode === "single" ? "single" : "all";
       const safePaidBy = safeMode === "single" ? paidBy || profile.id : null;
+      const safePool = paidMonthKey
+        ? Math.max(0, Math.min(safeAmount, Math.round(poolAmountUsed || 0)))
+        : 0;
       if (!cleanTitle) return;
 
       if (isDemoMode) {
@@ -1158,9 +1456,19 @@ export function useKeeperStore(): KeeperStore {
           paid_mode: safeMode,
           paid_by: safePaidBy,
           settled_by: [],
+          pool_amount_used: safePool,
           created_at: new Date().toISOString(),
         };
         setBills((prev) => [...prev, next].sort((a, b) => a.due_day - b.due_day));
+        if (safePool > 0 && paidDateISO) {
+          await addTransaction({
+            type: "expense",
+            amount: safePool,
+            category,
+            description: `${cleanTitle} (from pool)`.slice(0, 200),
+            transaction_date: paidDateISO,
+          });
+        }
         return;
       }
 
@@ -1179,6 +1487,7 @@ export function useKeeperStore(): KeeperStore {
           paid_mode: safeMode,
           paid_by: safePaidBy,
           settled_by: [],
+          pool_amount_used: safePool,
         })
         .select("id")
         .single();
@@ -1221,19 +1530,39 @@ export function useKeeperStore(): KeeperStore {
           const metaMap = rawMeta
             ? (JSON.parse(rawMeta) as Record<
                 string,
-                { paid_mode?: "all" | "single"; paid_by?: string | null; settled_by?: string[] }
+                {
+                  paid_mode?: "all" | "single";
+                  paid_by?: string | null;
+                  settled_by?: string[];
+                  pool_amount_used?: number;
+                }
               >)
             : {};
-          metaMap[billId] = { paid_mode: safeMode, paid_by: safePaidBy, settled_by: [] };
+          metaMap[billId] = {
+            paid_mode: safeMode,
+            paid_by: safePaidBy,
+            settled_by: [],
+            pool_amount_used: safePool,
+          };
           localStorage.setItem("keeper_bill_meta_v1", JSON.stringify(metaMap));
         } catch {
           // Ignore storage error
         }
       }
 
-      await fetchHouseholdBundle(profile.id);
+      if (safePool > 0 && paidDateISO) {
+        await addTransaction({
+          type: "expense",
+          amount: safePool,
+          category,
+          description: `${cleanTitle} (from pool)`.slice(0, 200),
+          transaction_date: paidDateISO,
+        });
+      } else {
+        await fetchHouseholdBundle(profile.id);
+      }
     },
-    [fetchHouseholdBundle, household, isDemoMode, profile],
+    [addTransaction, fetchHouseholdBundle, household, isDemoMode, profile],
   );
 
   const markBillPaid = useCallback(
@@ -1242,6 +1571,7 @@ export function useKeeperStore(): KeeperStore {
       paidDateOrMonthKey = getMonthKey(),
       paidMode?: "all" | "single",
       paidBy?: string | null,
+      poolAmountUsed = 0,
     ) => {
       setError(null);
       const monthKey = paidDateOrMonthKey.slice(0, 7);
@@ -1255,11 +1585,19 @@ export function useKeeperStore(): KeeperStore {
       const safeMode: "all" | "single" = paidMode ?? existing?.paid_mode ?? "all";
       const safePaidBy =
         safeMode === "single" ? paidBy ?? existing?.paid_by ?? profile?.id ?? null : null;
+      const billAmount = existing?.amount ?? 0;
+      const safePool = Math.max(0, Math.min(billAmount, Math.round(poolAmountUsed || 0)));
+      const prevPool =
+        existing && existing.last_paid_month === monthKey ? (existing.pool_amount_used ?? 0) : 0;
+      const poolDelta = Math.max(0, safePool - prevPool);
+      const txDateISO =
+        paidDateOrMonthKey.length >= 10 ? paidDateOrMonthKey.slice(0, 10) : toISODate(new Date());
       const resetSettled =
         existing &&
         (existing.last_paid_month !== monthKey ||
           existing.paid_mode !== safeMode ||
-          existing.paid_by !== safePaidBy);
+          existing.paid_by !== safePaidBy ||
+          existing.pool_amount_used !== safePool);
       const nextSettled = resetSettled ? [] : existing?.settled_by ?? [];
 
       if (isDemoMode) {
@@ -1273,10 +1611,20 @@ export function useKeeperStore(): KeeperStore {
                   paid_mode: safeMode,
                   paid_by: safePaidBy,
                   settled_by: nextSettled,
+                  pool_amount_used: safePool,
                 }
               : b,
           ),
         );
+        if (poolDelta > 0 && existing) {
+          await addTransaction({
+            type: "expense",
+            amount: poolDelta,
+            category: existing.category,
+            description: `${existing.title} (from pool)`.slice(0, 200),
+            transaction_date: txDateISO,
+          });
+        }
         return;
       }
       if (!supabase || !profile) return;
@@ -1285,6 +1633,7 @@ export function useKeeperStore(): KeeperStore {
         paid_mode: safeMode,
         paid_by: safePaidBy,
         settled_by: nextSettled,
+        pool_amount_used: safePool,
       };
       if (nextDueDay !== null) fullPayload.due_day = nextDueDay;
 
@@ -1315,18 +1664,38 @@ export function useKeeperStore(): KeeperStore {
         const metaMap = rawMeta
           ? (JSON.parse(rawMeta) as Record<
               string,
-              { paid_mode?: "all" | "single"; paid_by?: string | null; settled_by?: string[] }
+              {
+                paid_mode?: "all" | "single";
+                paid_by?: string | null;
+                settled_by?: string[];
+                pool_amount_used?: number;
+              }
             >)
           : {};
-        metaMap[id] = { paid_mode: safeMode, paid_by: safePaidBy, settled_by: nextSettled };
+        metaMap[id] = {
+          paid_mode: safeMode,
+          paid_by: safePaidBy,
+          settled_by: nextSettled,
+          pool_amount_used: safePool,
+        };
         localStorage.setItem("keeper_bill_meta_v1", JSON.stringify(metaMap));
       } catch {
         // Ignore storage error
       }
 
-      await fetchHouseholdBundle(profile.id);
+      if (poolDelta > 0 && existing) {
+        await addTransaction({
+          type: "expense",
+          amount: poolDelta,
+          category: existing.category,
+          description: `${existing.title} (from pool)`.slice(0, 200),
+          transaction_date: txDateISO,
+        });
+      } else {
+        await fetchHouseholdBundle(profile.id);
+      }
     },
-    [bills, fetchHouseholdBundle, isDemoMode, profile],
+    [addTransaction, bills, fetchHouseholdBundle, isDemoMode, profile],
   );
 
   const toggleBillMemberSettled = useCallback(
@@ -1348,13 +1717,19 @@ export function useKeeperStore(): KeeperStore {
         const metaMap = rawMeta
           ? (JSON.parse(rawMeta) as Record<
               string,
-              { paid_mode?: "all" | "single"; paid_by?: string | null; settled_by?: string[] }
+              {
+                paid_mode?: "all" | "single";
+                paid_by?: string | null;
+                settled_by?: string[];
+                pool_amount_used?: number;
+              }
             >)
           : {};
         metaMap[billId] = {
           paid_mode: target.paid_mode ?? "all",
           paid_by: target.paid_by ?? null,
           settled_by: nextSettled,
+          pool_amount_used: target.pool_amount_used ?? 0,
         };
         localStorage.setItem("keeper_bill_meta_v1", JSON.stringify(metaMap));
       } catch {
@@ -1483,6 +1858,8 @@ export function useKeeperStore(): KeeperStore {
     updateTransaction,
     deleteTransaction,
     addNeed,
+    markNeedBought,
+    toggleNeedMemberSettled,
     toggleNeed,
     deleteNeed,
     addBill,

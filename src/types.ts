@@ -58,6 +58,13 @@ export interface HouseholdNeed {
   household_id: string;
   added_by: string | null;
   title: string;
+  quantity?: string | null;
+  estimated_amount?: number | null;
+  actual_amount?: number | null;
+  paid_mode?: "all" | "single";
+  paid_by?: string | null;
+  settled_by?: string[];
+  pool_amount_used?: number;
   category: ExpenseCategoryId;
   is_bought: boolean;
   bought_at: string | null;
@@ -78,6 +85,7 @@ export interface RecurringBill {
   paid_mode?: "all" | "single";
   paid_by?: string | null;
   settled_by?: string[];
+  pool_amount_used?: number;
   created_at: string;
 }
 

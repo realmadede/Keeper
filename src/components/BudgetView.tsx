@@ -26,7 +26,6 @@ import {
   type HouseholdNeed,
   type RecurringBill,
 } from "../types";
-import type { TransactionPrefill } from "./AddTransactionModal";
 import { CategoryIcon } from "./CategoryIcon";
 import { IosDatePicker } from "./IosDatePicker";
 import { SoftButton, SoftInput, SoftSegmented } from "./LightControls";
@@ -45,7 +44,21 @@ interface BudgetViewProps {
   needs: HouseholdNeed[];
   bills: RecurringBill[];
   onUpdateBudget: (weeklyBudget: number, memberShare: number) => Promise<void>;
-  onAddNeed: (title: string, category: ExpenseCategoryId) => Promise<void>;
+  onAddNeed: (
+    title: string,
+    category: ExpenseCategoryId,
+    options?: { quantity?: string | null; estimatedAmount?: number | null },
+  ) => Promise<void>;
+  onMarkNeedBought: (
+    id: string,
+    options: {
+      actualAmount?: number | null;
+      paidMode?: "all" | "single";
+      paidBy?: string | null;
+      poolAmountUsed?: number;
+    },
+  ) => Promise<void>;
+  onToggleNeedMemberSettled: (needId: string, memberUserId: string) => Promise<void>;
   onToggleNeed: (id: string, isBought: boolean) => Promise<void>;
   onDeleteNeed: (id: string) => Promise<void>;
   onAddBill: (
@@ -57,16 +70,17 @@ interface BudgetViewProps {
     paidDateISO?: string | null,
     paidMode?: "all" | "single",
     paidBy?: string | null,
+    poolAmountUsed?: number,
   ) => Promise<void>;
   onMarkBillPaid: (
     id: string,
     paidDateISO: string,
     paidMode?: "all" | "single",
     paidBy?: string | null,
+    poolAmountUsed?: number,
   ) => Promise<void>;
   onToggleBillMemberSettled: (billId: string, memberUserId: string) => Promise<void>;
   onDeleteBill: (id: string) => Promise<void>;
-  onStartPrefillExpense: (draft: TransactionPrefill) => void;
 }
 
 const WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0] as const; // Mon..Sun
@@ -87,13 +101,14 @@ export function BudgetView({
   bills,
   onUpdateBudget,
   onAddNeed,
+  onMarkNeedBought,
+  onToggleNeedMemberSettled,
   onToggleNeed,
   onDeleteNeed,
   onAddBill,
   onMarkBillPaid,
   onToggleBillMemberSettled,
   onDeleteBill,
-  onStartPrefillExpense,
 }: BudgetViewProps) {
   // Pool budget form
   const [weeklyTarget, setWeeklyTarget] = useState(String(household.weekly_budget_target));
@@ -104,8 +119,19 @@ export function BudgetView({
 
   // Add Need form
   const [needTitle, setNeedTitle] = useState("");
+  const [needQty, setNeedQty] = useState("");
+  const [needEstimate, setNeedEstimate] = useState("");
   const [needCategory, setNeedCategory] = useState<ExpenseCategoryId>("food");
   const [addingNeed, setAddingNeed] = useState(false);
+
+  // Inline Mark Need Bought panel
+  const [buyingNeedId, setBuyingNeedId] = useState<string | null>(null);
+  const [buyingActualAmount, setBuyingActualAmount] = useState("");
+  const [buyingPaidMode, setBuyingPaidMode] = useState<"all" | "single">("all");
+  const [buyingPaidBy, setBuyingPaidBy] = useState(currentUserId);
+  const [buyingUsePool, setBuyingUsePool] = useState(false);
+  const [buyingPoolAmount, setBuyingPoolAmount] = useState("");
+  const [savingBoughtNeedId, setSavingBoughtNeedId] = useState<string | null>(null);
 
   // Add Bill form
   const [showBillForm, setShowBillForm] = useState(false);
@@ -116,6 +142,8 @@ export function BudgetView({
   const [billAlreadyPaid, setBillAlreadyPaid] = useState(true);
   const [billPaidMode, setBillPaidMode] = useState<"all" | "single">("all");
   const [billPaidBy, setBillPaidBy] = useState(currentUserId);
+  const [billUsePool, setBillUsePool] = useState(false);
+  const [billPoolAmount, setBillPoolAmount] = useState("");
   const [billIntervalMonths, setBillIntervalMonths] = useState("1");
   const [addingBill, setAddingBill] = useState(false);
   const [confirmDeleteBillId, setConfirmDeleteBillId] = useState<string | null>(null);
@@ -123,7 +151,12 @@ export function BudgetView({
   const [editingPaidDateISO, setEditingPaidDateISO] = useState(() => toISODate(new Date()));
   const [editingPaidMode, setEditingPaidMode] = useState<"all" | "single">("all");
   const [editingPaidBy, setEditingPaidBy] = useState(currentUserId);
+  const [editingUsePool, setEditingUsePool] = useState(false);
+  const [editingPoolAmount, setEditingPoolAmount] = useState("");
   const [savingPaidBillId, setSavingPaidBillId] = useState<string | null>(null);
+
+  const memberCount = Math.max(1, members.length);
+  const availablePoolCash = Math.max(0, summary.allTimeBalance);
 
   const periodTarget =
     weekWindow.kind === "month"
@@ -169,12 +202,40 @@ export function BudgetView({
   const handleAddNeed = async (e: FormEvent) => {
     e.preventDefault();
     if (!needTitle.trim()) return;
+    const estRaw = Number(needEstimate.replace(/,/g, "").trim());
+    const estimatedAmount = Number.isFinite(estRaw) && estRaw > 0 ? Math.round(estRaw) : null;
     setAddingNeed(true);
     try {
-      await onAddNeed(needTitle, needCategory);
+      await onAddNeed(needTitle, needCategory, {
+        quantity: needQty.trim() || null,
+        estimatedAmount,
+      });
       setNeedTitle("");
+      setNeedQty("");
+      setNeedEstimate("");
     } finally {
       setAddingNeed(false);
+    }
+  };
+
+  const handleSaveNeedBought = async (need: HouseholdNeed) => {
+    const actRaw = Number(buyingActualAmount.replace(/,/g, "").trim());
+    const actualAmount = Number.isFinite(actRaw) && actRaw > 0 ? Math.round(actRaw) : null;
+    const prevPool = need.is_bought ? (need.pool_amount_used ?? 0) : 0;
+    const maxPool = actualAmount ? Math.min(actualAmount, prevPool + availablePoolCash) : 0;
+    const poolRaw = buyingUsePool ? Number(buyingPoolAmount.replace(/,/g, "").trim()) || 0 : prevPool;
+    const safePool = Math.max(prevPool, Math.min(maxPool, Math.round(poolRaw)));
+    setSavingBoughtNeedId(need.id);
+    try {
+      await onMarkNeedBought(need.id, {
+        actualAmount,
+        paidMode: buyingPaidMode,
+        paidBy: buyingPaidMode === "single" ? buyingPaidBy || currentUserId : null,
+        poolAmountUsed: safePool,
+      });
+      setBuyingNeedId(null);
+    } finally {
+      setSavingBoughtNeedId(null);
     }
   };
 
@@ -184,6 +245,12 @@ export function BudgetView({
     const numericDay = Number(billDateISO.slice(8, 10)) || 1;
     const numericInterval = Math.min(60, Math.max(1, Math.round(Number(billIntervalMonths) || 1)));
     if (!billTitle.trim() || !Number.isFinite(numericAmount) || numericAmount <= 0) return;
+    const maxPool = Math.min(numericAmount, availablePoolCash);
+    const poolRaw =
+      billAlreadyPaid && billUsePool
+        ? Number(billPoolAmount.replace(/,/g, "").trim()) || 0
+        : 0;
+    const safePool = Math.max(0, Math.min(maxPool, Math.round(poolRaw)));
     setAddingBill(true);
     try {
       await onAddBill(
@@ -195,6 +262,7 @@ export function BudgetView({
         billAlreadyPaid ? billDateISO : null,
         billPaidMode,
         billPaidMode === "single" ? billPaidBy || currentUserId : null,
+        safePool,
       );
       setBillTitle("");
       setBillAmount("");
@@ -202,6 +270,8 @@ export function BudgetView({
       setBillAlreadyPaid(true);
       setBillPaidMode("all");
       setBillPaidBy(currentUserId);
+      setBillUsePool(false);
+      setBillPoolAmount("");
       setBillIntervalMonths("1");
       setShowBillForm(false);
     } finally {
@@ -209,20 +279,37 @@ export function BudgetView({
     }
   };
 
-  const handleSaveBillPaidDate = async (billId: string) => {
-    setSavingPaidBillId(billId);
+  const handleSaveBillPaidDate = async (bill: RecurringBill) => {
+    const monthKey = editingPaidDateISO.slice(0, 7);
+    const prevPool = bill.last_paid_month === monthKey ? (bill.pool_amount_used ?? 0) : 0;
+    const maxPool = Math.min(bill.amount, prevPool + availablePoolCash);
+    const poolRaw = editingUsePool
+      ? Number(editingPoolAmount.replace(/,/g, "").trim()) || 0
+      : prevPool;
+    const safePool = Math.max(prevPool, Math.min(maxPool, Math.round(poolRaw)));
+    setSavingPaidBillId(bill.id);
     try {
       await onMarkBillPaid(
-        billId,
+        bill.id,
         editingPaidDateISO,
         editingPaidMode,
         editingPaidMode === "single" ? editingPaidBy || currentUserId : null,
+        safePool,
       );
       setEditingPaidBillId(null);
     } finally {
       setSavingPaidBillId(null);
     }
   };
+
+  let pendingNeedsEstTotal = 0;
+  let pendingNeedsPricedCount = 0;
+  for (const n of pendingNeeds) {
+    if (n.estimated_amount && n.estimated_amount > 0) {
+      pendingNeedsEstTotal += n.estimated_amount;
+      pendingNeedsPricedCount += 1;
+    }
+  }
 
   let settledBillsTotal = 0;
   let dueBillsTotal = 0;
@@ -660,57 +747,137 @@ export function BudgetView({
                   <IosDatePicker value={billDateISO} onChange={setBillDateISO} />
                 </div>
 
-                {/* Split by all vs. Paid by 1 member */}
-                <div className="space-y-2 pt-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <label className="block text-xs font-medium text-[#52525B]">Who pays</label>
-                    {members.length > 0 && Number(billAmount) > 0 && (
-                      <span className="font-mono text-[11px] text-[#8F703F] tabular-nums">
-                        {formatTZS(Math.round(Number(billAmount) / members.length))}/member
-                      </span>
-                    )}
-                  </div>
-                  <SoftSegmented
-                    value={billPaidMode}
-                    onValueChange={(v) => setBillPaidMode(v as "all" | "single")}
-                    items={[
-                      { value: "all", label: `Split by all (${Math.max(1, members.length)})` },
-                      { value: "single", label: "Paid by 1 member" },
-                    ]}
-                  />
-                  {billPaidMode === "single" && members.length > 0 && (
-                    <div className="grid grid-cols-2 gap-1.5">
-                      {members.map((m) => {
-                        const selected = billPaidBy === m.user_id;
-                        const name = m.profile?.full_name ?? "Roommate";
-                        const color = m.profile?.avatar_color ?? "#BFA377";
-                        return (
-                          <button
-                            key={m.user_id}
-                            type="button"
-                            onClick={() => setBillPaidBy(m.user_id)}
-                            className={`flex items-center gap-2 rounded-xl border px-2.5 py-1.5 text-left text-xs font-medium transition-colors cursor-pointer ${
-                              selected
-                                ? "border-[#1C1C1E] bg-[#1C1C1E] text-white"
-                                : "border-stone-900/10 bg-white text-[#52525B]"
-                            }`}
-                          >
+                {/* Optional: Use leftover pool money when marking paid */}
+                {billAlreadyPaid && (() => {
+                  const totalAmt = Math.max(0, Number(billAmount.replace(/,/g, "").trim()) || 0);
+                  const maxPool = Math.min(totalAmt, availablePoolCash);
+                  const poolUsed = billUsePool
+                    ? Math.max(0, Math.min(maxPool, Math.round(Number(billPoolAmount.replace(/,/g, "").trim()) || 0)))
+                    : 0;
+                  const remainder = Math.max(0, totalAmt - poolUsed);
+                  return (
+                    <>
+                      <div className="rounded-xl border border-stone-900/[0.08] bg-white p-2.5 space-y-2">
+                        <button
+                          type="button"
+                          disabled={availablePoolCash <= 0}
+                          onClick={() => {
+                            const next = !billUsePool;
+                            setBillUsePool(next);
+                            if (next && !billPoolAmount && maxPool > 0) {
+                              setBillPoolAmount(String(maxPool));
+                            }
+                          }}
+                          className="flex w-full items-center justify-between gap-2 text-left disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+                        >
+                          <span className="inline-flex items-center gap-2 text-xs font-medium text-[#1C1C1E]">
                             <span
-                              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white"
-                              style={{ backgroundColor: color }}
+                              className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border transition-colors ${
+                                billUsePool
+                                  ? "border-[#1C1C1E] bg-[#1C1C1E] text-white"
+                                  : "border-stone-300 bg-white text-transparent"
+                              }`}
                             >
-                              {getInitials(name)}
+                              <Check className="h-3 w-3" strokeWidth={2.5} />
                             </span>
-                            <span className="truncate">
-                              {name.split(" ")[0]}
-                              {m.user_id === currentUserId ? " (You)" : ""}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+                            <span>Use leftover pool money</span>
+                          </span>
+                          <span className="font-mono text-[11px] text-[#8E8E93] tabular-nums">
+                            {availablePoolCash > 0
+                              ? `Avail: ${formatTZS(availablePoolCash)}`
+                              : "No pool cash"}
+                          </span>
+                        </button>
+                        {billUsePool && availablePoolCash > 0 && (
+                          <div className="space-y-1.5 pt-0.5">
+                            <div className="flex items-center gap-2">
+                              <SoftInput
+                                type="number"
+                                min="0"
+                                max={String(maxPool)}
+                                step="1"
+                                placeholder="Amount from pool"
+                                value={billPoolAmount}
+                                onValueChange={setBillPoolAmount}
+                                className="flex-1"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setBillPoolAmount(String(maxPool))}
+                                className="shrink-0 rounded-lg border border-stone-900/10 bg-[#F6F5F2] px-2.5 py-2 text-[11px] font-medium text-[#1C1C1E] hover:bg-stone-200/60 cursor-pointer"
+                              >
+                                Use max
+                              </button>
+                            </div>
+                            {totalAmt > 0 && (
+                              <div className="text-[11px] text-[#8F703F] tabular-nums">
+                                {remainder === 0
+                                  ? "Covered in full from pool · TZS 0/member"
+                                  : `${formatTZS(poolUsed)} from pool + ${formatTZS(remainder)} left (${formatTZS(Math.round(remainder / memberCount))}/member)`}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Split by all vs. Paid by 1 member (only when remaining > 0) */}
+                      {(totalAmt === 0 || remainder > 0) && (
+                        <div className="space-y-2 pt-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <label className="block text-xs font-medium text-[#52525B]">
+                              {poolUsed > 0 ? "Who pays the remaining" : "Who pays"}
+                            </label>
+                            {totalAmt > 0 && (
+                              <span className="font-mono text-[11px] text-[#8F703F] tabular-nums">
+                                {formatTZS(Math.round(remainder / memberCount))}/member
+                              </span>
+                            )}
+                          </div>
+                          <SoftSegmented
+                            value={billPaidMode}
+                            onValueChange={(v) => setBillPaidMode(v as "all" | "single")}
+                            items={[
+                              { value: "all", label: `Split by all (${memberCount})` },
+                              { value: "single", label: "Paid by 1 member" },
+                            ]}
+                          />
+                          {billPaidMode === "single" && members.length > 0 && (
+                            <div className="grid grid-cols-2 gap-1.5">
+                              {members.map((m) => {
+                                const selected = billPaidBy === m.user_id;
+                                const name = m.profile?.full_name ?? "Roommate";
+                                const color = m.profile?.avatar_color ?? "#BFA377";
+                                return (
+                                  <button
+                                    key={m.user_id}
+                                    type="button"
+                                    onClick={() => setBillPaidBy(m.user_id)}
+                                    className={`flex items-center gap-2 rounded-xl border px-2.5 py-1.5 text-left text-xs font-medium transition-colors cursor-pointer ${
+                                      selected
+                                        ? "border-[#1C1C1E] bg-[#1C1C1E] text-white"
+                                        : "border-stone-900/10 bg-white text-[#52525B]"
+                                    }`}
+                                  >
+                                    <span
+                                      className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white"
+                                      style={{ backgroundColor: color }}
+                                    >
+                                      {getInitials(name)}
+                                    </span>
+                                    <span className="truncate">
+                                      {name.split(" ")[0]}
+                                      {m.user_id === currentUserId ? " (You)" : ""}
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
 
               <div className="grid grid-cols-2 gap-1.5">
@@ -764,15 +931,16 @@ export function BudgetView({
                 const defaultBillISO = bill.last_paid_month
                   ? `${bill.last_paid_month}-${String(bill.due_day).padStart(2, "0")}`
                   : toISODate(new Date());
-                const memberCount = Math.max(1, members.length);
-                const perMemberShare = Math.round(bill.amount / memberCount);
+                const billPoolUsed = Math.max(0, Math.min(bill.amount, bill.pool_amount_used ?? 0));
+                const billRemainder = Math.max(0, bill.amount - billPoolUsed);
+                const perMemberShare = Math.round(billRemainder / memberCount);
                 const paidMode: "all" | "single" = bill.paid_mode === "single" ? "single" : "all";
                 const payerMember =
                   paidMode === "single" && bill.paid_by
                     ? members.find((m) => m.user_id === bill.paid_by)
                     : null;
                 const otherMembers =
-                  paidMode === "single" && bill.paid_by
+                  paidMode === "single" && bill.paid_by && billRemainder > 0
                     ? members.filter((m) => m.user_id !== bill.paid_by)
                     : [];
                 const settledSet = new Set(bill.settled_by ?? []);
@@ -803,9 +971,17 @@ export function BudgetView({
                           </div>
                           {status.isPaidThisMonth && (
                             <div className="mt-0.5 text-[11px] font-medium text-[#8F703F] tabular-nums">
-                              {paidMode === "single" && payerMember
-                                ? `Paid by ${payerMember.profile.full_name} · ${formatTZS(perMemberShare)}/member`
-                                : `Split by all (${memberCount}) · ${formatTZS(perMemberShare)}/member`}
+                              {billRemainder === 0
+                                ? "Paid in full from pool"
+                                : billPoolUsed > 0
+                                  ? `${formatTZS(billPoolUsed)} from pool + ${
+                                      paidMode === "single" && payerMember
+                                        ? `${payerMember.profile.full_name.split(" ")[0]} (${formatTZS(perMemberShare)}/member)`
+                                        : `split (${formatTZS(perMemberShare)}/member)`
+                                    }`
+                                  : paidMode === "single" && payerMember
+                                    ? `Paid by ${payerMember.profile.full_name} · ${formatTZS(perMemberShare)}/member`
+                                    : `Split by all (${memberCount}) · ${formatTZS(perMemberShare)}/member`}
                             </div>
                           )}
                           {status.paidDateLabel && status.nextDueDateLabel && (
@@ -831,42 +1007,45 @@ export function BudgetView({
                       </span>
                     </div>
 
-                    {/* Per-roommate payback checkmarks when 1 member covered the bill */}
-                    {status.isPaidThisMonth && paidMode === "single" && otherMembers.length > 0 && (
-                      <div className="pl-8 space-y-1.5">
-                        <div className="flex items-center justify-between text-[11px] text-[#8E8E93]">
-                          <span>
-                            {allOthersSettled
-                              ? `Everyone paid back ${payerMember?.profile.full_name.split(" ")[0] ?? "payer"}`
-                              : `Tap as each roommate pays ${formatTZS(perMemberShare)} back`}
-                          </span>
-                          {allOthersSettled && (
-                            <span className="font-medium text-emerald-700">All settled</span>
-                          )}
+                    {/* Per-roommate payback checkmarks when 1 member covered the remaining bill */}
+                    {status.isPaidThisMonth &&
+                      paidMode === "single" &&
+                      billRemainder > 0 &&
+                      otherMembers.length > 0 && (
+                        <div className="pl-8 space-y-1.5">
+                          <div className="flex items-center justify-between text-[11px] text-[#8E8E93]">
+                            <span>
+                              {allOthersSettled
+                                ? `Everyone paid back ${payerMember?.profile.full_name.split(" ")[0] ?? "payer"}`
+                                : `Tap as each roommate pays ${formatTZS(perMemberShare)} back`}
+                            </span>
+                            {allOthersSettled && (
+                              <span className="font-medium text-emerald-700">All settled</span>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {otherMembers.map((m) => {
+                              const isSettled = settledSet.has(m.user_id);
+                              const firstName = m.profile.full_name.split(" ")[0];
+                              return (
+                                <button
+                                  key={m.user_id}
+                                  type="button"
+                                  onClick={() => void onToggleBillMemberSettled(bill.id, m.user_id)}
+                                  className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-medium transition-colors cursor-pointer ${
+                                    isSettled
+                                      ? "border-emerald-700/20 bg-emerald-50 text-emerald-700"
+                                      : "border-stone-900/10 bg-[#F6F5F2] text-[#52525B] hover:border-stone-900/25"
+                                  }`}
+                                >
+                                  {isSettled && <Check className="h-3 w-3" strokeWidth={2.5} />}
+                                  <span>{firstName}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {otherMembers.map((m) => {
-                            const isSettled = settledSet.has(m.user_id);
-                            const firstName = m.profile.full_name.split(" ")[0];
-                            return (
-                              <button
-                                key={m.user_id}
-                                type="button"
-                                onClick={() => void onToggleBillMemberSettled(bill.id, m.user_id)}
-                                className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-medium transition-colors cursor-pointer ${
-                                  isSettled
-                                    ? "border-emerald-700/20 bg-emerald-50 text-emerald-700"
-                                    : "border-stone-900/10 bg-[#F6F5F2] text-[#52525B] hover:border-stone-900/25"
-                                }`}
-                              >
-                                {isSettled && <Check className="h-3 w-3" strokeWidth={2.5} />}
-                                <span>{firstName}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
+                      )}
 
                     <div className="flex items-center justify-between gap-2 pl-8">
                       <div className="flex flex-wrap items-center gap-2">
@@ -878,6 +1057,8 @@ export function BudgetView({
                               setEditingPaidDateISO(defaultBillISO);
                               setEditingPaidMode(paidMode);
                               setEditingPaidBy(bill.paid_by || currentUserId);
+                              setEditingUsePool(false);
+                              setEditingPoolAmount("");
                             }}
                             className="inline-flex items-center gap-1.5 rounded-lg bg-[#1C1C1E] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#2C2C30] transition-colors cursor-pointer"
                           >
@@ -899,6 +1080,8 @@ export function BudgetView({
                                 setEditingPaidDateISO(defaultBillISO);
                                 setEditingPaidMode(paidMode);
                                 setEditingPaidBy(bill.paid_by || currentUserId);
+                                setEditingUsePool(billPoolUsed > 0);
+                                setEditingPoolAmount(billPoolUsed > 0 ? String(billPoolUsed) : "");
                               }}
                               className="inline-flex items-center gap-1 rounded-md bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-[#52525B] hover:text-[#1C1C1E] transition-colors cursor-pointer"
                             >
@@ -941,75 +1124,154 @@ export function BudgetView({
                       )}
                     </div>
 
-                    {/* Inline Calendar & Payer Picker to record or update payment without touching weekly pool */}
-                    {editingDate && (
-                      <div className="ml-8 rounded-xl border border-stone-900/[0.08] bg-[#F6F5F2] p-3 space-y-2.5">
-                        <div className="text-xs font-medium text-[#1C1C1E]">
-                          Record payment for {bill.title}
-                        </div>
-                        <IosDatePicker
-                          value={editingPaidDateISO}
-                          onChange={setEditingPaidDateISO}
-                        />
-                        <SoftSegmented
-                          value={editingPaidMode}
-                          onValueChange={(v) => setEditingPaidMode(v as "all" | "single")}
-                          items={[
-                            { value: "all", label: `Split by all (${memberCount})` },
-                            { value: "single", label: "Paid by 1 member" },
-                          ]}
-                        />
-                        {editingPaidMode === "single" && members.length > 0 && (
-                          <div className="grid grid-cols-2 gap-1.5">
-                            {members.map((m) => {
-                              const selected = editingPaidBy === m.user_id;
-                              const name = m.profile?.full_name ?? "Roommate";
-                              const color = m.profile?.avatar_color ?? "#BFA377";
-                              return (
-                                <button
-                                  key={m.user_id}
-                                  type="button"
-                                  onClick={() => setEditingPaidBy(m.user_id)}
-                                  className={`flex items-center gap-2 rounded-xl border px-2.5 py-1.5 text-left text-xs font-medium transition-colors cursor-pointer ${
-                                    selected
+                    {/* Inline Calendar, Optional Pool Usage & Payer Picker */}
+                    {editingDate && (() => {
+                      const monthKey = editingPaidDateISO.slice(0, 7);
+                      const prevPool = bill.last_paid_month === monthKey ? billPoolUsed : 0;
+                      const maxPool = Math.min(bill.amount, prevPool + availablePoolCash);
+                      const canUsePool = maxPool > 0;
+                      const editPoolUsed = editingUsePool
+                        ? Math.max(
+                            prevPool,
+                            Math.min(maxPool, Math.round(Number(editingPoolAmount.replace(/,/g, "").trim()) || 0)),
+                          )
+                        : prevPool;
+                      const editRemainder = Math.max(0, bill.amount - editPoolUsed);
+                      return (
+                        <div className="ml-8 rounded-xl border border-stone-900/[0.08] bg-[#F6F5F2] p-3 space-y-2.5">
+                          <div className="text-xs font-medium text-[#1C1C1E]">
+                            Record payment for {bill.title}
+                          </div>
+                          <IosDatePicker
+                            value={editingPaidDateISO}
+                            onChange={setEditingPaidDateISO}
+                          />
+
+                          {/* Optional leftover pool money */}
+                          <div className="rounded-xl border border-stone-900/[0.08] bg-white p-2.5 space-y-2">
+                            <button
+                              type="button"
+                              disabled={!canUsePool}
+                              onClick={() => {
+                                if (prevPool > 0 && editingUsePool) return;
+                                const next = !editingUsePool;
+                                setEditingUsePool(next);
+                                if (next && !editingPoolAmount && maxPool > 0) {
+                                  setEditingPoolAmount(String(maxPool));
+                                }
+                              }}
+                              className="flex w-full items-center justify-between gap-2 text-left disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+                            >
+                              <span className="inline-flex items-center gap-2 text-xs font-medium text-[#1C1C1E]">
+                                <span
+                                  className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border transition-colors ${
+                                    editingUsePool
                                       ? "border-[#1C1C1E] bg-[#1C1C1E] text-white"
-                                      : "border-stone-900/10 bg-white text-[#52525B]"
+                                      : "border-stone-300 bg-white text-transparent"
                                   }`}
                                 >
-                                  <span
-                                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white"
-                                    style={{ backgroundColor: color }}
+                                  <Check className="h-3 w-3" strokeWidth={2.5} />
+                                </span>
+                                <span>Use leftover pool money</span>
+                              </span>
+                              <span className="font-mono text-[11px] text-[#8E8E93] tabular-nums">
+                                {canUsePool ? `Max: ${formatTZS(maxPool)}` : "No pool cash"}
+                              </span>
+                            </button>
+                            {editingUsePool && canUsePool && (
+                              <div className="space-y-1.5 pt-0.5">
+                                <div className="flex items-center gap-2">
+                                  <SoftInput
+                                    type="number"
+                                    min={String(prevPool)}
+                                    max={String(maxPool)}
+                                    step="1"
+                                    placeholder="Amount from pool"
+                                    value={editingPoolAmount}
+                                    onValueChange={setEditingPoolAmount}
+                                    className="flex-1"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingPoolAmount(String(maxPool))}
+                                    className="shrink-0 rounded-lg border border-stone-900/10 bg-[#F6F5F2] px-2.5 py-2 text-[11px] font-medium text-[#1C1C1E] hover:bg-stone-200/60 cursor-pointer"
                                   >
-                                    {getInitials(name)}
-                                  </span>
-                                  <span className="truncate">
-                                    {name.split(" ")[0]}
-                                    {m.user_id === currentUserId ? " (You)" : ""}
-                                  </span>
-                                </button>
-                              );
-                            })}
+                                    Use max
+                                  </button>
+                                </div>
+                                <div className="text-[11px] text-[#8F703F] tabular-nums">
+                                  {editRemainder === 0
+                                    ? "Covered in full from pool · TZS 0/member"
+                                    : `${formatTZS(editPoolUsed)} from pool + ${formatTZS(editRemainder)} left (${formatTZS(Math.round(editRemainder / memberCount))}/member)`}
+                                </div>
+                              </div>
+                            )}
                           </div>
-                        )}
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setEditingPaidBillId(null)}
-                            className="rounded-lg bg-white px-2.5 py-1 text-xs font-medium text-[#52525B] border border-stone-900/10 cursor-pointer"
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            type="button"
-                            disabled={savingPaidBillId === bill.id}
-                            onClick={() => void handleSaveBillPaidDate(bill.id)}
-                            className="rounded-lg bg-[#1C1C1E] px-3 py-1 text-xs font-medium text-white hover:bg-[#2C2C30] disabled:opacity-50 cursor-pointer"
-                          >
-                            {savingPaidBillId === bill.id ? "Saving..." : "Save payment"}
-                          </button>
+
+                          {editRemainder > 0 && (
+                            <>
+                              <SoftSegmented
+                                value={editingPaidMode}
+                                onValueChange={(v) => setEditingPaidMode(v as "all" | "single")}
+                                items={[
+                                  { value: "all", label: `Split by all (${memberCount})` },
+                                  { value: "single", label: "Paid by 1 member" },
+                                ]}
+                              />
+                              {editingPaidMode === "single" && members.length > 0 && (
+                                <div className="grid grid-cols-2 gap-1.5">
+                                  {members.map((m) => {
+                                    const selected = editingPaidBy === m.user_id;
+                                    const name = m.profile?.full_name ?? "Roommate";
+                                    const color = m.profile?.avatar_color ?? "#BFA377";
+                                    return (
+                                      <button
+                                        key={m.user_id}
+                                        type="button"
+                                        onClick={() => setEditingPaidBy(m.user_id)}
+                                        className={`flex items-center gap-2 rounded-xl border px-2.5 py-1.5 text-left text-xs font-medium transition-colors cursor-pointer ${
+                                          selected
+                                            ? "border-[#1C1C1E] bg-[#1C1C1E] text-white"
+                                            : "border-stone-900/10 bg-white text-[#52525B]"
+                                        }`}
+                                      >
+                                        <span
+                                          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white"
+                                          style={{ backgroundColor: color }}
+                                        >
+                                          {getInitials(name)}
+                                        </span>
+                                        <span className="truncate">
+                                          {name.split(" ")[0]}
+                                          {m.user_id === currentUserId ? " (You)" : ""}
+                                        </span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </>
+                          )}
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setEditingPaidBillId(null)}
+                              className="rounded-lg bg-white px-2.5 py-1 text-xs font-medium text-[#52525B] border border-stone-900/10 cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              disabled={savingPaidBillId === bill.id}
+                              onClick={() => void handleSaveBillPaidDate(bill)}
+                              className="rounded-lg bg-[#1C1C1E] px-3 py-1 text-xs font-medium text-white hover:bg-[#2C2C30] disabled:opacity-50 cursor-pointer"
+                            >
+                              {savingPaidBillId === bill.id ? "Saving..." : "Save payment"}
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
                   </div>
                 );
               })}
@@ -1023,7 +1285,7 @@ export function BudgetView({
           <div>
             <h2 className="text-base font-semibold text-[#1C1C1E]">What the house needs</h2>
             <p className="text-xs text-[#52525B] mt-0.5">
-              Shared restock list — tap Buy & log when someone picks an item up
+              Shared shopping list — separate from weekly pool unless you use leftover cash
             </p>
           </div>
 
@@ -1033,7 +1295,7 @@ export function BudgetView({
               <SoftInput
                 type="text"
                 maxLength={120}
-                placeholder="Cooking gas, Rice 5kg, Dish soap"
+                placeholder="Cooking gas, Rice, Dish soap"
                 value={needTitle}
                 onValueChange={setNeedTitle}
                 className="flex-1"
@@ -1047,6 +1309,23 @@ export function BudgetView({
               >
                 Add
               </SoftButton>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <SoftInput
+                type="number"
+                min="1"
+                step="1"
+                placeholder="Est. price (TZS)"
+                value={needEstimate}
+                onValueChange={setNeedEstimate}
+              />
+              <SoftInput
+                type="text"
+                maxLength={40}
+                placeholder="Qty (e.g. 5 kg, 2 pcs)"
+                value={needQty}
+                onValueChange={setNeedQty}
+              />
             </div>
             <div
               data-no-tab-swipe
@@ -1073,6 +1352,24 @@ export function BudgetView({
             </div>
           </form>
 
+          {/* Shopping-list Estimate Summary */}
+          {pendingNeedsPricedCount > 0 && (
+            <div className="grid grid-cols-2 divide-x divide-stone-900/[0.06] rounded-xl bg-[#F6F5F2] p-3">
+              <div className="pr-3">
+                <div className="text-xs text-[#52525B]">Est. shopping total</div>
+                <div className="mt-0.5 text-sm font-semibold text-[#1C1C1E] tabular-nums">
+                  {formatTZS(pendingNeedsEstTotal)}
+                </div>
+              </div>
+              <div className="pl-3">
+                <div className="text-xs text-[#52525B]">Est. per member ({memberCount})</div>
+                <div className="mt-0.5 text-sm font-semibold text-[#8F703F] tabular-nums">
+                  {formatTZS(Math.round(pendingNeedsEstTotal / memberCount))}
+                </div>
+              </div>
+            </div>
+          )}
+
           {needs.length === 0 ? (
             <div className="rounded-xl bg-[#F6F5F2] py-8 px-4 text-center space-y-1.5">
               <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-xl bg-white border border-stone-900/[0.08] text-[#52525B]">
@@ -1087,53 +1384,246 @@ export function BudgetView({
             <div className="space-y-3">
               {pendingNeeds.length > 0 && (
                 <div className="divide-y divide-stone-900/[0.06]">
-                  {pendingNeeds.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex items-center justify-between gap-2 py-2.5 first:pt-0 last:pb-0"
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <button
-                          type="button"
-                          aria-label={`Mark ${item.title} as bought`}
-                          onClick={() => void onToggleNeed(item.id, true)}
-                          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-stone-300 bg-white hover:border-[#1C1C1E] transition-colors cursor-pointer"
-                        />
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-medium text-[#1C1C1E]">
-                            {item.title}
+                  {pendingNeeds.map((item) => {
+                    const isBuying = buyingNeedId === item.id;
+                    const actAmt = Math.max(
+                      0,
+                      Math.round(Number(buyingActualAmount.replace(/,/g, "").trim()) || 0),
+                    );
+                    const maxPool = Math.min(actAmt, availablePoolCash);
+                    const poolUsed = buyingUsePool
+                      ? Math.max(
+                          0,
+                          Math.min(
+                            maxPool,
+                            Math.round(Number(buyingPoolAmount.replace(/,/g, "").trim()) || 0),
+                          ),
+                        )
+                      : 0;
+                    const remainder = Math.max(0, actAmt - poolUsed);
+
+                    return (
+                      <div key={item.id} className="py-2.5 first:pt-0 last:pb-0 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <button
+                              type="button"
+                              aria-label={`Mark ${item.title} as bought`}
+                              onClick={() => {
+                                setBuyingNeedId(isBuying ? null : item.id);
+                                setBuyingActualAmount(
+                                  item.estimated_amount ? String(item.estimated_amount) : "",
+                                );
+                                setBuyingPaidMode("all");
+                                setBuyingPaidBy(currentUserId);
+                                setBuyingUsePool(false);
+                                setBuyingPoolAmount("");
+                              }}
+                              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-stone-300 bg-white hover:border-[#1C1C1E] transition-colors cursor-pointer"
+                            />
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-medium text-[#1C1C1E]">
+                                {item.title}
+                                {item.quantity && (
+                                  <span className="ml-1.5 text-xs font-normal text-[#52525B]">
+                                    · {item.quantity}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="truncate text-xs text-[#8E8E93] tabular-nums">
+                                {item.estimated_amount
+                                  ? `Est. ${formatTZS(item.estimated_amount)} (${formatTZS(Math.round(item.estimated_amount / memberCount))}/member)`
+                                  : `Added by ${item.adder?.full_name ?? "Member"}`}
+                              </div>
+                            </div>
                           </div>
-                          <div className="truncate text-xs text-[#8E8E93]">
-                            Added by {item.adder?.full_name ?? "Member"}
+                          <div className="flex shrink-0 items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setBuyingNeedId(isBuying ? null : item.id);
+                                setBuyingActualAmount(
+                                  item.estimated_amount ? String(item.estimated_amount) : "",
+                                );
+                                setBuyingPaidMode("all");
+                                setBuyingPaidBy(currentUserId);
+                                setBuyingUsePool(false);
+                                setBuyingPoolAmount("");
+                              }}
+                              className="rounded-lg bg-[#1C1C1E] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#2C2C30] transition-colors cursor-pointer"
+                            >
+                              Mark bought
+                            </button>
+                            <button
+                              type="button"
+                              aria-label={`Remove ${item.title}`}
+                              onClick={() => void onDeleteNeed(item.id)}
+                              className="flex h-7 w-7 items-center justify-center rounded-md text-[#8E8E93] hover:bg-rose-50 hover:text-rose-700 transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
                           </div>
                         </div>
+
+                        {isBuying && (
+                          <div className="ml-7 rounded-xl border border-stone-900/[0.08] bg-[#F6F5F2] p-3 space-y-2.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs font-medium text-[#1C1C1E]">
+                                Complete purchase: {item.title}
+                              </span>
+                              {actAmt > 0 && remainder > 0 && (
+                                <span className="font-mono text-[11px] text-[#8F703F] tabular-nums">
+                                  {formatTZS(Math.round(remainder / memberCount))}/member
+                                </span>
+                              )}
+                            </div>
+
+                            <SoftInput
+                              type="number"
+                              min="1"
+                              step="1"
+                              placeholder="Actual price paid (TZS, optional)"
+                              value={buyingActualAmount}
+                              onValueChange={setBuyingActualAmount}
+                              icon={
+                                <span className="font-mono text-xs font-medium text-[#8E8E93]">
+                                  TZS
+                                </span>
+                              }
+                            />
+
+                            {/* Optional leftover pool money */}
+                            {actAmt > 0 && (
+                              <div className="rounded-xl border border-stone-900/[0.08] bg-white p-2.5 space-y-2">
+                                <button
+                                  type="button"
+                                  disabled={availablePoolCash <= 0}
+                                  onClick={() => {
+                                    const next = !buyingUsePool;
+                                    setBuyingUsePool(next);
+                                    if (next && !buyingPoolAmount && maxPool > 0) {
+                                      setBuyingPoolAmount(String(maxPool));
+                                    }
+                                  }}
+                                  className="flex w-full items-center justify-between gap-2 text-left disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+                                >
+                                  <span className="inline-flex items-center gap-2 text-xs font-medium text-[#1C1C1E]">
+                                    <span
+                                      className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border transition-colors ${
+                                        buyingUsePool
+                                          ? "border-[#1C1C1E] bg-[#1C1C1E] text-white"
+                                          : "border-stone-300 bg-white text-transparent"
+                                      }`}
+                                    >
+                                      <Check className="h-3 w-3" strokeWidth={2.5} />
+                                    </span>
+                                    <span>Use leftover pool money</span>
+                                  </span>
+                                  <span className="font-mono text-[11px] text-[#8E8E93] tabular-nums">
+                                    {availablePoolCash > 0
+                                      ? `Avail: ${formatTZS(availablePoolCash)}`
+                                      : "No pool cash"}
+                                  </span>
+                                </button>
+                                {buyingUsePool && availablePoolCash > 0 && (
+                                  <div className="space-y-1.5 pt-0.5">
+                                    <div className="flex items-center gap-2">
+                                      <SoftInput
+                                        type="number"
+                                        min="0"
+                                        max={String(maxPool)}
+                                        step="1"
+                                        placeholder="Amount from pool"
+                                        value={buyingPoolAmount}
+                                        onValueChange={setBuyingPoolAmount}
+                                        className="flex-1"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => setBuyingPoolAmount(String(maxPool))}
+                                        className="shrink-0 rounded-lg border border-stone-900/10 bg-[#F6F5F2] px-2.5 py-2 text-[11px] font-medium text-[#1C1C1E] hover:bg-stone-200/60 cursor-pointer"
+                                      >
+                                        Use max
+                                      </button>
+                                    </div>
+                                    <div className="text-[11px] text-[#8F703F] tabular-nums">
+                                      {remainder === 0
+                                        ? "Covered in full from pool · TZS 0/member"
+                                        : `${formatTZS(poolUsed)} from pool + ${formatTZS(remainder)} left (${formatTZS(Math.round(remainder / memberCount))}/member)`}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Who bought the remaining amount */}
+                            {actAmt > 0 && remainder > 0 && (
+                              <>
+                                <SoftSegmented
+                                  value={buyingPaidMode}
+                                  onValueChange={(v) => setBuyingPaidMode(v as "all" | "single")}
+                                  items={[
+                                    { value: "all", label: `Split by all (${memberCount})` },
+                                    { value: "single", label: "Bought by 1 member" },
+                                  ]}
+                                />
+                                {buyingPaidMode === "single" && members.length > 0 && (
+                                  <div className="grid grid-cols-2 gap-1.5">
+                                    {members.map((m) => {
+                                      const selected = buyingPaidBy === m.user_id;
+                                      const name = m.profile?.full_name ?? "Roommate";
+                                      const color = m.profile?.avatar_color ?? "#BFA377";
+                                      return (
+                                        <button
+                                          key={m.user_id}
+                                          type="button"
+                                          onClick={() => setBuyingPaidBy(m.user_id)}
+                                          className={`flex items-center gap-2 rounded-xl border px-2.5 py-1.5 text-left text-xs font-medium transition-colors cursor-pointer ${
+                                            selected
+                                              ? "border-[#1C1C1E] bg-[#1C1C1E] text-white"
+                                              : "border-stone-900/10 bg-white text-[#52525B]"
+                                          }`}
+                                        >
+                                          <span
+                                            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white"
+                                            style={{ backgroundColor: color }}
+                                          >
+                                            {getInitials(name)}
+                                          </span>
+                                          <span className="truncate">
+                                            {name.split(" ")[0]}
+                                            {m.user_id === currentUserId ? " (You)" : ""}
+                                          </span>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </>
+                            )}
+
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setBuyingNeedId(null)}
+                                className="rounded-lg bg-white px-2.5 py-1 text-xs font-medium text-[#52525B] border border-stone-900/10 cursor-pointer"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                disabled={savingBoughtNeedId === item.id}
+                                onClick={() => void handleSaveNeedBought(item)}
+                                className="rounded-lg bg-[#1C1C1E] px-3 py-1 text-xs font-medium text-white hover:bg-[#2C2C30] disabled:opacity-50 cursor-pointer"
+                              >
+                                {savingBoughtNeedId === item.id ? "Saving..." : "Confirm bought"}
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                      <div className="flex shrink-0 items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            onStartPrefillExpense({
-                              type: "expense",
-                              category: item.category,
-                              description: item.title,
-                              needId: item.id,
-                            })
-                          }
-                          className="rounded-lg bg-[#1C1C1E] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#2C2C30] transition-colors cursor-pointer"
-                        >
-                          Buy & log
-                        </button>
-                        <button
-                          type="button"
-                          aria-label={`Remove ${item.title}`}
-                          onClick={() => void onDeleteNeed(item.id)}
-                          className="flex h-7 w-7 items-center justify-center rounded-md text-[#8E8E93] hover:bg-rose-50 hover:text-rose-700 transition-colors cursor-pointer"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 
@@ -1143,34 +1633,122 @@ export function BudgetView({
                     Recently bought ({boughtNeeds.length})
                   </div>
                   <div className="divide-y divide-stone-900/[0.06]">
-                    {boughtNeeds.map((item) => (
-                      <div
-                        key={item.id}
-                        className="flex items-center justify-between gap-2 py-2 opacity-75"
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <button
-                            type="button"
-                            aria-label={`Restore ${item.title} to needed`}
-                            onClick={() => void onToggleNeed(item.id, false)}
-                            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-[#1C1C1E] text-white cursor-pointer"
-                          >
-                            <Check className="h-3 w-3" strokeWidth={2.5} />
-                          </button>
-                          <span className="truncate text-xs text-[#52525B] line-through">
-                            {item.title}
-                          </span>
+                    {boughtNeeds.map((item) => {
+                      const finalAmt = item.actual_amount ?? item.estimated_amount ?? 0;
+                      const needPoolUsed = Math.max(
+                        0,
+                        Math.min(finalAmt, item.pool_amount_used ?? 0),
+                      );
+                      const needRemainder = Math.max(0, finalAmt - needPoolUsed);
+                      const perMember = Math.round(needRemainder / memberCount);
+                      const paidMode: "all" | "single" =
+                        item.paid_mode === "single" ? "single" : "all";
+                      const payerMember =
+                        paidMode === "single" && item.paid_by
+                          ? members.find((m) => m.user_id === item.paid_by)
+                          : null;
+                      const otherMembers =
+                        paidMode === "single" && item.paid_by && needRemainder > 0
+                          ? members.filter((m) => m.user_id !== item.paid_by)
+                          : [];
+                      const settledSet = new Set(item.settled_by ?? []);
+                      const allOthersSettled =
+                        otherMembers.length > 0 &&
+                        otherMembers.every((m) => settledSet.has(m.user_id));
+
+                      return (
+                        <div key={item.id} className="py-2.5 space-y-1.5">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-start gap-2.5 min-w-0">
+                              <button
+                                type="button"
+                                aria-label={`Restore ${item.title} to needed`}
+                                onClick={() => void onToggleNeed(item.id, false)}
+                                className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-[#1C1C1E] text-white cursor-pointer"
+                              >
+                                <Check className="h-3 w-3" strokeWidth={2.5} />
+                              </button>
+                              <div className="min-w-0">
+                                <div className="truncate text-xs font-medium text-[#52525B] line-through">
+                                  {item.title}
+                                  {item.quantity ? ` · ${item.quantity}` : ""}
+                                </div>
+                                {finalAmt > 0 && (
+                                  <div className="mt-0.5 text-[11px] font-medium text-[#8F703F] tabular-nums">
+                                    {formatTZS(finalAmt)}
+                                    {" · "}
+                                    {needRemainder === 0
+                                      ? "Paid in full from pool"
+                                      : needPoolUsed > 0
+                                        ? `${formatTZS(needPoolUsed)} from pool + ${
+                                            paidMode === "single" && payerMember
+                                              ? `${payerMember.profile.full_name.split(" ")[0]} (${formatTZS(perMember)}/member)`
+                                              : `split (${formatTZS(perMember)}/member)`
+                                          }`
+                                        : paidMode === "single" && payerMember
+                                          ? `Bought by ${payerMember.profile.full_name.split(" ")[0]} · ${formatTZS(perMember)}/member`
+                                          : `Split by all (${memberCount}) · ${formatTZS(perMember)}/member`}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              aria-label={`Delete ${item.title}`}
+                              onClick={() => void onDeleteNeed(item.id)}
+                              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[#8E8E93] hover:bg-rose-50 hover:text-rose-700 transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+
+                          {finalAmt > 0 &&
+                            paidMode === "single" &&
+                            needRemainder > 0 &&
+                            otherMembers.length > 0 && (
+                              <div className="pl-7 space-y-1.5">
+                                <div className="flex items-center justify-between text-[11px] text-[#8E8E93]">
+                                  <span>
+                                    {allOthersSettled
+                                      ? `Everyone paid back ${payerMember?.profile.full_name.split(" ")[0] ?? "buyer"}`
+                                      : `Tap as each roommate pays ${formatTZS(perMember)} back`}
+                                  </span>
+                                  {allOthersSettled && (
+                                    <span className="font-medium text-emerald-700">
+                                      All settled
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {otherMembers.map((m) => {
+                                    const isSettled = settledSet.has(m.user_id);
+                                    const firstName = m.profile.full_name.split(" ")[0];
+                                    return (
+                                      <button
+                                        key={m.user_id}
+                                        type="button"
+                                        onClick={() =>
+                                          void onToggleNeedMemberSettled(item.id, m.user_id)
+                                        }
+                                        className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-medium transition-colors cursor-pointer ${
+                                          isSettled
+                                            ? "border-emerald-700/20 bg-emerald-50 text-emerald-700"
+                                            : "border-stone-900/10 bg-[#F6F5F2] text-[#52525B] hover:border-stone-900/25"
+                                        }`}
+                                      >
+                                        {isSettled && (
+                                          <Check className="h-3 w-3" strokeWidth={2.5} />
+                                        )}
+                                        <span>{firstName}</span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
                         </div>
-                        <button
-                          type="button"
-                          aria-label={`Delete ${item.title}`}
-                          onClick={() => void onDeleteNeed(item.id)}
-                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[#8E8E93] hover:bg-rose-50 hover:text-rose-700 transition-colors cursor-pointer"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}

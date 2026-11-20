@@ -114,6 +114,13 @@ create table if not exists public.household_needs (
   household_id uuid not null references public.households(id) on delete cascade,
   added_by uuid references public.profiles(id) on delete set null,
   title text not null check (char_length(trim(title)) between 1 and 120),
+  quantity text check (quantity is null or char_length(trim(quantity)) <= 40),
+  estimated_amount bigint check (estimated_amount is null or (estimated_amount > 0 and estimated_amount <= 10000000000)),
+  actual_amount bigint check (actual_amount is null or (actual_amount > 0 and actual_amount <= 10000000000)),
+  paid_mode text not null default 'all' check (paid_mode in ('all', 'single')),
+  paid_by uuid references public.profiles(id) on delete set null,
+  settled_by uuid[] not null default '{}',
+  pool_amount_used bigint not null default 0 check (pool_amount_used >= 0 and pool_amount_used <= 10000000000),
   category text not null default 'food' check (
     category in ('food', 'electricity_water', 'rent', 'security_internet', 'wifi_internet', 'supplies', 'transport')
   ),
@@ -121,6 +128,21 @@ create table if not exists public.household_needs (
   bought_at timestamptz,
   created_at timestamptz not null default now()
 );
+
+alter table public.household_needs
+  add column if not exists quantity text check (quantity is null or char_length(trim(quantity)) <= 40);
+alter table public.household_needs
+  add column if not exists estimated_amount bigint check (estimated_amount is null or (estimated_amount > 0 and estimated_amount <= 10000000000));
+alter table public.household_needs
+  add column if not exists actual_amount bigint check (actual_amount is null or (actual_amount > 0 and actual_amount <= 10000000000));
+alter table public.household_needs
+  add column if not exists paid_mode text not null default 'all' check (paid_mode in ('all', 'single'));
+alter table public.household_needs
+  add column if not exists paid_by uuid references public.profiles(id) on delete set null;
+alter table public.household_needs
+  add column if not exists settled_by uuid[] not null default '{}';
+alter table public.household_needs
+  add column if not exists pool_amount_used bigint not null default 0 check (pool_amount_used >= 0 and pool_amount_used <= 10000000000);
 
 create index if not exists idx_household_needs_household
   on public.household_needs (household_id, is_bought, created_at desc);
@@ -141,6 +163,7 @@ create table if not exists public.recurring_bills (
   paid_mode text not null default 'all' check (paid_mode in ('all', 'single')),
   paid_by uuid references public.profiles(id) on delete set null,
   settled_by uuid[] not null default '{}',
+  pool_amount_used bigint not null default 0 check (pool_amount_used >= 0 and pool_amount_used <= 10000000000),
   created_at timestamptz not null default now()
 );
 
@@ -152,6 +175,8 @@ alter table public.recurring_bills
   add column if not exists paid_by uuid references public.profiles(id) on delete set null;
 alter table public.recurring_bills
   add column if not exists settled_by uuid[] not null default '{}';
+alter table public.recurring_bills
+  add column if not exists pool_amount_used bigint not null default 0 check (pool_amount_used >= 0 and pool_amount_used <= 10000000000);
 
 create index if not exists idx_recurring_bills_household
   on public.recurring_bills (household_id, due_day asc);

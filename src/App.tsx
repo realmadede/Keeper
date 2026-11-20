@@ -323,13 +323,6 @@ export function App() {
     setModalOpen(true);
   };
 
-  const handleOpenPrefillExpense = (draft: TransactionPrefill) => {
-    setEditingTx(null);
-    setPrefillDraft(draft);
-    setModalInitialType(draft.type);
-    setModalOpen(true);
-  };
-
   const handleOpenEdit = (tx: Transaction) => {
     setEditingTx(tx);
     setPrefillDraft(null);
@@ -796,10 +789,15 @@ export function App() {
                   needs={store.needs}
                   bills={store.bills}
                   onUpdateBudget={store.updateBudget}
-                  onAddNeed={async (title, category) => {
-                    await store.addNeed(title, category);
+                  onAddNeed={async (title, category, options) => {
+                    await store.addNeed(title, category, options);
                     showToast("Added to house needs");
                   }}
+                  onMarkNeedBought={async (id, options) => {
+                    await store.markNeedBought(id, options);
+                    showToast("Marked as bought");
+                  }}
+                  onToggleNeedMemberSettled={store.toggleNeedMemberSettled}
                   onToggleNeed={store.toggleNeed}
                   onDeleteNeed={async (id) => {
                     await store.deleteNeed(id);
@@ -814,6 +812,7 @@ export function App() {
                     paidDateISO,
                     paidMode,
                     paidBy,
+                    poolAmountUsed,
                   ) => {
                     await store.addBill(
                       title,
@@ -824,11 +823,12 @@ export function App() {
                       paidDateISO,
                       paidMode,
                       paidBy,
+                      poolAmountUsed,
                     );
                     showToast("Recurring bill saved");
                   }}
-                  onMarkBillPaid={async (id, paidDateISO, paidMode, paidBy) => {
-                    await store.markBillPaid(id, paidDateISO, paidMode, paidBy);
+                  onMarkBillPaid={async (id, paidDateISO, paidMode, paidBy, poolAmountUsed) => {
+                    await store.markBillPaid(id, paidDateISO, paidMode, paidBy, poolAmountUsed);
                     showToast("Bill payment saved");
                   }}
                   onToggleBillMemberSettled={store.toggleBillMemberSettled}
@@ -836,7 +836,6 @@ export function App() {
                     await store.deleteBill(id);
                     showToast("Bill removed");
                   }}
-                  onStartPrefillExpense={handleOpenPrefillExpense}
                 />
               )}
             </div>
