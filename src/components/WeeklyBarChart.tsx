@@ -16,47 +16,55 @@ export function WeeklyBarChart({
   comparisonLabel,
   spentDeltaPct,
 }: WeeklyBarChartProps) {
-  const defaultIndex = (() => {
-    let bestIdx = 0;
-    let bestVal = -1;
-    dailySeries.forEach((d, idx) => {
-      const total = d.contributed + d.spent;
-      if (total > bestVal) {
-        bestVal = total;
-        bestIdx = idx;
-      }
-    });
-    return bestIdx;
-  })();
-
-  const [activeIndex, setActiveIndex] = useState(defaultIndex);
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const seriesKey = dailySeries.map((d) => d.iso).join(",");
 
   useEffect(() => {
-    setActiveIndex(defaultIndex);
-  }, [defaultIndex]);
+    setSelectedIndex(null);
+  }, [seriesKey]);
 
-  const activeDay = dailySeries[activeIndex] ?? dailySeries[0];
-  const hasActivity = dailySeries.some((d) => d.contributed > 0 || d.spent > 0);
+  const activeDay = selectedIndex !== null ? (dailySeries[selectedIndex] ?? null) : null;
+  const periodContributed = dailySeries.reduce((sum, d) => sum + d.contributed, 0);
+  const periodSpent = dailySeries.reduce((sum, d) => sum + d.spent, 0);
+  const displayContributed = activeDay ? activeDay.contributed : periodContributed;
+  const displaySpent = activeDay ? activeDay.spent : periodSpent;
+  const hasActivity = periodContributed > 0 || periodSpent > 0;
   const activeSubtitle = activeDay
     ? periodKind === "month"
       ? `${activeDay.dayShort} · ${activeDay.detailLabel}`
       : formatFullDayLabel(activeDay.iso)
-    : "";
+    : periodKind === "month"
+      ? "Full month total · tap a bar to inspect"
+      : "Full week total · tap a bar to inspect";
+
+  const toggleIndex = (idx: number) => {
+    setSelectedIndex((prev) => (prev === idx ? null : idx));
+  };
 
   return (
     <section className="rounded-2xl border border-stone-900/[0.08] bg-white p-4">
       <div className="flex items-center justify-between mb-3">
         <div>
           <h2 className="text-base font-semibold text-[#1C1C1E]">Pool vs. spend</h2>
-          {hasActivity && activeSubtitle && (
+          {hasActivity && (
             <p className="text-xs text-[#8E8E93] mt-0.5">{activeSubtitle}</p>
           )}
         </div>
-        <span className="font-mono text-[11px] text-[#8E8E93]">
-          {periodKind === "month"
-            ? "W1 - W5"
-            : `${dailySeries[0]?.dayShort ?? "Mon"} - ${dailySeries[dailySeries.length - 1]?.dayShort ?? "Sun"}`}
-        </span>
+        {activeDay ? (
+          <button
+            type="button"
+            onClick={() => setSelectedIndex(null)}
+            className="rounded-lg border border-stone-900/10 bg-[#F6F5F2] px-2 py-1 text-[11px] font-medium text-[#1C1C1E] hover:bg-stone-200/60 transition-colors cursor-pointer"
+          >
+            All {periodKind}
+          </button>
+        ) : (
+          <span className="font-mono text-[11px] text-[#8E8E93]">
+            {periodKind === "month"
+              ? "W1 - W5"
+              : `${dailySeries[0]?.dayShort ?? "Mon"} - ${dailySeries[dailySeries.length - 1]?.dayShort ?? "Sun"}`}
+          </span>
+        )}
       </div>
 
       {!hasActivity ? (
@@ -70,28 +78,26 @@ export function WeeklyBarChart({
         </div>
       ) : (
         <>
-          {activeDay && (
-            <div className="mb-3 grid grid-cols-2 gap-3 rounded-xl bg-[#F6F5F2] px-3 py-2.5">
-              <div>
-                <div className="flex items-center gap-1.5 text-[11px] text-[#52525B]">
-                  <span className="h-1.5 w-1.5 rounded-full bg-[#C6A87C]" />
-                  <span>Contributed</span>
-                </div>
-                <div className="mt-0.5 text-sm font-semibold text-[#1C1C1E] tabular-nums">
-                  {formatTZS(activeDay.contributed)}
-                </div>
+          <div className="mb-3 grid grid-cols-2 gap-3 rounded-xl bg-[#F6F5F2] px-3 py-2.5">
+            <div>
+              <div className="flex items-center gap-1.5 text-[11px] text-[#52525B]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#C6A87C]" />
+                <span>Contributed</span>
               </div>
-              <div>
-                <div className="flex items-center gap-1.5 text-[11px] text-[#52525B]">
-                  <span className="h-1.5 w-1.5 rounded-full bg-[#1C1C1E]" />
-                  <span>Spent</span>
-                </div>
-                <div className="mt-0.5 text-sm font-semibold text-[#1C1C1E] tabular-nums">
-                  {formatTZS(activeDay.spent)}
-                </div>
+              <div className="mt-0.5 text-sm font-semibold text-[#1C1C1E] tabular-nums">
+                {formatTZS(displayContributed)}
               </div>
             </div>
-          )}
+            <div>
+              <div className="flex items-center gap-1.5 text-[11px] text-[#52525B]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#1C1C1E]" />
+                <span>Spent</span>
+              </div>
+              <div className="mt-0.5 text-sm font-semibold text-[#1C1C1E] tabular-nums">
+                {formatTZS(displaySpent)}
+              </div>
+            </div>
+          </div>
 
           <div className="h-[196px] w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -102,7 +108,7 @@ export function WeeklyBarChart({
                 barCategoryGap="24%"
                 onClick={(state) => {
                   if (typeof state?.activeTooltipIndex === "number") {
-                    setActiveIndex(state.activeTooltipIndex);
+                    toggleIndex(state.activeTooltipIndex);
                   }
                 }}
               >
@@ -133,12 +139,12 @@ export function WeeklyBarChart({
                   radius={[4, 4, 2, 2]}
                   maxBarSize={14}
                   cursor="pointer"
-                  onClick={(_data, idx) => setActiveIndex(idx)}
+                  onClick={(_data, idx) => toggleIndex(idx)}
                 >
                   {dailySeries.map((entry, idx) => (
                     <Cell
                       key={`c-${entry.iso}`}
-                      fill={idx === activeIndex ? "#C6A87C" : "#E7E5E4"}
+                      fill={selectedIndex === null || idx === selectedIndex ? "#C6A87C" : "#E7E5E4"}
                     />
                   ))}
                 </Bar>
@@ -147,12 +153,12 @@ export function WeeklyBarChart({
                   radius={[4, 4, 2, 2]}
                   maxBarSize={14}
                   cursor="pointer"
-                  onClick={(_data, idx) => setActiveIndex(idx)}
+                  onClick={(_data, idx) => toggleIndex(idx)}
                 >
                   {dailySeries.map((entry, idx) => (
                     <Cell
                       key={`s-${entry.iso}`}
-                      fill={idx === activeIndex ? "#1C1C1E" : "#D6D3D1"}
+                      fill={selectedIndex === null || idx === selectedIndex ? "#1C1C1E" : "#D6D3D1"}
                     />
                   ))}
                 </Bar>
