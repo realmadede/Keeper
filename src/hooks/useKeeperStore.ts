@@ -69,7 +69,13 @@ export interface KeeperStore {
   addNeed: (title: string, category: ExpenseCategoryId) => Promise<void>;
   toggleNeed: (id: string, isBought: boolean) => Promise<void>;
   deleteNeed: (id: string) => Promise<void>;
-  addBill: (title: string, amount: number, category: ExpenseCategoryId, dueDay: number) => Promise<void>;
+  addBill: (
+    title: string,
+    amount: number,
+    category: ExpenseCategoryId,
+    dueDay: number,
+    intervalMonths?: number,
+  ) => Promise<void>;
   markBillPaid: (id: string, monthKey?: string) => Promise<void>;
   deleteBill: (id: string) => Promise<void>;
   updateBudget: (weeklyBudget: number, memberShare: number) => Promise<void>;
@@ -286,17 +292,33 @@ export function useKeeperStore(): KeeperStore {
         }
 
         if (billsRes.data) {
-          const normalizedBills: RecurringBill[] = billsRes.data.map((row: Record<string, unknown>) => ({
-            id: String(row.id),
-            household_id: String(row.household_id),
-            created_by: row.created_by ? String(row.created_by) : null,
-            title: String(row.title),
-            amount: Number(row.amount),
-            category: row.category as ExpenseCategoryId,
-            due_day: Number(row.due_day),
-            last_paid_month: row.last_paid_month ? String(row.last_paid_month) : null,
-            created_at: String(row.created_at),
-          }));
+          let localIntervals: Record<string, number> = {};
+          try {
+            const rawMap = localStorage.getItem("keeper_bill_intervals_v1");
+            if (rawMap) localIntervals = JSON.parse(rawMap) as Record<string, number>;
+          } catch {
+            // Ignore localStorage parse error
+          }
+          const normalizedBills: RecurringBill[] = billsRes.data.map((row: Record<string, unknown>) => {
+            const id = String(row.id);
+            const dbInterval = Number(row.interval_months);
+            const intervalMonths =
+              Number.isFinite(dbInterval) && dbInterval >= 1
+                ? dbInterval
+                : localIntervals[id] ?? 1;
+            return {
+              id,
+              household_id: String(row.household_id),
+              created_by: row.created_by ? String(row.created_by) : null,
+              title: String(row.title),
+              amount: Number(row.amount),
+              category: row.category as ExpenseCategoryId,
+              due_day: Number(row.due_day),
+              interval_months: intervalMonths,
+              last_paid_month: row.last_paid_month ? String(row.last_paid_month) : null,
+              created_at: String(row.created_at),
+            };
+          });
           setBills(normalizedBills);
         }
       })();
@@ -857,16 +879,30 @@ export function useKeeperStore(): KeeperStore {
       }
 
       if (!supabase) return;
-      const { error: err } = await supabase.from("transactions").insert({
+      const targetCategory = input.type === "contribution" ? "contribution" : input.category;
+      let { error: err } = await supabase.from("transactions").insert({
         household_id: household.id,
         recorded_by: profile.id,
         paid_by: paidById,
         type: input.type,
         amount: Math.round(input.amount),
-        category: input.type === "contribution" ? "contribution" : input.category,
+        category: targetCategory,
         description: input.description.trim(),
         transaction_date: input.transaction_date,
       });
+      if (err && targetCategory === "wifi_internet") {
+        const retry = await supabase.from("transactions").insert({
+          household_id: household.id,
+          recorded_by: profile.id,
+          paid_by: paidById,
+          type: input.type,
+          amount: Math.round(input.amount),
+          category: "security_internet",
+          description: input.description.trim(),
+          transaction_date: input.transaction_date,
+        });
+        err = retry.error;
+      }
       if (err) {
         setError(err.message);
         throw err;
@@ -974,12 +1010,21 @@ export function useKeeperStore(): KeeperStore {
       }
 
       if (!supabase) return;
-      const { error: err } = await supabase.from("household_needs").insert({
+      let { error: err } = await supabase.from("household_needs").insert({
         household_id: household.id,
         added_by: profile.id,
         title: cleanTitle,
         category,
       });
+      if (err && category === "wifi_internet") {
+        const retry = await supabase.from("household_needs").insert({
+          household_id: household.id,
+          added_by: profile.id,
+          title: cleanTitle,
+          category: "security_internet",
+        });
+        err = retry.error;
+      }
       if (err) {
         setError(err.message);
         throw err;
@@ -1034,12 +1079,19 @@ export function useKeeperStore(): KeeperStore {
   );
 
   const addBill = useCallback(
-    async (title: string, amount: number, category: ExpenseCategoryId, dueDay: number) => {
+    async (
+      title: string,
+      amount: number,
+      category: ExpenseCategoryId,
+      dueDay: number,
+      intervalMonths = 1,
+    ) => {
       setError(null);
       if (!household || !profile) return;
       const cleanTitle = title.trim().slice(0, 80);
       const safeAmount = Math.max(1, Math.round(amount));
       const safeDay = Math.min(31, Math.max(1, Math.round(dueDay)));
+      const safeInterval = Math.min(60, Math.max(1, Math.round(intervalMonths || 1)));
       if (!cleanTitle) return;
 
       if (isDemoMode) {
@@ -1051,6 +1103,7 @@ export function useKeeperStore(): KeeperStore {
           amount: safeAmount,
           category,
           due_day: safeDay,
+          interval_months: safeInterval,
           last_paid_month: null,
           created_at: new Date().toISOString(),
         };
@@ -1059,18 +1112,55 @@ export function useKeeperStore(): KeeperStore {
       }
 
       if (!supabase) return;
-      const { error: err } = await supabase.from("recurring_bills").insert({
-        household_id: household.id,
-        created_by: profile.id,
-        title: cleanTitle,
-        amount: safeAmount,
-        category,
-        due_day: safeDay,
-      });
+      let { data: inserted, error: err } = await supabase
+        .from("recurring_bills")
+        .insert({
+          household_id: household.id,
+          created_by: profile.id,
+          title: cleanTitle,
+          amount: safeAmount,
+          category,
+          due_day: safeDay,
+          interval_months: safeInterval,
+        })
+        .select("id")
+        .single();
+
+      // Fallback if DB has not applied `interval_months` or `wifi_internet` migration yet
+      if (err) {
+        const fallbackCategory = category === "wifi_internet" ? "security_internet" : category;
+        const retry = await supabase
+          .from("recurring_bills")
+          .insert({
+            household_id: household.id,
+            created_by: profile.id,
+            title: cleanTitle,
+            amount: safeAmount,
+            category: fallbackCategory,
+            due_day: safeDay,
+          })
+          .select("id")
+          .single();
+        inserted = retry.data;
+        err = retry.error;
+      }
+
       if (err) {
         setError(err.message);
         throw err;
       }
+
+      if (inserted?.id && safeInterval > 1) {
+        try {
+          const rawMap = localStorage.getItem("keeper_bill_intervals_v1");
+          const map = rawMap ? (JSON.parse(rawMap) as Record<string, number>) : {};
+          map[String(inserted.id)] = safeInterval;
+          localStorage.setItem("keeper_bill_intervals_v1", JSON.stringify(map));
+        } catch {
+          // Ignore storage error
+        }
+      }
+
       await fetchHouseholdBundle(profile.id);
     },
     [fetchHouseholdBundle, household, isDemoMode, profile],

@@ -128,19 +128,37 @@ export function getMonthKey(date = new Date()): string {
 }
 
 export function getBillDueStatus(bill: RecurringBill, referenceDate = new Date()): BillDueStatus {
-  const currentMonthKey = getMonthKey(referenceDate);
-  if (bill.last_paid_month === currentMonthKey) {
-    return {
-      isPaidThisMonth: true,
-      daysUntilDue: 0,
-      isDueSoon: false,
-      isOverdue: false,
-      statusLabel: "Paid this month",
-    };
-  }
-
+  const intervalMonths = Math.max(1, Math.round(bill.interval_months ?? 1));
   const year = referenceDate.getFullYear();
-  const month = referenceDate.getMonth();
+  const month = referenceDate.getMonth(); // 0..11
+
+  if (bill.last_paid_month && /^\d{4}-\d{2}$/.test(bill.last_paid_month)) {
+    const [paidYear, paidMonth1] = bill.last_paid_month.split("-").map(Number);
+    const monthsSincePaid = (year - paidYear) * 12 + (month + 1 - paidMonth1);
+    if (monthsSincePaid >= 0 && monthsSincePaid < intervalMonths) {
+      if (intervalMonths === 1) {
+        return {
+          isPaidThisMonth: true,
+          daysUntilDue: 0,
+          isDueSoon: false,
+          isOverdue: false,
+          statusLabel: "Paid this month",
+        };
+      }
+      const nextDueDate = new Date(paidYear, paidMonth1 - 1 + intervalMonths, 1);
+      const nextDueLabel = nextDueDate.toLocaleDateString("en-US", {
+        month: "short",
+        year: "numeric",
+      });
+      return {
+        isPaidThisMonth: true,
+        daysUntilDue: 0,
+        isDueSoon: false,
+        isOverdue: false,
+        statusLabel: `Settled · due ${nextDueLabel}`,
+      };
+    }
+  }
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const clampedDueDay = Math.min(bill.due_day, daysInMonth);
   const diff = clampedDueDay - referenceDate.getDate();

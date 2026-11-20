@@ -6,6 +6,7 @@ import {
   Receipt,
   Shield,
   UtensilsCrossed,
+  Wifi,
   Zap,
 } from "lucide-react";
 import type { TransactionCategory } from "../types";
@@ -25,6 +26,8 @@ export function CategoryIcon({ category, className = "h-4 w-4" }: CategoryIconPr
       return <Home className={className} />;
     case "security_internet":
       return <Shield className={className} />;
+    case "wifi_internet":
+      return <Wifi className={className} />;
     case "supplies":
       return <Package className={className} />;
     case "transport":

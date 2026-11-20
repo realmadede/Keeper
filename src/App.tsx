@@ -803,8 +803,8 @@ export function App() {
                     await store.deleteNeed(id);
                     showToast("Item removed");
                   }}
-                  onAddBill={async (title, amount, category, dueDay) => {
-                    await store.addBill(title, amount, category, dueDay);
+                  onAddBill={async (title, amount, category, dueDay, intervalMonths) => {
+                    await store.addBill(title, amount, category, dueDay, intervalMonths);
                     showToast("Recurring bill added");
                   }}
                   onDeleteBill={async (id) => {

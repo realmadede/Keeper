@@ -5,6 +5,7 @@ export type ExpenseCategoryId =
   | "electricity_water"
   | "rent"
   | "security_internet"
+  | "wifi_internet"
   | "supplies"
   | "transport";
 
@@ -72,6 +73,7 @@ export interface RecurringBill {
   amount: number;
   category: ExpenseCategoryId;
   due_day: number; // 1..31
+  interval_months?: number; // 1 = monthly, 3 = quarterly, 4 = 4 months, etc.
   last_paid_month: string | null; // YYYY-MM
   created_at: string;
 }
@@ -108,9 +110,15 @@ export const EXPENSE_CATEGORIES: CategoryMeta[] = [
   },
   {
     id: "security_internet",
-    label: "Security & Wi-Fi",
+    label: "Security",
     color: "#EF4444",
     bgClass: "bg-red-50 text-red-700",
+  },
+  {
+    id: "wifi_internet",
+    label: "Wi-Fi & Internet",
+    color: "#0EA5E9",
+    bgClass: "bg-sky-50 text-sky-700",
   },
   {
     id: "supplies",

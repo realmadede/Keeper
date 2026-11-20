@@ -75,6 +75,7 @@ create table if not exists public.transactions (
       'electricity_water',
       'rent',
       'security_internet',
+      'wifi_internet',
       'supplies',
       'transport'
     )
@@ -114,7 +115,7 @@ create table if not exists public.household_needs (
   added_by uuid references public.profiles(id) on delete set null,
   title text not null check (char_length(trim(title)) between 1 and 120),
   category text not null default 'food' check (
-    category in ('food', 'electricity_water', 'rent', 'security_internet', 'supplies', 'transport')
+    category in ('food', 'electricity_water', 'rent', 'security_internet', 'wifi_internet', 'supplies', 'transport')
   ),
   is_bought boolean not null default false,
   bought_at timestamptz,
@@ -132,12 +133,16 @@ create table if not exists public.recurring_bills (
   title text not null check (char_length(trim(title)) between 1 and 80),
   amount bigint not null check (amount > 0 and amount <= 10000000000),
   category text not null check (
-    category in ('food', 'electricity_water', 'rent', 'security_internet', 'supplies', 'transport')
+    category in ('food', 'electricity_water', 'rent', 'security_internet', 'wifi_internet', 'supplies', 'transport')
   ),
   due_day int not null check (due_day between 1 and 31),
+  interval_months int not null default 1 check (interval_months between 1 and 60),
   last_paid_month text check (last_paid_month is null or last_paid_month ~ '^[0-9]{4}-[0-9]{2}$'),
   created_at timestamptz not null default now()
 );
+
+alter table public.recurring_bills
+  add column if not exists interval_months int not null default 1 check (interval_months between 1 and 60);
 
 create index if not exists idx_recurring_bills_household
   on public.recurring_bills (household_id, due_day asc);

@@ -48,12 +48,14 @@ interface BudgetViewProps {
     amount: number,
     category: ExpenseCategoryId,
     dueDay: number,
+    intervalMonths?: number,
   ) => Promise<void>;
   onDeleteBill: (id: string) => Promise<void>;
   onStartPrefillExpense: (draft: TransactionPrefill) => void;
 }
 
 const WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0] as const; // Mon..Sun
+const BILL_INTERVAL_PRESETS = [1, 3, 4, 6, 12] as const;
 
 export function BudgetView({
   household,
@@ -92,6 +94,7 @@ export function BudgetView({
   const [billAmount, setBillAmount] = useState("");
   const [billCategory, setBillCategory] = useState<ExpenseCategoryId>("rent");
   const [billDueDay, setBillDueDay] = useState("1");
+  const [billIntervalMonths, setBillIntervalMonths] = useState("1");
   const [addingBill, setAddingBill] = useState(false);
   const [confirmDeleteBillId, setConfirmDeleteBillId] = useState<string | null>(null);
 
@@ -152,13 +155,15 @@ export function BudgetView({
     e.preventDefault();
     const numericAmount = Number(billAmount.replace(/,/g, "").trim());
     const numericDay = Number(billDueDay);
+    const numericInterval = Math.min(60, Math.max(1, Math.round(Number(billIntervalMonths) || 1)));
     if (!billTitle.trim() || !Number.isFinite(numericAmount) || numericAmount <= 0) return;
     setAddingBill(true);
     try {
-      await onAddBill(billTitle, numericAmount, billCategory, numericDay || 1);
+      await onAddBill(billTitle, numericAmount, billCategory, numericDay || 1, numericInterval);
       setBillTitle("");
       setBillAmount("");
       setBillDueDay("1");
+      setBillIntervalMonths("1");
       setShowBillForm(false);
     } finally {
       setAddingBill(false);
@@ -493,7 +498,7 @@ export function BudgetView({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-3 gap-2">
                 <div>
                   <label className="block text-xs font-medium text-[#52525B] mb-1">
                     Amount (TZS)
@@ -521,6 +526,46 @@ export function BudgetView({
                     required
                   />
                 </div>
+                <div>
+                  <label className="block text-xs font-medium text-[#52525B] mb-1">
+                    Covers (mos)
+                  </label>
+                  <SoftInput
+                    type="number"
+                    min="1"
+                    max="60"
+                    value={billIntervalMonths}
+                    onValueChange={setBillIntervalMonths}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-1.5">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {BILL_INTERVAL_PRESETS.map((mos) => {
+                    const active = Number(billIntervalMonths) === mos;
+                    return (
+                      <button
+                        key={mos}
+                        type="button"
+                        onClick={() => setBillIntervalMonths(String(mos))}
+                        className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer ${
+                          active
+                            ? "bg-[#1C1C1E] text-white"
+                            : "border border-stone-900/10 bg-white text-[#52525B] hover:text-[#1C1C1E]"
+                        }`}
+                      >
+                        {mos === 1 ? "1 mo (Monthly)" : `${mos} mos`}
+                      </button>
+                    );
+                  })}
+                </div>
+                {Number(billIntervalMonths) > 1 && Number(billAmount) > 0 && (
+                  <span className="font-mono text-[11px] text-[#8F703F] tabular-nums">
+                    {formatTZS(Math.round(Number(billAmount) / Number(billIntervalMonths)))}/mo
+                  </span>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-1.5">
@@ -583,6 +628,13 @@ export function BudgetView({
                           </div>
                           <div className="text-xs font-semibold text-[#52525B] tabular-nums">
                             {formatTZS(bill.amount)}
+                            {(bill.interval_months ?? 1) > 1 && (
+                              <span className="ml-1.5 font-normal text-[#8E8E93]">
+                                · every {bill.interval_months} mos (
+                                {formatTZS(Math.round(bill.amount / (bill.interval_months ?? 1)))}
+                                /mo)
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -623,7 +675,9 @@ export function BudgetView({
                       ) : (
                         <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700">
                           <CheckCircle2 className="h-3.5 w-3.5" />
-                          Settled for this month
+                          {(bill.interval_months ?? 1) > 1
+                            ? `Covered for ${bill.interval_months} months`
+                            : "Settled for this month"}
                         </span>
                       )}
 
