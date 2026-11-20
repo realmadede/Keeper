@@ -1,4 +1,4 @@
-import { Button, TabBar } from "glisse";
+import { TabBar } from "glisse";
 import { Home, PieChart, Plus, ShoppingBag, User } from "lucide-react";
 import type { ActiveTab } from "../types";
 
@@ -15,7 +15,7 @@ export function BottomDock({ activeTab, onSelectTab, onOpenAdd }: BottomDockProp
       data-theme="dark"
       className="keeper-dock fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 z-40 flex -translate-x-1/2 items-center gap-2.5"
     >
-      {/* Real iOS-style Glisse Liquid Glass TabBar with spring lens & drag scrubbing */}
+      {/* iOS-style Glisse Liquid Glass TabBar */}
       <TabBar
         className="keeper-tab-bar shadow-[0_14px_34px_rgba(15,23,42,0.3)]"
         value={activeTab}
@@ -24,35 +24,35 @@ export function BottomDock({ activeTab, onSelectTab, onOpenAdd }: BottomDockProp
           {
             value: "overview",
             label: "Home",
-            icon: <Home className="h-[20px] w-[20px]" strokeWidth={2} />,
+            icon: <Home className="h-[18px] w-[18px]" strokeWidth={1.75} />,
           },
           {
             value: "ledger",
             label: "Ledger",
-            icon: <ShoppingBag className="h-[20px] w-[20px]" strokeWidth={2} />,
+            icon: <ShoppingBag className="h-[18px] w-[18px]" strokeWidth={1.75} />,
           },
           {
             value: "budget",
             label: "Budget",
-            icon: <PieChart className="h-[20px] w-[20px]" strokeWidth={2} />,
+            icon: <PieChart className="h-[18px] w-[18px]" strokeWidth={1.75} />,
           },
           {
             value: "household",
             label: "House",
-            icon: <User className="h-[20px] w-[20px]" strokeWidth={2} />,
+            icon: <User className="h-[18px] w-[18px]" strokeWidth={1.75} />,
           },
         ]}
       />
 
-      {/* Detached iOS-style circular Liquid Glass Quick-Add FAB */}
-      <Button
-        variant="filled"
-        tint="#BFA377"
+      {/* Detached circular Quick-Add FAB with direct native click response */}
+      <button
+        type="button"
         aria-label="Record contribution or expense"
         onClick={onOpenAdd}
-        className="!h-[58px] !w-[58px] !min-w-0 !rounded-full !p-0 shadow-[0_14px_30px_rgba(15,23,42,0.3)]"
-        icon={<Plus className="h-6 w-6 text-white" strokeWidth={2.5} />}
-      />
+        className="flex h-[56px] w-[56px] shrink-0 items-center justify-center rounded-full border border-white/20 bg-[#BFA377] text-white shadow-[0_12px_28px_rgba(28,28,30,0.28)] transition-[transform,background-color] duration-100 hover:bg-[#AF9367] active:scale-95 cursor-pointer select-none"
+      >
+        <Plus className="h-6 w-6 text-white" strokeWidth={2.25} />
+      </button>
     </nav>
   );
 }

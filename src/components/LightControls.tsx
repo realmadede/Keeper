@@ -83,3 +83,55 @@ export function SoftButton({
     </button>
   );
 }
+
+export interface SoftSegmentItem {
+  value: string;
+  label: ReactNode;
+}
+
+interface SoftSegmentedProps {
+  items: SoftSegmentItem[];
+  value: string;
+  onValueChange: (value: string) => void;
+  className?: string;
+}
+
+/**
+ * Instant iOS-style segmented control with zero DOM-cloning or SVG filter overhead.
+ * Works reliably inside scrollable modals, forms, and long ledger panes.
+ */
+export function SoftSegmented({
+  items,
+  value,
+  onValueChange,
+  className = "",
+}: SoftSegmentedProps) {
+  return (
+    <div
+      role="tablist"
+      data-no-tab-swipe
+      className={`inline-grid w-full rounded-xl border border-stone-900/[0.08] bg-[#EFECE6] p-1 ${className}`}
+      style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}
+    >
+      {items.map((item) => {
+        const active = item.value === value;
+        return (
+          <button
+            key={item.value}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            onClick={() => onValueChange(item.value)}
+            className={`flex h-8 items-center justify-center rounded-lg px-3 text-xs font-medium transition-colors cursor-pointer select-none ${
+              active
+                ? "bg-white text-[#1C1C1E] shadow-[0_1px_3px_rgba(28,28,30,0.1)]"
+                : "text-[#52525B] hover:text-[#1C1C1E]"
+            }`}
+          >
+            <span className="truncate">{item.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}

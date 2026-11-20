@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import { SegmentedControl } from "glisse";
 import { Download, RotateCcw, Search, SearchX } from "lucide-react";
 import { buildLedgerCsv, downloadTextFile } from "../lib/export";
 import { formatTZS, getInitials, toISODate } from "../lib/format";
@@ -11,7 +10,7 @@ import {
   type Transaction,
 } from "../types";
 import { CategoryIcon } from "./CategoryIcon";
-import { SoftButton, SoftInput } from "./LightControls";
+import { SoftButton, SoftInput, SoftSegmented } from "./LightControls";
 import { TransactionList } from "./TransactionList";
 
 const PAGE_SIZE = 25;
@@ -151,23 +150,20 @@ export function LedgerView({
           }}
           icon={<Search className="h-4 w-4" />}
         />
-        <div className="flex justify-center">
-          <SegmentedControl
-            className="keeper-segmented-3"
-            value={filter}
-            onValueChange={(v) => {
-              const next = v as "all" | "contribution" | "expense";
-              setFilter(next);
-              if (next === "contribution") setCategoryFilter("all");
-              setVisibleCount(PAGE_SIZE);
-            }}
-            items={[
-              { value: "all", label: "All" },
-              { value: "contribution", label: "Pooled" },
-              { value: "expense", label: "Expenses" },
-            ]}
-          />
-        </div>
+        <SoftSegmented
+          value={filter}
+          onValueChange={(v) => {
+            const next = v as "all" | "contribution" | "expense";
+            setFilter(next);
+            if (next === "contribution") setCategoryFilter("all");
+            setVisibleCount(PAGE_SIZE);
+          }}
+          items={[
+            { value: "all", label: "All" },
+            { value: "contribution", label: "Pooled" },
+            { value: "expense", label: "Expenses" },
+          ]}
+        />
 
         {/* Roommate Filter Chips */}
         {members.length > 0 && (

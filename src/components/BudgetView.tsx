@@ -1,5 +1,4 @@
 import { useState, type FormEvent } from "react";
-import { SegmentedControl } from "glisse";
 import {
   CalendarClock,
   Check,
@@ -26,7 +25,7 @@ import {
 } from "../types";
 import type { TransactionPrefill } from "./AddTransactionModal";
 import { CategoryIcon } from "./CategoryIcon";
-import { SoftButton, SoftInput } from "./LightControls";
+import { SoftButton, SoftInput, SoftSegmented } from "./LightControls";
 
 interface BudgetViewProps {
   household: Household;
@@ -160,18 +159,15 @@ export function BudgetView({
   return (
     <div className="space-y-4">
       {/* Sub-navigation: Pool | Bills | Needs */}
-      <div className="flex justify-center">
-        <SegmentedControl
-          className="keeper-segmented-3"
-          value={subTab}
-          onValueChange={(v) => onSubTabChange(v as BudgetSubTab)}
-          items={[
-            { value: "pool", label: "Pool" },
-            { value: "bills", label: `Bills (${bills.length})` },
-            { value: "needs", label: `Needs (${pendingNeeds.length})` },
-          ]}
-        />
-      </div>
+      <SoftSegmented
+        value={subTab}
+        onValueChange={(v) => onSubTabChange(v as BudgetSubTab)}
+        items={[
+          { value: "pool", label: "Pool" },
+          { value: "bills", label: `Bills (${bills.length})` },
+          { value: "needs", label: `Needs (${pendingNeeds.length})` },
+        ]}
+      />
 
       {subTab === "pool" && (
         <>

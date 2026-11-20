@@ -1,5 +1,4 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Glass } from "glisse";
 import { ArrowRight, Download, Key, ShieldCheck, Smartphone, Users, Wallet } from "lucide-react";
 import { sanitizeInviteCode } from "../lib/security";
 import { KeeperLogo } from "./KeeperLogo";
@@ -75,7 +74,7 @@ export function WelcomeScreen({
   return (
     <div className="min-h-dvh flex flex-col items-center justify-center px-4 py-8">
       <div className="w-full max-w-[400px] space-y-4">
-        <Glass className="rounded-[20px] !bg-white/90 p-6 shadow-[0_8px_28px_rgba(28,28,30,0.06)] space-y-5">
+        <div className="rounded-[20px] border border-stone-900/[0.08] bg-white/95 p-6 shadow-[0_8px_28px_rgba(28,28,30,0.06)] backdrop-blur-md space-y-5">
           {/* Identity */}
           <div className="text-center space-y-2.5">
             <KeeperLogo
@@ -262,7 +261,7 @@ export function WelcomeScreen({
               </button>
             </div>
           </div>
-        </Glass>
+        </div>
       </div>
 
       <LegalModal doc={legalDoc} onClose={() => setLegalDoc(null)} />

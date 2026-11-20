@@ -1,6 +1,5 @@
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Glass } from "glisse";
 import { X } from "lucide-react";
 import { SoftButton } from "./LightControls";
 
@@ -30,8 +29,10 @@ export function LegalModal({ doc, onClose }: LegalModalProps) {
       className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-stone-900/40 backdrop-blur-xs p-3 sm:p-4"
       onClick={onClose}
     >
-      <Glass
-        className="w-full max-w-[440px] max-h-[85dvh] flex flex-col rounded-[20px] !bg-white/95 p-5 shadow-2xl"
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="w-full max-w-[440px] max-h-[85dvh] flex flex-col rounded-[20px] border border-stone-900/10 bg-white/95 p-5 shadow-2xl backdrop-blur-md"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3 flex items-center justify-between gap-2 shrink-0">
@@ -134,7 +135,7 @@ export function LegalModal({ doc, onClose }: LegalModalProps) {
             Got it
           </SoftButton>
         </div>
-      </Glass>
+      </div>
     </div>,
     document.body,
   );

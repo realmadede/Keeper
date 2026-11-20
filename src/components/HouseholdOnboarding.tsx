@@ -1,11 +1,10 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Glass, SegmentedControl } from "glisse";
 import { Home, Key, LogOut } from "lucide-react";
 import { formatTZS } from "../lib/format";
 import { sanitizeInviteCode } from "../lib/security";
 import type { Profile } from "../types";
 import { KeeperLogo } from "./KeeperLogo";
-import { SoftButton, SoftInput } from "./LightControls";
+import { SoftButton, SoftInput, SoftSegmented } from "./LightControls";
 
 interface HouseholdOnboardingProps {
   profile: Profile;
@@ -76,10 +75,9 @@ export function HouseholdOnboarding({
           </p>
         </div>
 
-        <Glass className="rounded-[20px] !bg-white/90 p-5 shadow-[0_8px_28px_rgba(28,28,30,0.06)]">
-          <div className="mb-5 flex justify-center">
-            <SegmentedControl
-              className="keeper-segmented-2"
+        <div className="rounded-[20px] border border-stone-900/[0.08] bg-white/95 p-5 shadow-[0_8px_28px_rgba(28,28,30,0.06)] backdrop-blur-md">
+          <div className="mb-5">
+            <SoftSegmented
               value={mode}
               onValueChange={(v) => setMode(v as "create" | "join")}
               items={[
@@ -206,7 +204,7 @@ export function HouseholdOnboarding({
               Sign out
             </button>
           </div>
-        </Glass>
+        </div>
       </div>
     </div>
   );

@@ -1,9 +1,8 @@
 import { useState, type FormEvent } from "react";
-import { Glass, SegmentedControl } from "glisse";
 import { ArrowLeft, ArrowRight, Check, Eye, EyeOff, KeyRound, Mail, User } from "lucide-react";
 import { KeeperLogo } from "./KeeperLogo";
 import { LegalModal, type LegalDocType } from "./LegalModal";
-import { SoftButton, SoftInput } from "./LightControls";
+import { SoftButton, SoftInput, SoftSegmented } from "./LightControls";
 
 interface AuthScreenProps {
   isSupabaseReady: boolean;
@@ -195,7 +194,7 @@ export function AuthScreen({
           )}
         </div>
 
-        <Glass className="rounded-[20px] !bg-white/90 p-5 shadow-[0_8px_28px_rgba(28,28,30,0.06)]">
+        <div className="rounded-[20px] border border-stone-900/[0.08] bg-white/95 p-5 shadow-[0_8px_28px_rgba(28,28,30,0.06)] backdrop-blur-md">
           {passwordRecoveryMode ? (
             <div className="mb-4">
               <h2 className="text-base font-semibold text-[#1C1C1E]">Set new password</h2>
@@ -219,9 +218,8 @@ export function AuthScreen({
               </p>
             </div>
           ) : (
-            <div className="mb-5 flex justify-center">
-              <SegmentedControl
-                className="keeper-segmented-2"
+            <div className="mb-5">
+              <SoftSegmented
                 value={mode}
                 onValueChange={handleModeChange}
                 items={[
@@ -467,7 +465,7 @@ export function AuthScreen({
               </button>
             </div>
           )}
-        </Glass>
+        </div>
       </div>
 
       <LegalModal doc={legalDoc} onClose={() => setLegalDoc(null)} />

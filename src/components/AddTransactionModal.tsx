@@ -1,5 +1,4 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Glass, SegmentedControl } from "glisse";
 import { Check, FileText, X } from "lucide-react";
 import type { TransactionInput } from "../hooks/useKeeperStore";
 import { formatTZS, getInitials, toISODate } from "../lib/format";
@@ -12,7 +11,7 @@ import {
 } from "../types";
 import { CategoryIcon } from "./CategoryIcon";
 import { IosDatePicker } from "./IosDatePicker";
-import { SoftButton, SoftInput } from "./LightControls";
+import { SoftButton, SoftInput, SoftSegmented } from "./LightControls";
 
 export interface TransactionPrefill {
   type: TransactionType;
@@ -154,8 +153,10 @@ export function AddTransactionModal({
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-stone-900/35 backdrop-blur-xs p-3 sm:p-4"
       onClick={onClose}
     >
-      <Glass
-        className="w-full max-w-[430px] max-h-[90dvh] overflow-y-auto no-scrollbar rounded-[20px] !bg-white/95 p-5 shadow-2xl"
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="w-full max-w-[430px] max-h-[90dvh] overflow-y-auto no-scrollbar rounded-[20px] border border-stone-900/10 bg-white/95 p-5 shadow-2xl backdrop-blur-md"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
@@ -179,19 +180,19 @@ export function AddTransactionModal({
           </button>
         </div>
 
-        <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
-          <div className="flex justify-center">
-            <SegmentedControl
-              className="keeper-segmented-2"
-              value={type}
-              onValueChange={(v) => setType(v as TransactionType)}
-              items={[
-                { value: "expense", label: "Expense" },
-                { value: "contribution", label: "Contribution" },
-              ]}
-            />
-          </div>
+        {/* Placed outside <form> with SoftSegmented so switching responds in 0ms */}
+        <div className="mb-4">
+          <SoftSegmented
+            value={type}
+            onValueChange={(v) => setType(v as TransactionType)}
+            items={[
+              { value: "expense", label: "Expense" },
+              { value: "contribution", label: "Contribution" },
+            ]}
+          />
+        </div>
 
+        <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
           {/* TZS Amount with Live Formatted Preview */}
           <div>
             <div className="mb-1.5 flex items-center justify-between gap-2">
@@ -269,6 +270,8 @@ export function AddTransactionModal({
                 <div className="grid grid-cols-2 gap-2">
                   {members.map((m) => {
                     const selected = paidBy === m.user_id;
+                    const memberName = m.profile?.full_name ?? "Roommate";
+                    const memberColor = m.profile?.avatar_color ?? "#BFA377";
                     return (
                       <button
                         key={m.user_id}
@@ -282,12 +285,12 @@ export function AddTransactionModal({
                       >
                         <span
                           className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold text-white"
-                          style={{ backgroundColor: m.profile.avatar_color }}
+                          style={{ backgroundColor: memberColor }}
                         >
-                          {getInitials(m.profile.full_name)}
+                          {getInitials(memberName)}
                         </span>
                         <span className="truncate">
-                          {m.profile.full_name}
+                          {memberName}
                           {m.user_id === currentUserId ? " (You)" : ""}
                         </span>
                       </button>
@@ -371,7 +374,7 @@ export function AddTransactionModal({
                     : "Record expense"}
           </SoftButton>
         </form>
-      </Glass>
+      </div>
     </div>
   );
 }
