@@ -218,21 +218,24 @@ describe("getBillDueStatus", () => {
     expect(paid.isPaidThisMonth).toBe(true);
     expect(paid.statusLabel).toBe("Paid this month");
 
-    // 4-month bill paid in Nov 2026 stays settled in Jan 2027 (due Mar 2027) and becomes due in Mar 2027
+    // 4-month bill paid on Oct 1, 2026 stays settled in Nov 2026 / Jan 2027 (due Feb 1, 2027)
     const fourMonthBill: RecurringBill = {
       ...baseBill,
       title: "4-Month House Rent",
+      due_day: 1,
       interval_months: 4,
-      last_paid_month: "2026-11",
+      last_paid_month: "2026-10",
     };
-    const inJanuary = getBillDueStatus(fourMonthBill, new Date(2027, 0, 15));
-    expect(inJanuary.isPaidThisMonth).toBe(true);
-    expect(inJanuary.isDueSoon).toBe(false);
-    expect(inJanuary.statusLabel).toBe("Settled · due Mar 2027");
+    const inNovember = getBillDueStatus(fourMonthBill, new Date(2026, 10, 20));
+    expect(inNovember.isPaidThisMonth).toBe(true);
+    expect(inNovember.isDueSoon).toBe(false);
+    expect(inNovember.statusLabel).toBe("Settled · due Feb 1, 2027");
+    expect(inNovember.paidDateLabel).toBe("Oct 1, 2026");
+    expect(inNovember.nextDueDateLabel).toBe("Feb 1, 2027");
 
-    const inMarch = getBillDueStatus(fourMonthBill, new Date(2027, 2, 19));
-    expect(inMarch.isPaidThisMonth).toBe(false);
-    expect(inMarch.isDueSoon).toBe(true);
-    expect(inMarch.statusLabel).toBe("Due in 2 days");
+    const inFebruary = getBillDueStatus(fourMonthBill, new Date(2027, 1, 1));
+    expect(inFebruary.isPaidThisMonth).toBe(false);
+    expect(inFebruary.isDueSoon).toBe(true);
+    expect(inFebruary.statusLabel).toBe("Due today");
   });
 });

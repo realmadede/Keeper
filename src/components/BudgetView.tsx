@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import {
+  Calendar,
   CalendarClock,
   Check,
   CheckCircle2,
@@ -15,7 +16,7 @@ import {
   type WeekWindow,
 } from "../lib/analytics";
 import { buildWeeklyWhatsAppSummary } from "../lib/export";
-import { formatTZS, getInitials } from "../lib/format";
+import { formatTZS, getInitials, toISODate } from "../lib/format";
 import {
   EXPENSE_CATEGORIES,
   type BudgetSubTab,
@@ -26,6 +27,7 @@ import {
 } from "../types";
 import type { TransactionPrefill } from "./AddTransactionModal";
 import { CategoryIcon } from "./CategoryIcon";
+import { IosDatePicker } from "./IosDatePicker";
 import { SoftButton, SoftInput, SoftSegmented } from "./LightControls";
 
 interface BudgetViewProps {
@@ -49,7 +51,9 @@ interface BudgetViewProps {
     category: ExpenseCategoryId,
     dueDay: number,
     intervalMonths?: number,
+    paidDateISO?: string | null,
   ) => Promise<void>;
+  onMarkBillPaid: (id: string, paidDateISO: string) => Promise<void>;
   onDeleteBill: (id: string) => Promise<void>;
   onStartPrefillExpense: (draft: TransactionPrefill) => void;
 }
@@ -73,6 +77,7 @@ export function BudgetView({
   onToggleNeed,
   onDeleteNeed,
   onAddBill,
+  onMarkBillPaid,
   onDeleteBill,
   onStartPrefillExpense,
 }: BudgetViewProps) {
@@ -93,10 +98,14 @@ export function BudgetView({
   const [billTitle, setBillTitle] = useState("");
   const [billAmount, setBillAmount] = useState("");
   const [billCategory, setBillCategory] = useState<ExpenseCategoryId>("rent");
-  const [billDueDay, setBillDueDay] = useState("1");
+  const [billDateISO, setBillDateISO] = useState(() => toISODate(new Date()));
+  const [billAlreadyPaid, setBillAlreadyPaid] = useState(true);
   const [billIntervalMonths, setBillIntervalMonths] = useState("1");
   const [addingBill, setAddingBill] = useState(false);
   const [confirmDeleteBillId, setConfirmDeleteBillId] = useState<string | null>(null);
+  const [editingPaidBillId, setEditingPaidBillId] = useState<string | null>(null);
+  const [editingPaidDateISO, setEditingPaidDateISO] = useState(() => toISODate(new Date()));
+  const [savingPaidBillId, setSavingPaidBillId] = useState<string | null>(null);
 
   const periodTarget =
     weekWindow.kind === "month"
@@ -154,21 +163,47 @@ export function BudgetView({
   const handleAddBill = async (e: FormEvent) => {
     e.preventDefault();
     const numericAmount = Number(billAmount.replace(/,/g, "").trim());
-    const numericDay = Number(billDueDay);
+    const numericDay = Number(billDateISO.slice(8, 10)) || 1;
     const numericInterval = Math.min(60, Math.max(1, Math.round(Number(billIntervalMonths) || 1)));
     if (!billTitle.trim() || !Number.isFinite(numericAmount) || numericAmount <= 0) return;
     setAddingBill(true);
     try {
-      await onAddBill(billTitle, numericAmount, billCategory, numericDay || 1, numericInterval);
+      await onAddBill(
+        billTitle,
+        numericAmount,
+        billCategory,
+        numericDay,
+        numericInterval,
+        billAlreadyPaid ? billDateISO : null,
+      );
       setBillTitle("");
       setBillAmount("");
-      setBillDueDay("1");
+      setBillDateISO(toISODate(new Date()));
+      setBillAlreadyPaid(true);
       setBillIntervalMonths("1");
       setShowBillForm(false);
     } finally {
       setAddingBill(false);
     }
   };
+
+  const handleSaveBillPaidDate = async (billId: string) => {
+    setSavingPaidBillId(billId);
+    try {
+      await onMarkBillPaid(billId, editingPaidDateISO);
+      setEditingPaidBillId(null);
+    } finally {
+      setSavingPaidBillId(null);
+    }
+  };
+
+  let settledBillsTotal = 0;
+  let dueBillsTotal = 0;
+  for (const b of bills) {
+    const st = getBillDueStatus(b);
+    if (st.isPaidThisMonth) settledBillsTotal += b.amount;
+    else dueBillsTotal += b.amount;
+  }
 
   return (
     <div className="space-y-4">
@@ -468,7 +503,7 @@ export function BudgetView({
             <div>
               <h2 className="text-base font-semibold text-[#1C1C1E]">Recurring house bills</h2>
               <p className="text-xs text-[#52525B] mt-0.5">
-                Track rent, Wi-Fi, water, and guard due dates
+                Tracked separately — never deducted from weekly contribution money
               </p>
             </div>
             <button
@@ -481,6 +516,30 @@ export function BudgetView({
             </button>
           </div>
 
+          {/* Dedicated Bills Money Summary Strip (Separate from Weekly Pool) */}
+          {bills.length > 0 && (
+            <div className="grid grid-cols-2 divide-x divide-stone-900/[0.06] rounded-xl bg-[#F6F5F2] p-3">
+              <div className="pr-3">
+                <div className="flex items-center gap-1.5 text-xs text-[#52525B]">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />
+                  <span>Settled bills</span>
+                </div>
+                <div className="mt-0.5 text-sm font-semibold text-[#1C1C1E] tabular-nums">
+                  {formatTZS(settledBillsTotal)}
+                </div>
+              </div>
+              <div className="pl-3">
+                <div className="flex items-center gap-1.5 text-xs text-[#52525B]">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#C6A87C]" />
+                  <span>Upcoming / due</span>
+                </div>
+                <div className="mt-0.5 text-sm font-semibold text-[#1C1C1E] tabular-nums">
+                  {formatTZS(dueBillsTotal)}
+                </div>
+              </div>
+            </div>
+          )}
+
           {showBillForm && (
             <form
               onSubmit={(e) => void handleAddBill(e)}
@@ -491,14 +550,14 @@ export function BudgetView({
                 <SoftInput
                   type="text"
                   maxLength={80}
-                  placeholder="Monthly house rent, Fiber Wi-Fi"
+                  placeholder="House rent, Fiber Wi-Fi, Security"
                   value={billTitle}
                   onValueChange={setBillTitle}
                   required
                 />
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2.5">
                 <div>
                   <label className="block text-xs font-medium text-[#52525B] mb-1">
                     Amount (TZS)
@@ -515,20 +574,7 @@ export function BudgetView({
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-[#52525B] mb-1">
-                    Due day (1-31)
-                  </label>
-                  <SoftInput
-                    type="number"
-                    min="1"
-                    max="31"
-                    value={billDueDay}
-                    onValueChange={setBillDueDay}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-[#52525B] mb-1">
-                    Covers (mos)
+                    Covers (months)
                   </label>
                   <SoftInput
                     type="number"
@@ -566,6 +612,26 @@ export function BudgetView({
                     {formatTZS(Math.round(Number(billAmount) / Number(billIntervalMonths)))}/mo
                   </span>
                 )}
+              </div>
+
+              {/* Payment Status & Calendar Picker */}
+              <div className="space-y-2">
+                <SoftSegmented
+                  value={billAlreadyPaid ? "paid" : "upcoming"}
+                  onValueChange={(v) => setBillAlreadyPaid(v === "paid")}
+                  items={[
+                    { value: "paid", label: "Paid on date" },
+                    { value: "upcoming", label: "Upcoming due date" },
+                  ]}
+                />
+                <div>
+                  <label className="block text-xs font-medium text-[#52525B] mb-1">
+                    {billAlreadyPaid
+                      ? "Date bill was paid (counts months from this date)"
+                      : "Next due date"}
+                  </label>
+                  <IosDatePicker value={billDateISO} onChange={setBillDateISO} />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-1.5">
@@ -607,7 +673,7 @@ export function BudgetView({
               </div>
               <p className="text-sm font-medium text-[#1C1C1E]">No recurring bills yet</p>
               <p className="text-xs text-[#8E8E93]">
-                Add monthly rent, Wi-Fi, water, or security fees so no due date is missed
+                Add rent, Wi-Fi, water, or security fees so no due date is missed
               </p>
             </div>
           ) : (
@@ -615,6 +681,11 @@ export function BudgetView({
               {bills.map((bill) => {
                 const status = getBillDueStatus(bill);
                 const confirming = confirmDeleteBillId === bill.id;
+                const editingDate = editingPaidBillId === bill.id;
+                const defaultBillISO = bill.last_paid_month
+                  ? `${bill.last_paid_month}-${String(bill.due_day).padStart(2, "0")}`
+                  : toISODate(new Date());
+
                 return (
                   <div key={bill.id} className="py-3 first:pt-1 last:pb-0 space-y-2">
                     <div className="flex items-start justify-between gap-2">
@@ -630,12 +701,17 @@ export function BudgetView({
                             {formatTZS(bill.amount)}
                             {(bill.interval_months ?? 1) > 1 && (
                               <span className="ml-1.5 font-normal text-[#8E8E93]">
-                                · every {bill.interval_months} mos (
+                                · {bill.interval_months} mos (
                                 {formatTZS(Math.round(bill.amount / (bill.interval_months ?? 1)))}
                                 /mo)
                               </span>
                             )}
                           </div>
+                          {status.paidDateLabel && status.nextDueDateLabel && (
+                            <div className="mt-0.5 text-[11px] text-[#8E8E93] tabular-nums">
+                              Paid {status.paidDateLabel} → Next due {status.nextDueDateLabel}
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -655,31 +731,41 @@ export function BudgetView({
                     </div>
 
                     <div className="flex items-center justify-between gap-2 pl-8">
-                      {!status.isPaidThisMonth ? (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            onStartPrefillExpense({
-                              type: "expense",
-                              amount: bill.amount,
-                              category: bill.category,
-                              description: bill.title,
-                              billId: bill.id,
-                            })
-                          }
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-[#1C1C1E] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#2C2C30] transition-colors cursor-pointer"
-                        >
-                          <Check className="h-3 w-3" />
-                          Record payment
-                        </button>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700">
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                          {(bill.interval_months ?? 1) > 1
-                            ? `Covered for ${bill.interval_months} months`
-                            : "Settled for this month"}
-                        </span>
-                      )}
+                      <div className="flex flex-wrap items-center gap-2">
+                        {!status.isPaidThisMonth ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingPaidBillId(editingDate ? null : bill.id);
+                              setEditingPaidDateISO(defaultBillISO);
+                            }}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-[#1C1C1E] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#2C2C30] transition-colors cursor-pointer"
+                          >
+                            <Check className="h-3 w-3" />
+                            Mark paid
+                          </button>
+                        ) : (
+                          <>
+                            <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700">
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                              {(bill.interval_months ?? 1) > 1
+                                ? `Covered for ${bill.interval_months} months`
+                                : "Settled for this month"}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingPaidBillId(editingDate ? null : bill.id);
+                                setEditingPaidDateISO(defaultBillISO);
+                              }}
+                              className="inline-flex items-center gap-1 rounded-md bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-[#52525B] hover:text-[#1C1C1E] transition-colors cursor-pointer"
+                            >
+                              <Calendar className="h-3 w-3" />
+                              Change date
+                            </button>
+                          </>
+                        )}
+                      </div>
 
                       {confirming ? (
                         <div className="flex items-center gap-1.5 text-xs">
@@ -712,6 +798,36 @@ export function BudgetView({
                         </button>
                       )}
                     </div>
+
+                    {/* Inline Calendar Picker to set or adjust the exact date this bill was paid */}
+                    {editingDate && (
+                      <div className="ml-8 rounded-xl border border-stone-900/[0.08] bg-[#F6F5F2] p-3 space-y-2.5">
+                        <div className="text-xs font-medium text-[#1C1C1E]">
+                          Choose date {bill.title} was paid
+                        </div>
+                        <IosDatePicker
+                          value={editingPaidDateISO}
+                          onChange={setEditingPaidDateISO}
+                        />
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setEditingPaidBillId(null)}
+                            className="rounded-lg bg-white px-2.5 py-1 text-xs font-medium text-[#52525B] border border-stone-900/10 cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            disabled={savingPaidBillId === bill.id}
+                            onClick={() => void handleSaveBillPaidDate(bill.id)}
+                            className="rounded-lg bg-[#1C1C1E] px-3 py-1 text-xs font-medium text-white hover:bg-[#2C2C30] disabled:opacity-50 cursor-pointer"
+                          >
+                            {savingPaidBillId === bill.id ? "Saving..." : "Save paid date"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}

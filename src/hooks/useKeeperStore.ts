@@ -75,8 +75,9 @@ export interface KeeperStore {
     category: ExpenseCategoryId,
     dueDay: number,
     intervalMonths?: number,
+    paidDateISO?: string | null,
   ) => Promise<void>;
-  markBillPaid: (id: string, monthKey?: string) => Promise<void>;
+  markBillPaid: (id: string, paidDateOrMonthKey?: string) => Promise<void>;
   deleteBill: (id: string) => Promise<void>;
   updateBudget: (weeklyBudget: number, memberShare: number) => Promise<void>;
   leaveHousehold: () => Promise<void>;
@@ -1085,13 +1086,20 @@ export function useKeeperStore(): KeeperStore {
       category: ExpenseCategoryId,
       dueDay: number,
       intervalMonths = 1,
+      paidDateISO: string | null = null,
     ) => {
       setError(null);
       if (!household || !profile) return;
       const cleanTitle = title.trim().slice(0, 80);
       const safeAmount = Math.max(1, Math.round(amount));
-      const safeDay = Math.min(31, Math.max(1, Math.round(dueDay)));
+      const dateDay =
+        paidDateISO && /^\d{4}-\d{2}-\d{2}$/.test(paidDateISO)
+          ? Number(paidDateISO.slice(8, 10))
+          : dueDay;
+      const safeDay = Math.min(31, Math.max(1, Math.round(dateDay || dueDay || 1)));
       const safeInterval = Math.min(60, Math.max(1, Math.round(intervalMonths || 1)));
+      const paidMonthKey =
+        paidDateISO && /^\d{4}-\d{2}/.test(paidDateISO) ? paidDateISO.slice(0, 7) : null;
       if (!cleanTitle) return;
 
       if (isDemoMode) {
@@ -1104,7 +1112,7 @@ export function useKeeperStore(): KeeperStore {
           category,
           due_day: safeDay,
           interval_months: safeInterval,
-          last_paid_month: null,
+          last_paid_month: paidMonthKey,
           created_at: new Date().toISOString(),
         };
         setBills((prev) => [...prev, next].sort((a, b) => a.due_day - b.due_day));
@@ -1122,6 +1130,7 @@ export function useKeeperStore(): KeeperStore {
           category,
           due_day: safeDay,
           interval_months: safeInterval,
+          last_paid_month: paidMonthKey,
         })
         .select("id")
         .single();
@@ -1138,6 +1147,7 @@ export function useKeeperStore(): KeeperStore {
             amount: safeAmount,
             category: fallbackCategory,
             due_day: safeDay,
+            last_paid_month: paidMonthKey,
           })
           .select("id")
           .single();
@@ -1167,18 +1177,40 @@ export function useKeeperStore(): KeeperStore {
   );
 
   const markBillPaid = useCallback(
-    async (id: string, monthKey = getMonthKey()) => {
+    async (id: string, paidDateOrMonthKey = getMonthKey()) => {
       setError(null);
+      const monthKey = paidDateOrMonthKey.slice(0, 7);
+      const parsedDay =
+        paidDateOrMonthKey.length >= 10 ? Number(paidDateOrMonthKey.slice(8, 10)) : null;
+      const nextDueDay =
+        parsedDay && Number.isFinite(parsedDay) && parsedDay >= 1 && parsedDay <= 31
+          ? parsedDay
+          : null;
+
       if (isDemoMode) {
         setBills((prev) =>
-          prev.map((b) => (b.id === id ? { ...b, last_paid_month: monthKey } : b)),
+          prev.map((b) =>
+            b.id === id
+              ? {
+                  ...b,
+                  last_paid_month: monthKey,
+                  due_day: nextDueDay ?? b.due_day,
+                }
+              : b,
+          ),
         );
         return;
       }
       if (!supabase || !profile) return;
+      const updatePayload: { last_paid_month: string; due_day?: number } = {
+        last_paid_month: monthKey,
+      };
+      if (nextDueDay !== null) {
+        updatePayload.due_day = nextDueDay;
+      }
       const { error: err } = await supabase
         .from("recurring_bills")
-        .update({ last_paid_month: monthKey })
+        .update(updatePayload)
         .eq("id", id);
       if (err) {
         setError(err.message);

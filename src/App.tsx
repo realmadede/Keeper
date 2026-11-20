@@ -803,9 +803,27 @@ export function App() {
                     await store.deleteNeed(id);
                     showToast("Item removed");
                   }}
-                  onAddBill={async (title, amount, category, dueDay, intervalMonths) => {
-                    await store.addBill(title, amount, category, dueDay, intervalMonths);
-                    showToast("Recurring bill added");
+                  onAddBill={async (
+                    title,
+                    amount,
+                    category,
+                    dueDay,
+                    intervalMonths,
+                    paidDateISO,
+                  ) => {
+                    await store.addBill(
+                      title,
+                      amount,
+                      category,
+                      dueDay,
+                      intervalMonths,
+                      paidDateISO,
+                    );
+                    showToast("Recurring bill saved");
+                  }}
+                  onMarkBillPaid={async (id, paidDateISO) => {
+                    await store.markBillPaid(id, paidDateISO);
+                    showToast("Bill payment date saved");
                   }}
                   onDeleteBill={async (id) => {
                     await store.deleteBill(id);
