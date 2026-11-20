@@ -75,6 +75,9 @@ export interface RecurringBill {
   due_day: number; // 1..31
   interval_months?: number; // 1 = monthly, 3 = quarterly, 4 = 4 months, etc.
   last_paid_month: string | null; // YYYY-MM
+  paid_mode?: "all" | "single";
+  paid_by?: string | null;
+  settled_by?: string[];
   created_at: string;
 }
 

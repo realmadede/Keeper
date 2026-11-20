@@ -76,8 +76,16 @@ export interface KeeperStore {
     dueDay: number,
     intervalMonths?: number,
     paidDateISO?: string | null,
+    paidMode?: "all" | "single",
+    paidBy?: string | null,
   ) => Promise<void>;
-  markBillPaid: (id: string, paidDateOrMonthKey?: string) => Promise<void>;
+  markBillPaid: (
+    id: string,
+    paidDateOrMonthKey?: string,
+    paidMode?: "all" | "single",
+    paidBy?: string | null,
+  ) => Promise<void>;
+  toggleBillMemberSettled: (billId: string, memberUserId: string) => Promise<void>;
   deleteBill: (id: string) => Promise<void>;
   updateBudget: (weeklyBudget: number, memberShare: number) => Promise<void>;
   leaveHousehold: () => Promise<void>;
@@ -294,9 +302,20 @@ export function useKeeperStore(): KeeperStore {
 
         if (billsRes.data) {
           let localIntervals: Record<string, number> = {};
+          let localMeta: Record<
+            string,
+            { paid_mode?: "all" | "single"; paid_by?: string | null; settled_by?: string[] }
+          > = {};
           try {
             const rawMap = localStorage.getItem("keeper_bill_intervals_v1");
             if (rawMap) localIntervals = JSON.parse(rawMap) as Record<string, number>;
+            const rawMeta = localStorage.getItem("keeper_bill_meta_v1");
+            if (rawMeta) {
+              localMeta = JSON.parse(rawMeta) as Record<
+                string,
+                { paid_mode?: "all" | "single"; paid_by?: string | null; settled_by?: string[] }
+              >;
+            }
           } catch {
             // Ignore localStorage parse error
           }
@@ -307,6 +326,22 @@ export function useKeeperStore(): KeeperStore {
               Number.isFinite(dbInterval) && dbInterval >= 1
                 ? dbInterval
                 : localIntervals[id] ?? 1;
+            const meta = localMeta[id];
+            const paidMode: "all" | "single" =
+              row.paid_mode === "single" || row.paid_mode === "all"
+                ? row.paid_mode
+                : meta?.paid_mode ?? "all";
+            const paidBy =
+              typeof row.paid_by === "string"
+                ? row.paid_by
+                : row.paid_by === null
+                  ? meta?.paid_by ?? null
+                  : meta?.paid_by ?? null;
+            const settledBy = Array.isArray(row.settled_by)
+              ? row.settled_by.map(String)
+              : Array.isArray(meta?.settled_by)
+                ? meta.settled_by
+                : [];
             return {
               id,
               household_id: String(row.household_id),
@@ -317,6 +352,9 @@ export function useKeeperStore(): KeeperStore {
               due_day: Number(row.due_day),
               interval_months: intervalMonths,
               last_paid_month: row.last_paid_month ? String(row.last_paid_month) : null,
+              paid_mode: paidMode,
+              paid_by: paidMode === "single" ? paidBy : null,
+              settled_by: settledBy,
               created_at: String(row.created_at),
             };
           });
@@ -1087,6 +1125,8 @@ export function useKeeperStore(): KeeperStore {
       dueDay: number,
       intervalMonths = 1,
       paidDateISO: string | null = null,
+      paidMode: "all" | "single" = "all",
+      paidBy: string | null = null,
     ) => {
       setError(null);
       if (!household || !profile) return;
@@ -1100,6 +1140,8 @@ export function useKeeperStore(): KeeperStore {
       const safeInterval = Math.min(60, Math.max(1, Math.round(intervalMonths || 1)));
       const paidMonthKey =
         paidDateISO && /^\d{4}-\d{2}/.test(paidDateISO) ? paidDateISO.slice(0, 7) : null;
+      const safeMode: "all" | "single" = paidMode === "single" ? "single" : "all";
+      const safePaidBy = safeMode === "single" ? paidBy || profile.id : null;
       if (!cleanTitle) return;
 
       if (isDemoMode) {
@@ -1113,6 +1155,9 @@ export function useKeeperStore(): KeeperStore {
           due_day: safeDay,
           interval_months: safeInterval,
           last_paid_month: paidMonthKey,
+          paid_mode: safeMode,
+          paid_by: safePaidBy,
+          settled_by: [],
           created_at: new Date().toISOString(),
         };
         setBills((prev) => [...prev, next].sort((a, b) => a.due_day - b.due_day));
@@ -1131,11 +1176,14 @@ export function useKeeperStore(): KeeperStore {
           due_day: safeDay,
           interval_months: safeInterval,
           last_paid_month: paidMonthKey,
+          paid_mode: safeMode,
+          paid_by: safePaidBy,
+          settled_by: [],
         })
         .select("id")
         .single();
 
-      // Fallback if DB has not applied `interval_months` or `wifi_internet` migration yet
+      // Fallback if DB has not applied latest migrations yet
       if (err) {
         const fallbackCategory = category === "wifi_internet" ? "security_internet" : category;
         const retry = await supabase
@@ -1160,12 +1208,24 @@ export function useKeeperStore(): KeeperStore {
         throw err;
       }
 
-      if (inserted?.id && safeInterval > 1) {
+      if (inserted?.id) {
+        const billId = String(inserted.id);
         try {
-          const rawMap = localStorage.getItem("keeper_bill_intervals_v1");
-          const map = rawMap ? (JSON.parse(rawMap) as Record<string, number>) : {};
-          map[String(inserted.id)] = safeInterval;
-          localStorage.setItem("keeper_bill_intervals_v1", JSON.stringify(map));
+          if (safeInterval > 1) {
+            const rawMap = localStorage.getItem("keeper_bill_intervals_v1");
+            const map = rawMap ? (JSON.parse(rawMap) as Record<string, number>) : {};
+            map[billId] = safeInterval;
+            localStorage.setItem("keeper_bill_intervals_v1", JSON.stringify(map));
+          }
+          const rawMeta = localStorage.getItem("keeper_bill_meta_v1");
+          const metaMap = rawMeta
+            ? (JSON.parse(rawMeta) as Record<
+                string,
+                { paid_mode?: "all" | "single"; paid_by?: string | null; settled_by?: string[] }
+              >)
+            : {};
+          metaMap[billId] = { paid_mode: safeMode, paid_by: safePaidBy, settled_by: [] };
+          localStorage.setItem("keeper_bill_meta_v1", JSON.stringify(metaMap));
         } catch {
           // Ignore storage error
         }
@@ -1177,7 +1237,12 @@ export function useKeeperStore(): KeeperStore {
   );
 
   const markBillPaid = useCallback(
-    async (id: string, paidDateOrMonthKey = getMonthKey()) => {
+    async (
+      id: string,
+      paidDateOrMonthKey = getMonthKey(),
+      paidMode?: "all" | "single",
+      paidBy?: string | null,
+    ) => {
       setError(null);
       const monthKey = paidDateOrMonthKey.slice(0, 7);
       const parsedDay =
@@ -1186,6 +1251,16 @@ export function useKeeperStore(): KeeperStore {
         parsedDay && Number.isFinite(parsedDay) && parsedDay >= 1 && parsedDay <= 31
           ? parsedDay
           : null;
+      const existing = bills.find((b) => b.id === id);
+      const safeMode: "all" | "single" = paidMode ?? existing?.paid_mode ?? "all";
+      const safePaidBy =
+        safeMode === "single" ? paidBy ?? existing?.paid_by ?? profile?.id ?? null : null;
+      const resetSettled =
+        existing &&
+        (existing.last_paid_month !== monthKey ||
+          existing.paid_mode !== safeMode ||
+          existing.paid_by !== safePaidBy);
+      const nextSettled = resetSettled ? [] : existing?.settled_by ?? [];
 
       if (isDemoMode) {
         setBills((prev) =>
@@ -1195,6 +1270,9 @@ export function useKeeperStore(): KeeperStore {
                   ...b,
                   last_paid_month: monthKey,
                   due_day: nextDueDay ?? b.due_day,
+                  paid_mode: safeMode,
+                  paid_by: safePaidBy,
+                  settled_by: nextSettled,
                 }
               : b,
           ),
@@ -1202,23 +1280,95 @@ export function useKeeperStore(): KeeperStore {
         return;
       }
       if (!supabase || !profile) return;
-      const updatePayload: { last_paid_month: string; due_day?: number } = {
+      const fullPayload: Record<string, unknown> = {
         last_paid_month: monthKey,
+        paid_mode: safeMode,
+        paid_by: safePaidBy,
+        settled_by: nextSettled,
       };
-      if (nextDueDay !== null) {
-        updatePayload.due_day = nextDueDay;
-      }
-      const { error: err } = await supabase
+      if (nextDueDay !== null) fullPayload.due_day = nextDueDay;
+
+      let { error: err } = await supabase
         .from("recurring_bills")
-        .update(updatePayload)
+        .update(fullPayload)
         .eq("id", id);
+
+      if (err) {
+        const basePayload: { last_paid_month: string; due_day?: number } = {
+          last_paid_month: monthKey,
+        };
+        if (nextDueDay !== null) basePayload.due_day = nextDueDay;
+        const retry = await supabase
+          .from("recurring_bills")
+          .update(basePayload)
+          .eq("id", id);
+        err = retry.error;
+      }
+
       if (err) {
         setError(err.message);
         throw err;
       }
+
+      try {
+        const rawMeta = localStorage.getItem("keeper_bill_meta_v1");
+        const metaMap = rawMeta
+          ? (JSON.parse(rawMeta) as Record<
+              string,
+              { paid_mode?: "all" | "single"; paid_by?: string | null; settled_by?: string[] }
+            >)
+          : {};
+        metaMap[id] = { paid_mode: safeMode, paid_by: safePaidBy, settled_by: nextSettled };
+        localStorage.setItem("keeper_bill_meta_v1", JSON.stringify(metaMap));
+      } catch {
+        // Ignore storage error
+      }
+
       await fetchHouseholdBundle(profile.id);
     },
-    [fetchHouseholdBundle, isDemoMode, profile],
+    [bills, fetchHouseholdBundle, isDemoMode, profile],
+  );
+
+  const toggleBillMemberSettled = useCallback(
+    async (billId: string, memberUserId: string) => {
+      setError(null);
+      const target = bills.find((b) => b.id === billId);
+      if (!target) return;
+      const current = target.settled_by ?? [];
+      const nextSettled = current.includes(memberUserId)
+        ? current.filter((uid) => uid !== memberUserId)
+        : [...current, memberUserId];
+
+      setBills((prev) =>
+        prev.map((b) => (b.id === billId ? { ...b, settled_by: nextSettled } : b)),
+      );
+
+      try {
+        const rawMeta = localStorage.getItem("keeper_bill_meta_v1");
+        const metaMap = rawMeta
+          ? (JSON.parse(rawMeta) as Record<
+              string,
+              { paid_mode?: "all" | "single"; paid_by?: string | null; settled_by?: string[] }
+            >)
+          : {};
+        metaMap[billId] = {
+          paid_mode: target.paid_mode ?? "all",
+          paid_by: target.paid_by ?? null,
+          settled_by: nextSettled,
+        };
+        localStorage.setItem("keeper_bill_meta_v1", JSON.stringify(metaMap));
+      } catch {
+        // Ignore storage error
+      }
+
+      if (isDemoMode || !supabase || !profile) return;
+      // Persist to DB if `settled_by` column exists (ignore missing-column error gracefully)
+      await supabase
+        .from("recurring_bills")
+        .update({ settled_by: nextSettled })
+        .eq("id", billId);
+    },
+    [bills, isDemoMode, profile],
   );
 
   const deleteBill = useCallback(
@@ -1337,6 +1487,7 @@ export function useKeeperStore(): KeeperStore {
     deleteNeed,
     addBill,
     markBillPaid,
+    toggleBillMemberSettled,
     deleteBill,
     updateBudget,
     leaveHousehold,

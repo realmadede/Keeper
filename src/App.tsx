@@ -784,6 +784,8 @@ export function App() {
               {visitedTabs.has("budget") && (
                 <BudgetView
                   household={store.household}
+                  members={store.members}
+                  currentUserId={store.profile.id}
                   weekWindow={periodWindow}
                   summary={summary}
                   subTab={budgetSubTab}
@@ -810,6 +812,8 @@ export function App() {
                     dueDay,
                     intervalMonths,
                     paidDateISO,
+                    paidMode,
+                    paidBy,
                   ) => {
                     await store.addBill(
                       title,
@@ -818,13 +822,16 @@ export function App() {
                       dueDay,
                       intervalMonths,
                       paidDateISO,
+                      paidMode,
+                      paidBy,
                     );
                     showToast("Recurring bill saved");
                   }}
-                  onMarkBillPaid={async (id, paidDateISO) => {
-                    await store.markBillPaid(id, paidDateISO);
-                    showToast("Bill payment date saved");
+                  onMarkBillPaid={async (id, paidDateISO, paidMode, paidBy) => {
+                    await store.markBillPaid(id, paidDateISO, paidMode, paidBy);
+                    showToast("Bill payment saved");
                   }}
+                  onToggleBillMemberSettled={store.toggleBillMemberSettled}
                   onDeleteBill={async (id) => {
                     await store.deleteBill(id);
                     showToast("Bill removed");

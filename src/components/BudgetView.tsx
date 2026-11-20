@@ -22,6 +22,7 @@ import {
   type BudgetSubTab,
   type ExpenseCategoryId,
   type Household,
+  type HouseholdMember,
   type HouseholdNeed,
   type RecurringBill,
 } from "../types";
@@ -32,6 +33,8 @@ import { SoftButton, SoftInput, SoftSegmented } from "./LightControls";
 
 interface BudgetViewProps {
   household: Household;
+  members: HouseholdMember[];
+  currentUserId: string;
   weekWindow: WeekWindow;
   summary: WeeklySummary;
   subTab: BudgetSubTab;
@@ -52,8 +55,16 @@ interface BudgetViewProps {
     dueDay: number,
     intervalMonths?: number,
     paidDateISO?: string | null,
+    paidMode?: "all" | "single",
+    paidBy?: string | null,
   ) => Promise<void>;
-  onMarkBillPaid: (id: string, paidDateISO: string) => Promise<void>;
+  onMarkBillPaid: (
+    id: string,
+    paidDateISO: string,
+    paidMode?: "all" | "single",
+    paidBy?: string | null,
+  ) => Promise<void>;
+  onToggleBillMemberSettled: (billId: string, memberUserId: string) => Promise<void>;
   onDeleteBill: (id: string) => Promise<void>;
   onStartPrefillExpense: (draft: TransactionPrefill) => void;
 }
@@ -63,6 +74,8 @@ const BILL_INTERVAL_PRESETS = [1, 3, 4, 6, 12] as const;
 
 export function BudgetView({
   household,
+  members,
+  currentUserId,
   weekWindow,
   summary,
   subTab,
@@ -78,6 +91,7 @@ export function BudgetView({
   onDeleteNeed,
   onAddBill,
   onMarkBillPaid,
+  onToggleBillMemberSettled,
   onDeleteBill,
   onStartPrefillExpense,
 }: BudgetViewProps) {
@@ -100,11 +114,15 @@ export function BudgetView({
   const [billCategory, setBillCategory] = useState<ExpenseCategoryId>("rent");
   const [billDateISO, setBillDateISO] = useState(() => toISODate(new Date()));
   const [billAlreadyPaid, setBillAlreadyPaid] = useState(true);
+  const [billPaidMode, setBillPaidMode] = useState<"all" | "single">("all");
+  const [billPaidBy, setBillPaidBy] = useState(currentUserId);
   const [billIntervalMonths, setBillIntervalMonths] = useState("1");
   const [addingBill, setAddingBill] = useState(false);
   const [confirmDeleteBillId, setConfirmDeleteBillId] = useState<string | null>(null);
   const [editingPaidBillId, setEditingPaidBillId] = useState<string | null>(null);
   const [editingPaidDateISO, setEditingPaidDateISO] = useState(() => toISODate(new Date()));
+  const [editingPaidMode, setEditingPaidMode] = useState<"all" | "single">("all");
+  const [editingPaidBy, setEditingPaidBy] = useState(currentUserId);
   const [savingPaidBillId, setSavingPaidBillId] = useState<string | null>(null);
 
   const periodTarget =
@@ -175,11 +193,15 @@ export function BudgetView({
         numericDay,
         numericInterval,
         billAlreadyPaid ? billDateISO : null,
+        billPaidMode,
+        billPaidMode === "single" ? billPaidBy || currentUserId : null,
       );
       setBillTitle("");
       setBillAmount("");
       setBillDateISO(toISODate(new Date()));
       setBillAlreadyPaid(true);
+      setBillPaidMode("all");
+      setBillPaidBy(currentUserId);
       setBillIntervalMonths("1");
       setShowBillForm(false);
     } finally {
@@ -190,7 +212,12 @@ export function BudgetView({
   const handleSaveBillPaidDate = async (billId: string) => {
     setSavingPaidBillId(billId);
     try {
-      await onMarkBillPaid(billId, editingPaidDateISO);
+      await onMarkBillPaid(
+        billId,
+        editingPaidDateISO,
+        editingPaidMode,
+        editingPaidMode === "single" ? editingPaidBy || currentUserId : null,
+      );
       setEditingPaidBillId(null);
     } finally {
       setSavingPaidBillId(null);
@@ -632,6 +659,58 @@ export function BudgetView({
                   </label>
                   <IosDatePicker value={billDateISO} onChange={setBillDateISO} />
                 </div>
+
+                {/* Split by all vs. Paid by 1 member */}
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="block text-xs font-medium text-[#52525B]">Who pays</label>
+                    {members.length > 0 && Number(billAmount) > 0 && (
+                      <span className="font-mono text-[11px] text-[#8F703F] tabular-nums">
+                        {formatTZS(Math.round(Number(billAmount) / members.length))}/member
+                      </span>
+                    )}
+                  </div>
+                  <SoftSegmented
+                    value={billPaidMode}
+                    onValueChange={(v) => setBillPaidMode(v as "all" | "single")}
+                    items={[
+                      { value: "all", label: `Split by all (${Math.max(1, members.length)})` },
+                      { value: "single", label: "Paid by 1 member" },
+                    ]}
+                  />
+                  {billPaidMode === "single" && members.length > 0 && (
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {members.map((m) => {
+                        const selected = billPaidBy === m.user_id;
+                        const name = m.profile?.full_name ?? "Roommate";
+                        const color = m.profile?.avatar_color ?? "#BFA377";
+                        return (
+                          <button
+                            key={m.user_id}
+                            type="button"
+                            onClick={() => setBillPaidBy(m.user_id)}
+                            className={`flex items-center gap-2 rounded-xl border px-2.5 py-1.5 text-left text-xs font-medium transition-colors cursor-pointer ${
+                              selected
+                                ? "border-[#1C1C1E] bg-[#1C1C1E] text-white"
+                                : "border-stone-900/10 bg-white text-[#52525B]"
+                            }`}
+                          >
+                            <span
+                              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white"
+                              style={{ backgroundColor: color }}
+                            >
+                              {getInitials(name)}
+                            </span>
+                            <span className="truncate">
+                              {name.split(" ")[0]}
+                              {m.user_id === currentUserId ? " (You)" : ""}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-1.5">
@@ -685,6 +764,21 @@ export function BudgetView({
                 const defaultBillISO = bill.last_paid_month
                   ? `${bill.last_paid_month}-${String(bill.due_day).padStart(2, "0")}`
                   : toISODate(new Date());
+                const memberCount = Math.max(1, members.length);
+                const perMemberShare = Math.round(bill.amount / memberCount);
+                const paidMode: "all" | "single" = bill.paid_mode === "single" ? "single" : "all";
+                const payerMember =
+                  paidMode === "single" && bill.paid_by
+                    ? members.find((m) => m.user_id === bill.paid_by)
+                    : null;
+                const otherMembers =
+                  paidMode === "single" && bill.paid_by
+                    ? members.filter((m) => m.user_id !== bill.paid_by)
+                    : [];
+                const settledSet = new Set(bill.settled_by ?? []);
+                const allOthersSettled =
+                  otherMembers.length > 0 &&
+                  otherMembers.every((m) => settledSet.has(m.user_id));
 
                 return (
                   <div key={bill.id} className="py-3 first:pt-1 last:pb-0 space-y-2">
@@ -707,6 +801,13 @@ export function BudgetView({
                               </span>
                             )}
                           </div>
+                          {status.isPaidThisMonth && (
+                            <div className="mt-0.5 text-[11px] font-medium text-[#8F703F] tabular-nums">
+                              {paidMode === "single" && payerMember
+                                ? `Paid by ${payerMember.profile.full_name} · ${formatTZS(perMemberShare)}/member`
+                                : `Split by all (${memberCount}) · ${formatTZS(perMemberShare)}/member`}
+                            </div>
+                          )}
                           {status.paidDateLabel && status.nextDueDateLabel && (
                             <div className="mt-0.5 text-[11px] text-[#8E8E93] tabular-nums">
                               Paid {status.paidDateLabel} → Next due {status.nextDueDateLabel}
@@ -730,6 +831,43 @@ export function BudgetView({
                       </span>
                     </div>
 
+                    {/* Per-roommate payback checkmarks when 1 member covered the bill */}
+                    {status.isPaidThisMonth && paidMode === "single" && otherMembers.length > 0 && (
+                      <div className="pl-8 space-y-1.5">
+                        <div className="flex items-center justify-between text-[11px] text-[#8E8E93]">
+                          <span>
+                            {allOthersSettled
+                              ? `Everyone paid back ${payerMember?.profile.full_name.split(" ")[0] ?? "payer"}`
+                              : `Tap as each roommate pays ${formatTZS(perMemberShare)} back`}
+                          </span>
+                          {allOthersSettled && (
+                            <span className="font-medium text-emerald-700">All settled</span>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {otherMembers.map((m) => {
+                            const isSettled = settledSet.has(m.user_id);
+                            const firstName = m.profile.full_name.split(" ")[0];
+                            return (
+                              <button
+                                key={m.user_id}
+                                type="button"
+                                onClick={() => void onToggleBillMemberSettled(bill.id, m.user_id)}
+                                className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-medium transition-colors cursor-pointer ${
+                                  isSettled
+                                    ? "border-emerald-700/20 bg-emerald-50 text-emerald-700"
+                                    : "border-stone-900/10 bg-[#F6F5F2] text-[#52525B] hover:border-stone-900/25"
+                                }`}
+                              >
+                                {isSettled && <Check className="h-3 w-3" strokeWidth={2.5} />}
+                                <span>{firstName}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
                     <div className="flex items-center justify-between gap-2 pl-8">
                       <div className="flex flex-wrap items-center gap-2">
                         {!status.isPaidThisMonth ? (
@@ -738,6 +876,8 @@ export function BudgetView({
                             onClick={() => {
                               setEditingPaidBillId(editingDate ? null : bill.id);
                               setEditingPaidDateISO(defaultBillISO);
+                              setEditingPaidMode(paidMode);
+                              setEditingPaidBy(bill.paid_by || currentUserId);
                             }}
                             className="inline-flex items-center gap-1.5 rounded-lg bg-[#1C1C1E] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#2C2C30] transition-colors cursor-pointer"
                           >
@@ -757,11 +897,13 @@ export function BudgetView({
                               onClick={() => {
                                 setEditingPaidBillId(editingDate ? null : bill.id);
                                 setEditingPaidDateISO(defaultBillISO);
+                                setEditingPaidMode(paidMode);
+                                setEditingPaidBy(bill.paid_by || currentUserId);
                               }}
                               className="inline-flex items-center gap-1 rounded-md bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-[#52525B] hover:text-[#1C1C1E] transition-colors cursor-pointer"
                             >
                               <Calendar className="h-3 w-3" />
-                              Change date
+                              Edit payment
                             </button>
                           </>
                         )}
@@ -799,16 +941,56 @@ export function BudgetView({
                       )}
                     </div>
 
-                    {/* Inline Calendar Picker to set or adjust the exact date this bill was paid */}
+                    {/* Inline Calendar & Payer Picker to record or update payment without touching weekly pool */}
                     {editingDate && (
                       <div className="ml-8 rounded-xl border border-stone-900/[0.08] bg-[#F6F5F2] p-3 space-y-2.5">
                         <div className="text-xs font-medium text-[#1C1C1E]">
-                          Choose date {bill.title} was paid
+                          Record payment for {bill.title}
                         </div>
                         <IosDatePicker
                           value={editingPaidDateISO}
                           onChange={setEditingPaidDateISO}
                         />
+                        <SoftSegmented
+                          value={editingPaidMode}
+                          onValueChange={(v) => setEditingPaidMode(v as "all" | "single")}
+                          items={[
+                            { value: "all", label: `Split by all (${memberCount})` },
+                            { value: "single", label: "Paid by 1 member" },
+                          ]}
+                        />
+                        {editingPaidMode === "single" && members.length > 0 && (
+                          <div className="grid grid-cols-2 gap-1.5">
+                            {members.map((m) => {
+                              const selected = editingPaidBy === m.user_id;
+                              const name = m.profile?.full_name ?? "Roommate";
+                              const color = m.profile?.avatar_color ?? "#BFA377";
+                              return (
+                                <button
+                                  key={m.user_id}
+                                  type="button"
+                                  onClick={() => setEditingPaidBy(m.user_id)}
+                                  className={`flex items-center gap-2 rounded-xl border px-2.5 py-1.5 text-left text-xs font-medium transition-colors cursor-pointer ${
+                                    selected
+                                      ? "border-[#1C1C1E] bg-[#1C1C1E] text-white"
+                                      : "border-stone-900/10 bg-white text-[#52525B]"
+                                  }`}
+                                >
+                                  <span
+                                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white"
+                                    style={{ backgroundColor: color }}
+                                  >
+                                    {getInitials(name)}
+                                  </span>
+                                  <span className="truncate">
+                                    {name.split(" ")[0]}
+                                    {m.user_id === currentUserId ? " (You)" : ""}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
                         <div className="flex items-center justify-end gap-2">
                           <button
                             type="button"
@@ -823,7 +1005,7 @@ export function BudgetView({
                             onClick={() => void handleSaveBillPaidDate(bill.id)}
                             className="rounded-lg bg-[#1C1C1E] px-3 py-1 text-xs font-medium text-white hover:bg-[#2C2C30] disabled:opacity-50 cursor-pointer"
                           >
-                            {savingPaidBillId === bill.id ? "Saving..." : "Save paid date"}
+                            {savingPaidBillId === bill.id ? "Saving..." : "Save payment"}
                           </button>
                         </div>
                       </div>

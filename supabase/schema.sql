@@ -138,11 +138,20 @@ create table if not exists public.recurring_bills (
   due_day int not null check (due_day between 1 and 31),
   interval_months int not null default 1 check (interval_months between 1 and 60),
   last_paid_month text check (last_paid_month is null or last_paid_month ~ '^[0-9]{4}-[0-9]{2}$'),
+  paid_mode text not null default 'all' check (paid_mode in ('all', 'single')),
+  paid_by uuid references public.profiles(id) on delete set null,
+  settled_by uuid[] not null default '{}',
   created_at timestamptz not null default now()
 );
 
 alter table public.recurring_bills
   add column if not exists interval_months int not null default 1 check (interval_months between 1 and 60);
+alter table public.recurring_bills
+  add column if not exists paid_mode text not null default 'all' check (paid_mode in ('all', 'single'));
+alter table public.recurring_bills
+  add column if not exists paid_by uuid references public.profiles(id) on delete set null;
+alter table public.recurring_bills
+  add column if not exists settled_by uuid[] not null default '{}';
 
 create index if not exists idx_recurring_bills_household
   on public.recurring_bills (household_id, due_day asc);
