@@ -4,6 +4,7 @@ import {
   computeWeeklySummary,
   getBillDueStatus,
   getWeekWindow,
+  resolveWeekStartDay,
 } from "./analytics";
 import { formatCompactTZS, formatTZS } from "./format";
 import type { HouseholdMember, RecurringBill, Transaction } from "../types";
@@ -44,6 +45,33 @@ describe("getWeekWindow", () => {
     expect(win.days).toHaveLength(7);
     expect(win.days[0].dayShort).toBe("Mon");
     expect(win.days[6].dayShort).toBe("Sun");
+  });
+
+  it("anchors 7-day cycle to custom start weekday (e.g. Wednesday-Tuesday) and auto-detects from first entry", () => {
+    const wedTxns: Transaction[] = [
+      {
+        id: "t-wed",
+        household_id: "h1",
+        recorded_by: "u1",
+        type: "contribution",
+        amount: 45000,
+        category: "contribution",
+        description: "Wednesday pool",
+        transaction_date: "2026-11-18", // Wednesday
+        created_at: "2026-11-18T08:00:00Z",
+      },
+    ];
+    const resolved = resolveWeekStartDay(wedTxns);
+    expect(resolved.startDay).toBe(3); // 3 = Wednesday
+    expect(resolved.isManual).toBe(false);
+
+    // On Monday Nov 23, 2026 (day 6 of the Wed-Tue cycle), the active week is still Nov 18 - Nov 24
+    const mondayInCycle = new Date(2026, 10, 23);
+    const win = getWeekWindow(0, mondayInCycle, resolved.startDay);
+    expect(win.startISO).toBe("2026-11-18");
+    expect(win.endISO).toBe("2026-11-24");
+    expect(win.days[0].dayShort).toBe("Wed");
+    expect(win.days[6].dayShort).toBe("Tue");
   });
 });
 

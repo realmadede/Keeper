@@ -38,6 +38,8 @@ import {
   computePeriodSummary,
   getBillDueStatus,
   getPeriodWindow,
+  JS_DAY_SHORT,
+  resolveWeekStartDay,
 } from "./lib/analytics";
 import { formatTZS } from "./lib/format";
 import { sanitizeInviteCode } from "./lib/security";
@@ -46,6 +48,7 @@ import type { ActiveTab, BudgetSubTab, PeriodKey, Transaction, TransactionType }
 const TAB_ORDER: ActiveTab[] = ["overview", "ledger", "budget", "household"];
 const PENDING_JOIN_KEY = "keeper_pending_join_code";
 const LAST_SEEN_PREFIX = "keeper_last_seen_v1:";
+const WEEK_START_PREFIX = "keeper_week_start_v1:";
 
 const TAB_TITLES: Record<ActiveTab, string> = {
   overview: "Household overview",
@@ -92,6 +95,7 @@ export function App() {
   );
   const autoJoinedCodeRef = useRef<string | null>(null);
   const [lastSeenAt, setLastSeenAt] = useState<string | null>(null);
+  const [weekStartOverride, setWeekStartOverride] = useState<number | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const toastTimerRef = useRef<number | null>(null);
   const [isOffline, setIsOffline] = useState(() =>
@@ -183,8 +187,65 @@ export function App() {
     return ids;
   }, [lastSeenAt, store.profile, store.transactions]);
 
+  // Load saved custom week-start day override for this household (or null for auto from first entry)
+  useEffect(() => {
+    const hid = store.household?.id;
+    if (!hid) {
+      setWeekStartOverride(null);
+      return;
+    }
+    try {
+      const raw = localStorage.getItem(`${WEEK_START_PREFIX}${hid}`);
+      if (raw !== null && raw !== "") {
+        const parsed = Number(raw);
+        if (Number.isInteger(parsed) && parsed >= 0 && parsed <= 6) {
+          setWeekStartOverride(parsed);
+          return;
+        }
+      }
+    } catch {
+      // Ignore storage read errors
+    }
+    setWeekStartOverride(null);
+  }, [store.household?.id]);
+
+  const handleChangeWeekStart = useCallback(
+    (day: number | null) => {
+      setWeekStartOverride(day);
+      const hid = store.household?.id;
+      if (hid) {
+        try {
+          const key = `${WEEK_START_PREFIX}${hid}`;
+          if (day === null) localStorage.removeItem(key);
+          else localStorage.setItem(key, String(day));
+        } catch {
+          // Ignore storage write errors
+        }
+      }
+      if (day === null) {
+        showToast("Week cycle set to auto from first entry");
+      } else {
+        showToast(`7-day week now starts on ${JS_DAY_SHORT[day]}`);
+      }
+    },
+    [showToast, store.household?.id],
+  );
+
+  const weekStartInfo = useMemo(
+    () =>
+      resolveWeekStartDay(
+        store.transactions,
+        store.household?.created_at,
+        weekStartOverride,
+      ),
+    [store.household?.created_at, store.transactions, weekStartOverride],
+  );
+
   const activeIndex = TAB_ORDER.indexOf(activeTab);
-  const periodWindow = useMemo(() => getPeriodWindow(periodKey), [periodKey]);
+  const periodWindow = useMemo(
+    () => getPeriodWindow(periodKey, new Date(), weekStartInfo.startDay),
+    [periodKey, weekStartInfo.startDay],
+  );
 
   // Clear pending invite code once the user is inside a household, or auto-join right after auth
   useEffect(() => {
@@ -229,8 +290,10 @@ export function App() {
       store.members,
       store.household.member_weekly_share,
       periodKey,
+      new Date(),
+      weekStartInfo.startDay,
     );
-  }, [periodKey, store.household, store.members, store.transactions]);
+  }, [periodKey, store.household, store.members, store.transactions, weekStartInfo.startDay]);
 
   const dueSoonBillsCount = useMemo(
     () => store.bills.filter((b) => getBillDueStatus(b).isDueSoon).length,
@@ -415,7 +478,7 @@ export function App() {
   }
 
   const periodOption = (key: PeriodKey): MenuEntry => {
-    const win = getPeriodWindow(key);
+    const win = getPeriodWindow(key, new Date(), weekStartInfo.startDay);
     return {
       label: win.label,
       icon:
@@ -725,6 +788,9 @@ export function App() {
                   summary={summary}
                   subTab={budgetSubTab}
                   onSubTabChange={setBudgetSubTab}
+                  weekStartOverride={weekStartOverride}
+                  autoStartDay={weekStartInfo.autoDay}
+                  onChangeWeekStart={handleChangeWeekStart}
                   needs={store.needs}
                   bills={store.bills}
                   onUpdateBudget={store.updateBudget}

@@ -70,7 +70,56 @@ export interface BillDueStatus {
   statusLabel: string;
 }
 
-const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+export const JS_DAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+export const JS_DAY_FULL = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+] as const;
+
+/**
+ * Resolves the household's 7-day cycle start weekday (0 = Sun .. 6 = Sat).
+ * Automatically anchors to the weekday of the household's earliest recorded transaction
+ * (or household creation date) unless a manual override (0..6) is set.
+ */
+export function resolveWeekStartDay(
+  transactions: Transaction[],
+  householdCreatedAt?: string,
+  manualOverride?: number | null,
+): { startDay: number; autoDay: number; isManual: boolean } {
+  let earliestISO: string | null = null;
+  for (const t of transactions) {
+    if (!earliestISO || t.transaction_date < earliestISO) {
+      earliestISO = t.transaction_date;
+    }
+  }
+
+  let autoDay = 1; // Default Monday
+  if (earliestISO && /^\d{4}-\d{2}-\d{2}$/.test(earliestISO)) {
+    const [y, m, d] = earliestISO.split("-").map(Number);
+    autoDay = new Date(y, m - 1, d).getDay();
+  } else if (householdCreatedAt) {
+    const parsed = new Date(householdCreatedAt);
+    if (!Number.isNaN(parsed.getTime())) {
+      autoDay = parsed.getDay();
+    }
+  }
+
+  if (
+    typeof manualOverride === "number" &&
+    Number.isInteger(manualOverride) &&
+    manualOverride >= 0 &&
+    manualOverride <= 6
+  ) {
+    return { startDay: manualOverride, autoDay, isManual: true };
+  }
+
+  return { startDay: autoDay, autoDay, isManual: false };
+}
 
 export function getMonthKey(date = new Date()): string {
   const y = date.getFullYear();
@@ -133,26 +182,34 @@ export function getBillDueStatus(bill: RecurringBill, referenceDate = new Date()
   };
 }
 
-/** Returns Monday 00:00 local time for the week containing `referenceDate`, shifted by `weekOffset` weeks. */
-export function getWeekWindow(weekOffset = 0, referenceDate = new Date()): WeekWindow {
+/**
+ * Returns the 7-day window starting on `startDayOfWeek` (0=Sun..6=Sat, default 1=Mon)
+ * containing `referenceDate`, shifted by `weekOffset` weeks.
+ */
+export function getWeekWindow(
+  weekOffset = 0,
+  referenceDate = new Date(),
+  startDayOfWeek = 1,
+): WeekWindow {
   const base = new Date(
     referenceDate.getFullYear(),
     referenceDate.getMonth(),
     referenceDate.getDate(),
   );
   const jsDay = base.getDay();
-  const diffToMonday = jsDay === 0 ? -6 : 1 - jsDay;
-  const monday = new Date(base);
-  monday.setDate(base.getDate() + diffToMonday + weekOffset * 7);
+  const normalizedStart = ((startDayOfWeek % 7) + 7) % 7;
+  const diffToStart = -((jsDay - normalizedStart + 7) % 7);
+  const cycleStart = new Date(base);
+  cycleStart.setDate(base.getDate() + diffToStart + weekOffset * 7);
 
-  const days = DAY_NAMES.map((dayShort, idx) => {
-    const d = new Date(monday);
-    d.setDate(monday.getDate() + idx);
-    return { iso: toISODate(d), dayShort };
+  const days = Array.from({ length: 7 }, (_, idx) => {
+    const d = new Date(cycleStart);
+    d.setDate(cycleStart.getDate() + idx);
+    return { iso: toISODate(d), dayShort: JS_DAY_SHORT[d.getDay()] };
   });
 
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
+  const cycleEnd = new Date(cycleStart);
+  cycleEnd.setDate(cycleStart.getDate() + 6);
 
   let label = "This Week";
   let key: PeriodKey = "this_week";
@@ -160,11 +217,11 @@ export function getWeekWindow(weekOffset = 0, referenceDate = new Date()): WeekW
     label = "Last Week";
     key = "last_week";
   } else if (weekOffset < -1) {
-    label = `${monday.toLocaleDateString("en-US", { month: "short", day: "numeric" })} - ${sunday.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+    label = `${cycleStart.toLocaleDateString("en-US", { month: "short", day: "numeric" })} - ${cycleEnd.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
     key = "two_weeks_ago";
   }
 
-  const monthLabel = monday.toLocaleDateString("en-US", {
+  const monthLabel = cycleStart.toLocaleDateString("en-US", {
     month: "long",
     year: "numeric",
   });
@@ -211,14 +268,18 @@ export function getMonthWindow(monthOffset = 0, referenceDate = new Date()): Wee
   };
 }
 
-export function getPeriodWindow(periodKey: PeriodKey, referenceDate = new Date()): WeekWindow {
+export function getPeriodWindow(
+  periodKey: PeriodKey,
+  referenceDate = new Date(),
+  startDayOfWeek = 1,
+): WeekWindow {
   switch (periodKey) {
     case "this_week":
-      return getWeekWindow(0, referenceDate);
+      return getWeekWindow(0, referenceDate, startDayOfWeek);
     case "last_week":
-      return getWeekWindow(-1, referenceDate);
+      return getWeekWindow(-1, referenceDate, startDayOfWeek);
     case "two_weeks_ago":
-      return getWeekWindow(-2, referenceDate);
+      return getWeekWindow(-2, referenceDate, startDayOfWeek);
     case "this_month":
       return getMonthWindow(0, referenceDate);
     case "last_month":
@@ -246,11 +307,13 @@ export function computePeriodSummary(
   memberWeeklyShare: number,
   periodKey: PeriodKey = "this_week",
   referenceDate = new Date(),
+  startDayOfWeek = 1,
 ): WeeklySummary {
-  const currentPeriod = getPeriodWindow(periodKey, referenceDate);
+  const normalizedStart = ((startDayOfWeek % 7) + 7) % 7;
+  const currentPeriod = getPeriodWindow(periodKey, referenceDate, normalizedStart);
   const prevPeriod =
     currentPeriod.kind === "week"
-      ? getWeekWindow(currentPeriod.offset - 1, referenceDate)
+      ? getWeekWindow(currentPeriod.offset - 1, referenceDate, normalizedStart)
       : getMonthWindow(currentPeriod.offset - 1, referenceDate);
 
   const periodTransactions = transactions.filter(
@@ -344,11 +407,11 @@ export function computePeriodSummary(
   const shareMultiplier = currentPeriod.kind === "month" ? 4 : 1;
   const expectedShare = memberWeeklyShare * shareMultiplier;
 
-  const toMondayMs = (iso: string): number => {
+  const toCycleStartMs = (iso: string): number => {
     const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
     const dt = new Date(Date.UTC(y || 2026, (m || 1) - 1, d || 1));
     const day = dt.getUTCDay();
-    const diff = day === 0 ? -6 : 1 - day;
+    const diff = -((day - normalizedStart + 7) % 7);
     dt.setUTCDate(dt.getUTCDate() + diff);
     return dt.getTime();
   };
@@ -362,7 +425,7 @@ export function computePeriodSummary(
       earliestPriorISO = t.transaction_date;
     }
   }
-  const currentStartMondayMs = toMondayMs(currentPeriod.startISO);
+  const currentStartMondayMs = toCycleStartMs(currentPeriod.startISO);
   const WEEK_MS = 7 * 24 * 3600 * 1000;
 
   const memberStatuses: MemberContributionStatus[] = members.map((member) => {
@@ -402,7 +465,7 @@ export function computePeriodSummary(
             : earliestPriorISO;
       const elapsedWeeks = Math.max(
         1,
-        Math.round((currentStartMondayMs - toMondayMs(anchorISO)) / WEEK_MS),
+        Math.round((currentStartMondayMs - toCycleStartMs(anchorISO)) / WEEK_MS),
       );
       const priorExpected = elapsedWeeks * memberWeeklyShare;
       carryOverCredit = Math.max(0, priorContributed - priorExpected);
@@ -459,8 +522,16 @@ export function computeWeeklySummary(
   memberWeeklyShare: number,
   weekOffset = 0,
   referenceDate = new Date(),
+  startDayOfWeek = 1,
 ): WeeklySummary {
   const key: PeriodKey =
     weekOffset === 0 ? "this_week" : weekOffset === -1 ? "last_week" : "two_weeks_ago";
-  return computePeriodSummary(transactions, members, memberWeeklyShare, key, referenceDate);
+  return computePeriodSummary(
+    transactions,
+    members,
+    memberWeeklyShare,
+    key,
+    referenceDate,
+    startDayOfWeek,
+  );
 }

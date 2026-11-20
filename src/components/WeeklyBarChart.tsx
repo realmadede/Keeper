@@ -53,7 +53,9 @@ export function WeeklyBarChart({
           )}
         </div>
         <span className="font-mono text-[11px] text-[#8E8E93]">
-          {periodKind === "month" ? "W1 - W5" : "Mon - Sun"}
+          {periodKind === "month"
+            ? "W1 - W5"
+            : `${dailySeries[0]?.dayShort ?? "Mon"} - ${dailySeries[dailySeries.length - 1]?.dayShort ?? "Sun"}`}
         </span>
       </div>
 

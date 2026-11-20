@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import {
   getBillDueStatus,
+  JS_DAY_SHORT,
   type WeeklySummary,
   type WeekWindow,
 } from "../lib/analytics";
@@ -33,6 +34,9 @@ interface BudgetViewProps {
   summary: WeeklySummary;
   subTab: BudgetSubTab;
   onSubTabChange: (tab: BudgetSubTab) => void;
+  weekStartOverride: number | null;
+  autoStartDay: number;
+  onChangeWeekStart: (day: number | null) => void;
   needs: HouseholdNeed[];
   bills: RecurringBill[];
   onUpdateBudget: (weeklyBudget: number, memberShare: number) => Promise<void>;
@@ -49,12 +53,17 @@ interface BudgetViewProps {
   onStartPrefillExpense: (draft: TransactionPrefill) => void;
 }
 
+const WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0] as const; // Mon..Sun
+
 export function BudgetView({
   household,
   weekWindow,
   summary,
   subTab,
   onSubTabChange,
+  weekStartOverride,
+  autoStartDay,
+  onChangeWeekStart,
   needs,
   bills,
   onUpdateBudget,
@@ -180,6 +189,11 @@ export function BudgetView({
                 </h2>
                 <p className="text-xs text-[#52525B] mt-0.5 tabular-nums">
                   Target ({weekWindow.label.toLowerCase()}): {formatTZS(periodTarget)}
+                  {weekWindow.kind === "week" && weekWindow.days.length === 7 && (
+                    <span className="ml-1.5 text-[#8E8E93]">
+                      · {weekWindow.days[0].dayShort} - {weekWindow.days[6].dayShort}
+                    </span>
+                  )}
                 </p>
               </div>
               <span className="font-mono text-xs text-[#8E8E93] tabular-nums">
@@ -378,6 +392,49 @@ export function BudgetView({
                   onValueChange={setMemberShare}
                   icon={<span className="font-mono text-xs font-medium text-[#8E8E93]">TZS</span>}
                 />
+              </div>
+
+              <div>
+                <div className="mb-1.5 flex items-center justify-between gap-2">
+                  <label className="block text-xs font-medium text-[#52525B]">
+                    7-day week starts on
+                  </label>
+                  <span className="font-mono text-[11px] text-[#8E8E93]">
+                    {weekStartOverride === null
+                      ? `Auto from first entry (${JS_DAY_SHORT[autoStartDay]})`
+                      : `Every ${JS_DAY_SHORT[weekStartOverride]}`}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => onChangeWeekStart(null)}
+                    className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
+                      weekStartOverride === null
+                        ? "bg-[#1C1C1E] text-white"
+                        : "border border-stone-900/10 bg-[#F6F5F2] text-[#52525B] hover:text-[#1C1C1E]"
+                    }`}
+                  >
+                    Auto ({JS_DAY_SHORT[autoStartDay]})
+                  </button>
+                  {WEEKDAY_ORDER.map((dayIdx) => {
+                    const active = weekStartOverride === dayIdx;
+                    return (
+                      <button
+                        key={dayIdx}
+                        type="button"
+                        onClick={() => onChangeWeekStart(dayIdx)}
+                        className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
+                          active
+                            ? "bg-[#1C1C1E] text-white"
+                            : "border border-stone-900/10 bg-[#F6F5F2] text-[#52525B] hover:text-[#1C1C1E]"
+                        }`}
+                      >
+                        {JS_DAY_SHORT[dayIdx]}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               <SoftButton
