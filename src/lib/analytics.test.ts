@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  computeMemberTotals,
   computePeriodSummary,
   computeWeeklySummary,
   getBillDueStatus,
@@ -7,7 +8,7 @@ import {
   resolveWeekStartDay,
 } from "./analytics";
 import { formatCompactTZS, formatTZS } from "./format";
-import type { HouseholdMember, RecurringBill, Transaction } from "../types";
+import type { HouseholdMember, HouseholdNeed, RecurringBill, Transaction } from "../types";
 
 const REF_DATE = new Date(2026, 10, 19); // Thursday Nov 19, 2026
 
@@ -237,5 +238,74 @@ describe("getBillDueStatus", () => {
     expect(inFebruary.isPaidThisMonth).toBe(false);
     expect(inFebruary.isDueSoon).toBe(true);
     expect(inFebruary.statusLabel).toBe("Due today");
+  });
+});
+
+describe("computeMemberTotals", () => {
+  it("sums contributions, bills, and needs without double-counting pool_amount_used", () => {
+    const txns: Transaction[] = [
+      {
+        id: "t1",
+        household_id: "h1",
+        recorded_by: "u1",
+        paid_by: "u1",
+        type: "contribution",
+        amount: 30000,
+        category: "contribution",
+        description: "Weekly pool",
+        transaction_date: "2026-11-18",
+        created_at: "2026-11-18T09:00:00Z",
+      },
+    ];
+    const bills: RecurringBill[] = [
+      {
+        id: "b1",
+        household_id: "h1",
+        created_by: "u1",
+        title: "Wi-Fi",
+        amount: 60000,
+        pool_amount_used: 10000, // 50,000 remaining split 2 ways = 25,000 each
+        category: "wifi_internet",
+        due_day: 1,
+        last_paid_month: "2026-11",
+        paid_mode: "all",
+        paid_by: null,
+        settled_by: [],
+        created_at: "2026-11-01T00:00:00Z",
+      },
+    ];
+    const needs: HouseholdNeed[] = [
+      {
+        id: "n1",
+        household_id: "h1",
+        added_by: "u1",
+        title: "Cooking gas",
+        actual_amount: 20000,
+        pool_amount_used: 0,
+        paid_mode: "single",
+        paid_by: "u2",
+        settled_by: [], // u1 has not paid back u2's 10,000 share yet
+        category: "supplies",
+        is_bought: true,
+        bought_at: "2026-11-19T10:00:00Z",
+        created_at: "2026-11-19T09:00:00Z",
+      },
+    ];
+
+    const totals = computeMemberTotals(MEMBERS, txns, bills, needs, "this_month", REF_DATE);
+    const amani = totals.find((m) => m.member.user_id === "u1")!;
+    const neema = totals.find((m) => m.member.user_id === "u2")!;
+
+    expect(amani.contributionsPaid).toBe(30000);
+    expect(amani.billsPaid).toBe(25000);
+    expect(amani.needsPaid).toBe(0);
+    expect(amani.totalPaid).toBe(55000);
+    expect(amani.netPayback).toBe(-10000); // owes Neema 10,000
+
+    expect(neema.contributionsPaid).toBe(0);
+    expect(neema.billsPaid).toBe(25000);
+    expect(neema.needsPaid).toBe(20000); // fronted full 20,000
+    expect(neema.totalPaid).toBe(45000);
+    expect(neema.netPayback).toBe(10000); // owed 10,000 back
   });
 });

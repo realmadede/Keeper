@@ -853,6 +853,9 @@ export function App() {
                   household={store.household}
                   profile={store.profile}
                   members={store.members}
+                  transactions={store.transactions}
+                  bills={store.bills}
+                  needs={store.needs}
                   isDemoMode={store.isDemoMode}
                   realtimeConnected={store.realtimeConnected}
                   onUpdateProfile={store.updateProfile}

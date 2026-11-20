@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   Check,
   CheckCircle2,
+  ChevronDown,
   Copy,
   Eye,
   EyeOff,
@@ -11,16 +12,25 @@ import {
   Pencil,
   QrCode,
   RefreshCw,
+  Share2,
   ShieldPlus,
   Trash2,
   User,
   UserMinus,
 } from "lucide-react";
-import { getInitials } from "../lib/format";
+import { computeMemberTotals, type MemberTotalSummary } from "../lib/analytics";
+import { formatTZS, getInitials } from "../lib/format";
 import { generateQrMatrix } from "../lib/qr";
-import type { Household, HouseholdMember, Profile } from "../types";
+import type {
+  Household,
+  HouseholdMember,
+  HouseholdNeed,
+  Profile,
+  RecurringBill,
+  Transaction,
+} from "../types";
 import { LegalModal, type LegalDocType } from "./LegalModal";
-import { SoftButton, SoftInput } from "./LightControls";
+import { SoftButton, SoftInput, SoftSegmented } from "./LightControls";
 
 const AVATAR_SWATCHES = [
   "#BFA377",
@@ -37,6 +47,9 @@ interface HouseholdViewProps {
   household: Household;
   profile: Profile;
   members: HouseholdMember[];
+  transactions: Transaction[];
+  bills: RecurringBill[];
+  needs: HouseholdNeed[];
   isDemoMode: boolean;
   realtimeConnected: boolean;
   onUpdateProfile: (fullName: string, avatarColor: string) => Promise<void>;
@@ -54,6 +67,9 @@ export function HouseholdView({
   household,
   profile,
   members,
+  transactions,
+  bills,
+  needs,
   isDemoMode,
   realtimeConnected,
   onUpdateProfile,
@@ -71,6 +87,50 @@ export function HouseholdView({
   const [showQr, setShowQr] = useState(false);
   const [confirmRotate, setConfirmRotate] = useState(false);
   const [rotating, setRotating] = useState(false);
+
+  // Member totals card state
+  const [totalsScope, setTotalsScope] = useState<"all_time" | "this_month">("all_time");
+  const [expandedMemberId, setExpandedMemberId] = useState<string | null>(null);
+  const [copiedMemberId, setCopiedMemberId] = useState<string | null>(null);
+
+  const memberTotals = useMemo(
+    () => computeMemberTotals(members, transactions, bills, needs, totalsScope),
+    [bills, members, needs, totalsScope, transactions],
+  );
+
+  const copyMemberStatement = async (summary: MemberTotalSummary) => {
+    const scopeTitle = totalsScope === "this_month" ? "This month" : "All time";
+    const lines = [
+      `${household.name} — ${summary.member.profile.full_name} (${scopeTitle})`,
+      `Total paid: ${formatTZS(summary.totalPaid)}`,
+      `• Weekly pool: ${formatTZS(summary.contributionsPaid)}`,
+      `• Bills: ${formatTZS(summary.billsPaid)}`,
+      `• Needs: ${formatTZS(summary.needsPaid)}`,
+    ];
+    if (summary.netPayback > 0) {
+      lines.push(`Pending payback: Owed ${formatTZS(summary.netPayback)} back`);
+    } else if (summary.netPayback < 0) {
+      lines.push(`Pending payback: Owes ${formatTZS(Math.abs(summary.netPayback))}`);
+    }
+    if (summary.items.length > 0) {
+      lines.push("", "Breakdown:");
+      for (const it of summary.items.slice(0, 15)) {
+        const tag =
+          it.source === "contribution" ? "Pool" : it.source === "bill" ? "Bill" : "Need";
+        lines.push(`- [${tag}] ${it.label}: ${formatTZS(it.amount)}`);
+      }
+    }
+    const text = lines.join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedMemberId(summary.member.user_id);
+      setTimeout(() => setCopiedMemberId(null), 2200);
+    } catch {
+      if (navigator.share) {
+        await navigator.share({ title: `${summary.member.profile.full_name} Statement`, text }).catch(() => {});
+      }
+    }
+  };
 
   const inviteUrl = `${typeof window !== "undefined" ? window.location.origin : "https://keeper.vercel.app"}/?join=${encodeURIComponent(household.invite_code)}`;
   const qrMatrix = useMemo(
@@ -527,6 +587,134 @@ export function HouseholdView({
                         </button>
                       </>
                     )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* Member Total Paid (Contributions + Bills + Needs) */}
+      <section className="rounded-2xl border border-stone-900/[0.08] bg-white p-4 space-y-3">
+        <div>
+          <h3 className="text-base font-semibold text-[#1C1C1E]">Member totals</h3>
+          <p className="text-xs text-[#52525B] mt-0.5">
+            Total paid across weekly pool, bills, and house needs
+          </p>
+        </div>
+
+        <SoftSegmented
+          value={totalsScope}
+          onValueChange={(v) => setTotalsScope(v as "all_time" | "this_month")}
+          items={[
+            { value: "all_time", label: "All time" },
+            { value: "this_month", label: "This month" },
+          ]}
+        />
+
+        <div className="divide-y divide-stone-900/[0.06]">
+          {memberTotals.map((row) => {
+            const expanded = expandedMemberId === row.member.user_id;
+            const isCopied = copiedMemberId === row.member.user_id;
+            return (
+              <div key={row.member.user_id} className="py-3 first:pt-1 last:pb-0 space-y-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setExpandedMemberId(expanded ? null : row.member.user_id)
+                  }
+                  className="flex w-full items-start justify-between gap-2 text-left cursor-pointer"
+                >
+                  <div className="flex items-start gap-2.5 min-w-0">
+                    <div
+                      className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold text-white"
+                      style={{ backgroundColor: row.member.profile.avatar_color }}
+                    >
+                      {getInitials(row.member.profile.full_name)}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="truncate text-sm font-medium text-[#1C1C1E]">
+                          {row.member.profile.full_name}
+                        </span>
+                        {row.member.user_id === profile.id && (
+                          <span className="text-xs text-[#8E8E93]">(You)</span>
+                        )}
+                      </div>
+                      <div className="mt-0.5 text-[11px] text-[#52525B] tabular-nums">
+                        Pool {formatTZS(row.contributionsPaid)} · Bills{" "}
+                        {formatTZS(row.billsPaid)} · Needs {formatTZS(row.needsPaid)}
+                      </div>
+                      {row.netPayback !== 0 && (
+                        <div
+                          className={`mt-0.5 text-[11px] font-medium tabular-nums ${
+                            row.netPayback > 0 ? "text-emerald-700" : "text-[#8F703F]"
+                          }`}
+                        >
+                          {row.netPayback > 0
+                            ? `Owed ${formatTZS(row.netPayback)} back`
+                            : `Owes ${formatTZS(Math.abs(row.netPayback))}`}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <span className="text-sm font-semibold text-[#1C1C1E] tabular-nums">
+                      {formatTZS(row.totalPaid)}
+                    </span>
+                    <ChevronDown
+                      className={`h-4 w-4 text-[#8E8E93] transition-transform ${
+                        expanded ? "rotate-180" : ""
+                      }`}
+                    />
+                  </div>
+                </button>
+
+                {expanded && (
+                  <div className="ml-10 rounded-xl border border-stone-900/[0.08] bg-[#F6F5F2] p-3 space-y-2">
+                    {row.items.length === 0 ? (
+                      <p className="text-xs text-[#8E8E93]">
+                        No payments recorded in this period yet
+                      </p>
+                    ) : (
+                      <div className="space-y-1.5 max-h-48 overflow-y-auto no-scrollbar">
+                        {row.items.map((item, idx) => (
+                          <div
+                            key={`${item.source}-${idx}`}
+                            className="flex items-center justify-between gap-2 text-xs"
+                          >
+                            <div className="min-w-0 flex items-center gap-1.5">
+                              <span className="shrink-0 rounded bg-white px-1.5 py-0.5 font-mono text-[10px] text-[#52525B] border border-stone-900/[0.06]">
+                                {item.source === "contribution"
+                                  ? "Pool"
+                                  : item.source === "bill"
+                                    ? "Bill"
+                                    : "Need"}
+                              </span>
+                              <span className="truncate text-[#1C1C1E]">{item.label}</span>
+                            </div>
+                            <span className="shrink-0 font-medium text-[#1C1C1E] tabular-nums">
+                              {formatTZS(item.amount)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="pt-1.5 border-t border-stone-900/[0.06]">
+                      <button
+                        type="button"
+                        onClick={() => void copyMemberStatement(row)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-stone-900/10 bg-white px-2.5 py-1 text-xs font-medium text-[#1C1C1E] hover:bg-stone-50 transition-colors cursor-pointer"
+                      >
+                        {isCopied ? (
+                          <Check className="h-3.5 w-3.5 text-emerald-700" />
+                        ) : (
+                          <Share2 className="h-3.5 w-3.5 text-[#52525B]" />
+                        )}
+                        <span>{isCopied ? "Copied for WhatsApp" : "Copy statement"}</span>
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>

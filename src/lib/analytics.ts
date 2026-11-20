@@ -2,6 +2,7 @@ import {
   EXPENSE_CATEGORIES,
   type ExpenseCategoryId,
   type HouseholdMember,
+  type HouseholdNeed,
   type PeriodKey,
   type RecurringBill,
   type Transaction,
@@ -584,4 +585,180 @@ export function computeWeeklySummary(
     referenceDate,
     startDayOfWeek,
   );
+}
+
+export interface MemberTotalItem {
+  source: "contribution" | "bill" | "need";
+  label: string;
+  amount: number;
+  dateLabel?: string;
+}
+
+export interface MemberTotalSummary {
+  member: HouseholdMember;
+  contributionsPaid: number;
+  billsPaid: number;
+  needsPaid: number;
+  totalPaid: number;
+  netPayback: number; // > 0 means others owe this member; < 0 means this member owes others
+  items: MemberTotalItem[];
+}
+
+/**
+ * Computes every roommate's true out-of-pocket total across Contributions, Bills, and Needs.
+ * Subtracts `pool_amount_used` from Bills and Needs so leftover contribution cash is never double-counted.
+ */
+export function computeMemberTotals(
+  members: HouseholdMember[],
+  transactions: Transaction[],
+  bills: RecurringBill[],
+  needs: HouseholdNeed[],
+  scope: "all_time" | "this_month" = "all_time",
+  referenceDate = new Date(),
+): MemberTotalSummary[] {
+  const monthPrefix = getMonthKey(referenceDate);
+  const memberCount = Math.max(1, members.length);
+
+  const byUser = new Map<string, MemberTotalSummary>();
+  for (const member of members) {
+    byUser.set(member.user_id, {
+      member,
+      contributionsPaid: 0,
+      billsPaid: 0,
+      needsPaid: 0,
+      totalPaid: 0,
+      netPayback: 0,
+      items: [],
+    });
+  }
+
+  // 1. Contributions
+  for (const t of transactions) {
+    if (t.type !== "contribution") continue;
+    if (scope === "this_month" && !t.transaction_date.startsWith(monthPrefix)) continue;
+    const creditedId = t.paid_by || t.recorded_by;
+    const entry = byUser.get(creditedId);
+    if (!entry) continue;
+    entry.contributionsPaid += t.amount;
+    entry.items.push({
+      source: "contribution",
+      label: t.description || "Weekly contribution",
+      amount: t.amount,
+      dateLabel: t.transaction_date,
+    });
+  }
+
+  // 2. Paid Bills (non-pool remainder only)
+  for (const b of bills) {
+    if (!b.last_paid_month) continue;
+    if (scope === "this_month" && b.last_paid_month !== monthPrefix) continue;
+    const poolUsed = Math.max(0, Math.min(b.amount, b.pool_amount_used ?? 0));
+    const remainder = Math.max(0, b.amount - poolUsed);
+    if (remainder <= 0) continue;
+    const share = Math.round(remainder / memberCount);
+
+    if (b.paid_mode === "single" && b.paid_by && byUser.has(b.paid_by)) {
+      const payer = byUser.get(b.paid_by)!;
+      const settledSet = new Set(b.settled_by ?? []);
+      let settledOthers = 0;
+      for (const m of members) {
+        if (m.user_id === b.paid_by) continue;
+        const other = byUser.get(m.user_id)!;
+        if (settledSet.has(m.user_id)) {
+          settledOthers += 1;
+          other.billsPaid += share;
+          other.items.push({
+            source: "bill",
+            label: `${b.title} (paid back)`,
+            amount: share,
+            dateLabel: b.last_paid_month,
+          });
+        } else {
+          other.netPayback -= share;
+          payer.netPayback += share;
+        }
+      }
+      const payerNet = Math.max(0, remainder - settledOthers * share);
+      payer.billsPaid += payerNet;
+      payer.items.push({
+        source: "bill",
+        label: settledOthers > 0 ? `${b.title} (net after payback)` : `${b.title} (covered)`,
+        amount: payerNet,
+        dateLabel: b.last_paid_month,
+      });
+    } else {
+      for (const m of members) {
+        const entry = byUser.get(m.user_id)!;
+        entry.billsPaid += share;
+        entry.items.push({
+          source: "bill",
+          label: `${b.title} (split)`,
+          amount: share,
+          dateLabel: b.last_paid_month,
+        });
+      }
+    }
+  }
+
+  // 3. Bought Needs (non-pool remainder only)
+  for (const n of needs) {
+    if (!n.is_bought) continue;
+    const finalAmt = n.actual_amount ?? n.estimated_amount ?? 0;
+    if (finalAmt <= 0) continue;
+    const dateStr = (n.bought_at || n.created_at || "").slice(0, 10);
+    if (scope === "this_month" && !dateStr.startsWith(monthPrefix)) continue;
+    const poolUsed = Math.max(0, Math.min(finalAmt, n.pool_amount_used ?? 0));
+    const remainder = Math.max(0, finalAmt - poolUsed);
+    if (remainder <= 0) continue;
+    const share = Math.round(remainder / memberCount);
+
+    if (n.paid_mode === "single" && n.paid_by && byUser.has(n.paid_by)) {
+      const payer = byUser.get(n.paid_by)!;
+      const settledSet = new Set(n.settled_by ?? []);
+      let settledOthers = 0;
+      for (const m of members) {
+        if (m.user_id === n.paid_by) continue;
+        const other = byUser.get(m.user_id)!;
+        if (settledSet.has(m.user_id)) {
+          settledOthers += 1;
+          other.needsPaid += share;
+          other.items.push({
+            source: "need",
+            label: `${n.title} (paid back)`,
+            amount: share,
+            dateLabel: dateStr,
+          });
+        } else {
+          other.netPayback -= share;
+          payer.netPayback += share;
+        }
+      }
+      const payerNet = Math.max(0, remainder - settledOthers * share);
+      payer.needsPaid += payerNet;
+      payer.items.push({
+        source: "need",
+        label: settledOthers > 0 ? `${n.title} (net after payback)` : `${n.title} (covered)`,
+        amount: payerNet,
+        dateLabel: dateStr,
+      });
+    } else {
+      for (const m of members) {
+        const entry = byUser.get(m.user_id)!;
+        entry.needsPaid += share;
+        entry.items.push({
+          source: "need",
+          label: `${n.title} (split)`,
+          amount: share,
+          dateLabel: dateStr,
+        });
+      }
+    }
+  }
+
+  return Array.from(byUser.values())
+    .map((s) => ({
+      ...s,
+      totalPaid: s.contributionsPaid + s.billsPaid + s.needsPaid,
+    }))
+    .sort((a, b) => b.totalPaid - a.totalPaid);
 }
