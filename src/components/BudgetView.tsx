@@ -413,7 +413,7 @@ export function BudgetView({
                 <SoftInput
                   type="number"
                   min="0"
-                  step="1000"
+                  step="1"
                   value={weeklyTarget}
                   onValueChange={setWeeklyTarget}
                   icon={<span className="font-mono text-xs font-medium text-[#8E8E93]">TZS</span>}
@@ -427,7 +427,7 @@ export function BudgetView({
                 <SoftInput
                   type="number"
                   min="0"
-                  step="1000"
+                  step="1"
                   value={memberShare}
                   onValueChange={setMemberShare}
                   icon={<span className="font-mono text-xs font-medium text-[#8E8E93]">TZS</span>}
@@ -565,7 +565,7 @@ export function BudgetView({
                   <SoftInput
                     type="number"
                     min="1"
-                    step="1000"
+                    step="1"
                     placeholder="70000"
                     value={billAmount}
                     onValueChange={setBillAmount}

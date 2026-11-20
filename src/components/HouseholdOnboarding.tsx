@@ -118,7 +118,7 @@ export function HouseholdOnboarding({
                     type="number"
                     inputMode="numeric"
                     min="0"
-                    step="1000"
+                    step="1"
                     placeholder="0"
                     value={weeklyBudget}
                     onValueChange={setWeeklyBudget}
@@ -140,7 +140,7 @@ export function HouseholdOnboarding({
                     type="number"
                     inputMode="numeric"
                     min="0"
-                    step="1000"
+                    step="1"
                     placeholder="0"
                     value={memberShare}
                     onValueChange={setMemberShare}
