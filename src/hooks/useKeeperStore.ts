@@ -3,7 +3,8 @@ import { Browser } from "@capacitor/browser";
 import { Capacitor } from "@capacitor/core";
 import { getMonthKey } from "../lib/analytics";
 import { createDemoSeed } from "../lib/demoData";
-import { toISODate } from "../lib/format";
+import { formatTZS, toISODate } from "../lib/format";
+import { notifyHouseholdChange } from "../lib/notifications";
 import {
   createRateLimiter,
   generateClientInviteCode,
@@ -11,6 +12,7 @@ import {
 } from "../lib/security";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
 import type {
+  BillPaymentRecord,
   ExpenseCategoryId,
   Household,
   HouseholdMember,
@@ -51,6 +53,7 @@ export interface KeeperStore {
   transactions: Transaction[];
   needs: HouseholdNeed[];
   bills: RecurringBill[];
+  billPayments: BillPaymentRecord[];
   enterDemoMode: () => void;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (fullName: string, email: string, password: string) => Promise<void>;
@@ -105,6 +108,12 @@ export interface KeeperStore {
     poolAmountUsed?: number,
   ) => Promise<void>;
   toggleBillMemberSettled: (billId: string, memberUserId: string) => Promise<void>;
+  settlePairwiseDebts: (
+    fromUserId: string,
+    toUserId: string,
+    billIds: string[],
+    needIds: string[],
+  ) => Promise<void>;
   deleteBill: (id: string) => Promise<void>;
   updateBudget: (weeklyBudget: number, memberShare: number) => Promise<void>;
   submitAppFeedback: (input: {
@@ -154,6 +163,7 @@ export function useKeeperStore(): KeeperStore {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [needs, setNeeds] = useState<HouseholdNeed[]>([]);
   const [bills, setBills] = useState<RecurringBill[]>([]);
+  const [billPayments, setBillPayments] = useState<BillPaymentRecord[]>([]);
 
   const inFlightFetchRef = useRef<Promise<void> | null>(null);
   const realtimeTimerRef = useRef<number | null>(null);
@@ -453,6 +463,42 @@ export function useKeeperStore(): KeeperStore {
           });
           setBills(normalizedBills);
         }
+
+        // Load historical bill payments (DB table with automatic localStorage fallback)
+        try {
+          const bpRes = await supabase
+            .from("bill_payments")
+            .select("*")
+            .eq("household_id", activeHouseholdId)
+            .order("paid_date", { ascending: false })
+            .order("created_at", { ascending: false })
+            .limit(200);
+          if (bpRes.data && !bpRes.error) {
+            setBillPayments(
+              bpRes.data.map((row: Record<string, unknown>) => ({
+                id: String(row.id),
+                household_id: String(row.household_id),
+                bill_id: String(row.bill_id),
+                bill_title: String(row.bill_title),
+                amount: Number(row.amount),
+                pool_amount_used: Number(row.pool_amount_used ?? 0),
+                paid_date: String(row.paid_date),
+                paid_mode: row.paid_mode === "single" ? "single" : "all",
+                paid_by: row.paid_by ? String(row.paid_by) : null,
+                recorded_by: row.recorded_by ? String(row.recorded_by) : null,
+                created_at: String(row.created_at),
+              })),
+            );
+          } else {
+            const rawLocal = localStorage.getItem("keeper_bill_payments_v1");
+            if (rawLocal) {
+              const parsed = JSON.parse(rawLocal) as BillPaymentRecord[];
+              setBillPayments(parsed.filter((p) => p.household_id === activeHouseholdId));
+            }
+          }
+        } catch {
+          // Ignore if bill_payments table not created yet
+        }
       })();
 
       inFlightFetchRef.current = task;
@@ -522,7 +568,24 @@ export function useKeeperStore(): KeeperStore {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "transactions", filter: `household_id=eq.${householdId}` },
-        scheduleSync,
+        (payload) => {
+          scheduleSync();
+          const row = payload.new as Record<string, unknown> | null;
+          if (!row) return;
+          if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
+            const actorId = row.recorded_by ? String(row.recorded_by) : null;
+            if (actorId && actorId === userId && payload.eventType === "INSERT") return;
+            const amt = Number(row.amount) || 0;
+            const desc = String(row.description || "Household entry");
+            const title =
+              payload.eventType === "UPDATE" ? "Entry edited" : "New household entry";
+            const body =
+              payload.eventType === "UPDATE"
+                ? `${formatTZS(amt)} · ${desc} was updated`
+                : `${formatTZS(amt)} · ${desc}`;
+            void notifyHouseholdChange(title, body);
+          }
+        },
       )
       .on(
         "postgres_changes",
@@ -1437,6 +1500,40 @@ export function useKeeperStore(): KeeperStore {
     [fetchHouseholdBundle, isDemoMode, profile],
   );
 
+  const recordBillPaymentHistory = useCallback(
+    async (entry: Omit<BillPaymentRecord, "id" | "created_at">) => {
+      const localRecord: BillPaymentRecord = {
+        ...entry,
+        id: `bp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        created_at: new Date().toISOString(),
+      };
+      setBillPayments((prev) => [localRecord, ...prev]);
+      try {
+        const raw = localStorage.getItem("keeper_bill_payments_v1");
+        const list = raw ? (JSON.parse(raw) as BillPaymentRecord[]) : [];
+        localStorage.setItem(
+          "keeper_bill_payments_v1",
+          JSON.stringify([localRecord, ...list].slice(0, 200)),
+        );
+      } catch {
+        // Ignore storage error
+      }
+      if (isDemoMode || !supabase) return;
+      await supabase.from("bill_payments").insert({
+        household_id: entry.household_id,
+        bill_id: entry.bill_id,
+        bill_title: entry.bill_title,
+        amount: entry.amount,
+        pool_amount_used: entry.pool_amount_used,
+        paid_date: entry.paid_date,
+        paid_mode: entry.paid_mode,
+        paid_by: entry.paid_by,
+        recorded_by: entry.recorded_by,
+      });
+    },
+    [isDemoMode],
+  );
+
   const addBill = useCallback(
     async (
       title: string,
@@ -1469,8 +1566,9 @@ export function useKeeperStore(): KeeperStore {
       if (!cleanTitle) return;
 
       if (isDemoMode) {
+        const demoId = `bill-${Date.now()}`;
         const next: RecurringBill = {
-          id: `bill-${Date.now()}`,
+          id: demoId,
           household_id: household.id,
           created_by: profile.id,
           title: cleanTitle,
@@ -1486,6 +1584,19 @@ export function useKeeperStore(): KeeperStore {
           created_at: new Date().toISOString(),
         };
         setBills((prev) => [...prev, next].sort((a, b) => a.due_day - b.due_day));
+        if (paidDateISO && paidMonthKey) {
+          await recordBillPaymentHistory({
+            household_id: household.id,
+            bill_id: demoId,
+            bill_title: cleanTitle,
+            amount: safeAmount,
+            pool_amount_used: safePool,
+            paid_date: paidDateISO,
+            paid_mode: safeMode,
+            paid_by: safePaidBy,
+            recorded_by: profile.id,
+          });
+        }
         if (safePool > 0 && paidDateISO) {
           await addTransaction({
             type: "expense",
@@ -1576,6 +1687,20 @@ export function useKeeperStore(): KeeperStore {
         }
       }
 
+      if (inserted?.id && paidDateISO && paidMonthKey) {
+        await recordBillPaymentHistory({
+          household_id: household.id,
+          bill_id: String(inserted.id),
+          bill_title: cleanTitle,
+          amount: safeAmount,
+          pool_amount_used: safePool,
+          paid_date: paidDateISO,
+          paid_mode: safeMode,
+          paid_by: safePaidBy,
+          recorded_by: profile.id,
+        });
+      }
+
       if (safePool > 0 && paidDateISO) {
         await addTransaction({
           type: "expense",
@@ -1588,7 +1713,7 @@ export function useKeeperStore(): KeeperStore {
         await fetchHouseholdBundle(profile.id);
       }
     },
-    [addTransaction, fetchHouseholdBundle, household, isDemoMode, profile],
+    [addTransaction, fetchHouseholdBundle, household, isDemoMode, profile, recordBillPaymentHistory],
   );
 
   const markBillPaid = useCallback(
@@ -1709,6 +1834,20 @@ export function useKeeperStore(): KeeperStore {
         // Ignore storage error
       }
 
+      if (existing && household && profile && existing.last_paid_month !== monthKey) {
+        await recordBillPaymentHistory({
+          household_id: household.id,
+          bill_id: existing.id,
+          bill_title: existing.title,
+          amount: existing.amount,
+          pool_amount_used: safePool,
+          paid_date: txDateISO,
+          paid_mode: safeMode,
+          paid_by: safePaidBy,
+          recorded_by: profile.id,
+        });
+      }
+
       if (poolDelta > 0 && existing) {
         await addTransaction({
           type: "expense",
@@ -1721,7 +1860,7 @@ export function useKeeperStore(): KeeperStore {
         await fetchHouseholdBundle(profile.id);
       }
     },
-    [addTransaction, bills, fetchHouseholdBundle, isDemoMode, profile],
+    [addTransaction, bills, fetchHouseholdBundle, household, isDemoMode, profile, recordBillPaymentHistory],
   );
 
   const toggleBillMemberSettled = useCallback(
@@ -1770,6 +1909,28 @@ export function useKeeperStore(): KeeperStore {
         .eq("id", billId);
     },
     [bills, isDemoMode, profile],
+  );
+
+  const settlePairwiseDebts = useCallback(
+    async (fromUserId: string, toUserId: string, billIds: string[], needIds: string[]) => {
+      for (const billId of billIds) {
+        const b = bills.find((x) => x.id === billId);
+        if (!b || b.paid_mode !== "single") continue;
+        const debtorId = b.paid_by === toUserId ? fromUserId : b.paid_by === fromUserId ? toUserId : null;
+        if (debtorId && !(b.settled_by ?? []).includes(debtorId)) {
+          await toggleBillMemberSettled(billId, debtorId);
+        }
+      }
+      for (const needId of needIds) {
+        const n = needs.find((x) => x.id === needId);
+        if (!n || n.paid_mode !== "single") continue;
+        const debtorId = n.paid_by === toUserId ? fromUserId : n.paid_by === fromUserId ? toUserId : null;
+        if (debtorId && !(n.settled_by ?? []).includes(debtorId)) {
+          await toggleNeedMemberSettled(needId, debtorId);
+        }
+      }
+    },
+    [bills, needs, toggleBillMemberSettled, toggleNeedMemberSettled],
   );
 
   const deleteBill = useCallback(
@@ -1901,6 +2062,7 @@ export function useKeeperStore(): KeeperStore {
     transactions,
     needs,
     bills,
+    billPayments,
     enterDemoMode,
     signIn,
     signUp,
@@ -1927,6 +2089,7 @@ export function useKeeperStore(): KeeperStore {
     addBill,
     markBillPaid,
     toggleBillMemberSettled,
+    settlePairwiseDebts,
     deleteBill,
     updateBudget,
     submitAppFeedback,

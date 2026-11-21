@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
+  ArrowRight,
   Check,
   ChevronDown,
   Copy,
@@ -11,7 +12,11 @@ import {
   ShieldPlus,
   UserMinus,
 } from "lucide-react";
-import { computeMemberTotals, type MemberTotalSummary } from "../lib/analytics";
+import {
+  computeMemberTotals,
+  computeWhoOwesWhom,
+  type MemberTotalSummary,
+} from "../lib/analytics";
 import { formatTZS, getInitials } from "../lib/format";
 import { generateQrMatrix } from "../lib/qr";
 import type {
@@ -37,6 +42,12 @@ interface HouseholdViewProps {
   onPromoteMember: (userId: string) => Promise<void>;
   onRemoveMember: (userId: string) => Promise<void>;
   onRegenerateInviteCode: () => Promise<void>;
+  onSettlePairwiseDebts: (
+    fromUserId: string,
+    toUserId: string,
+    billIds: string[],
+    needIds: string[],
+  ) => Promise<void>;
 }
 
 export function HouseholdView({
@@ -52,6 +63,7 @@ export function HouseholdView({
   onPromoteMember,
   onRemoveMember,
   onRegenerateInviteCode,
+  onSettlePairwiseDebts,
 }: HouseholdViewProps) {
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -64,9 +76,16 @@ export function HouseholdView({
   const [expandedMemberId, setExpandedMemberId] = useState<string | null>(null);
   const [copiedMemberId, setCopiedMemberId] = useState<string | null>(null);
 
+  const [settlingKey, setSettlingKey] = useState<string | null>(null);
+
   const memberTotals = useMemo(
     () => computeMemberTotals(members, transactions, bills, needs, totalsScope),
     [bills, members, needs, totalsScope, transactions],
+  );
+
+  const settlements = useMemo(
+    () => computeWhoOwesWhom(members, bills, needs),
+    [bills, members, needs],
   );
 
   const copyMemberStatement = async (summary: MemberTotalSummary) => {
@@ -490,6 +509,62 @@ export function HouseholdView({
           })}
         </div>
       </section>
+
+      {/* Who Owes Whom Net Settlement Summary */}
+      {settlements.length > 0 && (
+        <section className="rounded-2xl border border-stone-900/[0.08] bg-white p-4 space-y-3">
+          <div>
+            <h3 className="text-base font-semibold text-[#1C1C1E]">Who owes whom</h3>
+            <p className="text-xs text-[#52525B] mt-0.5">
+              Combined net balance across unsettled 1-member bills and needs
+            </p>
+          </div>
+          <div className="divide-y divide-stone-900/[0.06]">
+            {settlements.map((s) => {
+              const key = `${s.from.user_id}->${s.to.user_id}`;
+              const busy = settlingKey === key;
+              return (
+                <div
+                  key={key}
+                  className="flex items-center justify-between gap-2 py-2.5 first:pt-0 last:pb-0"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-[#1C1C1E]">
+                      <span className="truncate">{s.from.profile.full_name.split(" ")[0]}</span>
+                      <ArrowRight className="h-3 w-3 shrink-0 text-[#8F703F]" />
+                      <span className="truncate">{s.to.profile.full_name.split(" ")[0]}</span>
+                    </div>
+                    <div className="mt-0.5 text-[11px] text-[#8E8E93] tabular-nums">
+                      {formatTZS(s.amount)} · {s.itemCount}{" "}
+                      {s.itemCount === 1 ? "item" : "items"}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={async () => {
+                      setSettlingKey(key);
+                      try {
+                        await onSettlePairwiseDebts(
+                          s.from.user_id,
+                          s.to.user_id,
+                          s.billIds,
+                          s.needIds,
+                        );
+                      } finally {
+                        setSettlingKey(null);
+                      }
+                    }}
+                    className="shrink-0 rounded-lg bg-[#1C1C1E] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#2C2C30] disabled:opacity-50 transition-colors cursor-pointer"
+                  >
+                    {busy ? "Settling..." : "Settle all"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* Member Total Paid (Contributions + Bills + Needs) */}
       <section className="rounded-2xl border border-stone-900/[0.08] bg-white p-4 space-y-3">

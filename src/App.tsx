@@ -30,6 +30,7 @@ import { KpiCards } from "./components/KpiCards";
 import { LedgerView } from "./components/LedgerView";
 import { SoftButton } from "./components/LightControls";
 import { LoadingSkeleton } from "./components/LoadingSkeleton";
+import { getStoredPinHash, PinLockScreen } from "./components/PinLockScreen";
 import { TransactionList } from "./components/TransactionList";
 
 // Lazy-load Recharts visualizations so Welcome/Auth screens skip downloading chart code
@@ -48,6 +49,7 @@ import {
   resolveWeekStartDay,
 } from "./lib/analytics";
 import { formatTZS } from "./lib/format";
+import { scheduleBillReminders } from "./lib/notifications";
 import { sanitizeInviteCode } from "./lib/security";
 import { supabase } from "./lib/supabase";
 import type { ActiveTab, BudgetSubTab, PeriodKey, Transaction, TransactionType } from "./types";
@@ -142,6 +144,28 @@ export function App() {
     message: string;
     downloadUrl: string;
   } | null>(null);
+  const [pinHash, setPinHash] = useState<string | null>(() => getStoredPinHash());
+  const [isLocked, setIsLocked] = useState<boolean>(() => Boolean(getStoredPinHash()));
+
+  // Re-lock app when returning from background if PIN lock is enabled
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    const listener = CapApp.addListener("appStateChange", ({ isActive }) => {
+      if (!isActive && getStoredPinHash()) {
+        setIsLocked(true);
+      }
+    });
+    return () => {
+      void listener.then((handle) => handle.remove());
+    };
+  }, []);
+
+  // Keep on-device bill reminders synced whenever bills update (only if user opted in)
+  useEffect(() => {
+    if (store.bills.length > 0) {
+      void scheduleBillReminders(store.bills);
+    }
+  }, [store.bills]);
 
   // Remote minimum version check (fails open if offline or table not yet created)
   useEffect(() => {
@@ -541,6 +565,10 @@ export function App() {
       handleSelectTab(TAB_ORDER[activeIndex - 1]);
     }
   };
+
+  if (pinHash && isLocked) {
+    return <PinLockScreen expectedHash={pinHash} onUnlock={() => setIsLocked(false)} />;
+  }
 
   if (forceUpdate) {
     return (
@@ -953,6 +981,7 @@ export function App() {
                   onChangeWeekStart={handleChangeWeekStart}
                   needs={store.needs}
                   bills={store.bills}
+                  billPayments={store.billPayments}
                   onUpdateBudget={store.updateBudget}
                   onAddNeed={async (title, category, options) => {
                     await store.addNeed(title, category, options);
@@ -1027,6 +1056,10 @@ export function App() {
                   onPromoteMember={store.promoteMember}
                   onRemoveMember={store.removeMember}
                   onRegenerateInviteCode={store.regenerateInviteCode}
+                  onSettlePairwiseDebts={async (fromId, toId, billIds, needIds) => {
+                    await store.settlePairwiseDebts(fromId, toId, billIds, needIds);
+                    showToast("Settled all pending items");
+                  }}
                 />
               )}
             </div>
@@ -1042,6 +1075,7 @@ export function App() {
               {visitedTabs.has("account") && (
                 <AccountView
                   profile={store.profile}
+                  bills={store.bills}
                   isDemoMode={store.isDemoMode}
                   onUpdateProfile={store.updateProfile}
                   onUpdatePassword={store.updatePassword}
@@ -1049,6 +1083,7 @@ export function App() {
                   onDeleteAccount={store.deleteAccount}
                   onSignOut={store.signOut}
                   onSubmitFeedback={store.submitAppFeedback}
+                  onPinHashChange={setPinHash}
                 />
               )}
             </div>

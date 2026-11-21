@@ -19,6 +19,7 @@ import { buildWeeklyWhatsAppSummary } from "../lib/export";
 import { formatTZS, getInitials, toISODate } from "../lib/format";
 import {
   EXPENSE_CATEGORIES,
+  type BillPaymentRecord,
   type BudgetSubTab,
   type ExpenseCategoryId,
   type Household,
@@ -43,6 +44,7 @@ interface BudgetViewProps {
   onChangeWeekStart: (day: number | null) => void;
   needs: HouseholdNeed[];
   bills: RecurringBill[];
+  billPayments: BillPaymentRecord[];
   onUpdateBudget: (weeklyBudget: number, memberShare: number) => Promise<void>;
   onAddNeed: (
     title: string,
@@ -99,6 +101,7 @@ export function BudgetView({
   onChangeWeekStart,
   needs,
   bills,
+  billPayments,
   onUpdateBudget,
   onAddNeed,
   onMarkNeedBought,
@@ -148,6 +151,7 @@ export function BudgetView({
   const [billIntervalMonths, setBillIntervalMonths] = useState("1");
   const [addingBill, setAddingBill] = useState(false);
   const [confirmDeleteBillId, setConfirmDeleteBillId] = useState<string | null>(null);
+  const [expandedBillHistoryId, setExpandedBillHistoryId] = useState<string | null>(null);
   const [editingPaidBillId, setEditingPaidBillId] = useState<string | null>(null);
   const [editingPaidDateISO, setEditingPaidDateISO] = useState(() => toISODate(new Date()));
   const [editingPaidMode, setEditingPaidMode] = useState<"all" | "single">("all");
@@ -1146,6 +1150,22 @@ export function BudgetView({
                             </button>
                           </>
                         )}
+                        {(() => {
+                          const historyCount = billPayments.filter((p) => p.bill_id === bill.id).length;
+                          if (historyCount === 0) return null;
+                          const isOpen = expandedBillHistoryId === bill.id;
+                          return (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedBillHistoryId(isOpen ? null : bill.id)
+                              }
+                              className="inline-flex items-center gap-1 rounded-md bg-[#F6F5F2] border border-stone-900/10 px-2 py-0.5 text-[11px] font-medium text-[#52525B] hover:text-[#1C1C1E] transition-colors cursor-pointer"
+                            >
+                              History ({historyCount})
+                            </button>
+                          );
+                        })()}
                       </div>
 
                       {confirming ? (
@@ -1179,6 +1199,46 @@ export function BudgetView({
                         </button>
                       )}
                     </div>
+
+                    {/* Expandable Payment History for this bill */}
+                    {expandedBillHistoryId === bill.id && (() => {
+                      const records = billPayments.filter((p) => p.bill_id === bill.id);
+                      if (records.length === 0) return null;
+                      return (
+                        <div className="ml-8 rounded-xl border border-stone-900/[0.08] bg-[#F6F5F2] p-2.5 space-y-1.5">
+                          <div className="text-[11px] font-medium text-[#52525B]">
+                            Payment history ({records.length})
+                          </div>
+                          <div className="divide-y divide-stone-900/[0.06]">
+                            {records.map((rec) => {
+                              const payerName = rec.paid_by
+                                ? members.find((m) => m.user_id === rec.paid_by)?.profile.full_name.split(" ")[0]
+                                : null;
+                              return (
+                                <div
+                                  key={rec.id}
+                                  className="flex items-center justify-between gap-2 py-1.5 first:pt-0 last:pb-0 text-[11px]"
+                                >
+                                  <div className="min-w-0">
+                                    <span className="font-mono text-[#1C1C1E]">{rec.paid_date}</span>
+                                    <span className="ml-1.5 text-[#8E8E93]">
+                                      {rec.pool_amount_used >= rec.amount
+                                        ? "Paid from pool"
+                                        : rec.paid_mode === "single" && payerName
+                                          ? `Paid by ${payerName}`
+                                          : "Split by all"}
+                                    </span>
+                                  </div>
+                                  <span className="shrink-0 font-semibold text-[#1C1C1E] tabular-nums">
+                                    {formatTZS(rec.amount)}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     {/* Inline Calendar, Optional Pool Usage & Payer Picker */}
                     {editingDate && (() => {

@@ -1,19 +1,28 @@
 import { useEffect, useState, type FormEvent } from "react";
 import {
+  Bell,
   Check,
   CheckCircle2,
   Eye,
   EyeOff,
   KeyRound,
+  Lock,
   LogOut,
   Pencil,
   Trash2,
   User,
 } from "lucide-react";
 import { getInitials } from "../lib/format";
-import type { Profile } from "../types";
+import {
+  isNotificationsEnabled,
+  requestNotificationPermission,
+  scheduleBillReminders,
+  setNotificationsEnabled,
+} from "../lib/notifications";
+import type { Profile, RecurringBill } from "../types";
 import { LegalModal, type LegalDocType } from "./LegalModal";
 import { SoftButton, SoftInput } from "./LightControls";
+import { getStoredPinHash, hashPin, setStoredPinHash } from "./PinLockScreen";
 import { SupportAndAboutCard, type AppFeedbackInput } from "./SupportAndAboutCard";
 
 const AVATAR_SWATCHES = [
@@ -29,6 +38,7 @@ const AVATAR_SWATCHES = [
 
 interface AccountViewProps {
   profile: Profile;
+  bills: RecurringBill[];
   isDemoMode: boolean;
   onUpdateProfile: (fullName: string, avatarColor: string) => Promise<void>;
   onUpdatePassword: (newPassword: string) => Promise<void>;
@@ -36,10 +46,12 @@ interface AccountViewProps {
   onDeleteAccount: () => Promise<void>;
   onSignOut: () => Promise<void>;
   onSubmitFeedback: (input: AppFeedbackInput) => Promise<void>;
+  onPinHashChange: (hash: string | null) => void;
 }
 
 export function AccountView({
   profile,
+  bills,
   isDemoMode,
   onUpdateProfile,
   onUpdatePassword,
@@ -47,6 +59,7 @@ export function AccountView({
   onDeleteAccount,
   onSignOut,
   onSubmitFeedback,
+  onPinHashChange,
 }: AccountViewProps) {
   const [editingProfile, setEditingProfile] = useState(false);
   const [displayName, setDisplayName] = useState(profile.full_name);
@@ -66,6 +79,69 @@ export function AccountView({
   const [confirmDeleteAccount, setConfirmDeleteAccount] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [legalDoc, setLegalDoc] = useState<LegalDocType | null>(null);
+
+  // Optional App PIN Lock & Notifications state
+  const [hasPin, setHasPin] = useState(() => Boolean(getStoredPinHash()));
+  const [showPinForm, setShowPinForm] = useState(false);
+  const [pinInput, setPinInput] = useState("");
+  const [pinConfirm, setPinConfirm] = useState("");
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [pinSavedMsg, setPinSavedMsg] = useState<string | null>(null);
+
+  const [notifsOn, setNotifsOn] = useState(() => isNotificationsEnabled());
+  const [notifStatus, setNotifStatus] = useState<string | null>(null);
+
+  const handleSavePin = async (e: FormEvent) => {
+    e.preventDefault();
+    setPinError(null);
+    if (!/^\d{4}$/.test(pinInput)) {
+      setPinError("Enter a 4-digit numeric PIN.");
+      return;
+    }
+    if (pinInput !== pinConfirm) {
+      setPinError("PINs do not match.");
+      return;
+    }
+    const hashed = await hashPin(pinInput);
+    setStoredPinHash(hashed);
+    onPinHashChange(hashed);
+    setHasPin(true);
+    setShowPinForm(false);
+    setPinInput("");
+    setPinConfirm("");
+    setPinSavedMsg("4-digit PIN enabled");
+    setTimeout(() => setPinSavedMsg(null), 2400);
+  };
+
+  const handleRemovePin = () => {
+    setStoredPinHash(null);
+    onPinHashChange(null);
+    setHasPin(false);
+    setShowPinForm(false);
+    setPinSavedMsg("PIN lock turned off");
+    setTimeout(() => setPinSavedMsg(null), 2400);
+  };
+
+  const handleToggleNotifications = async () => {
+    setNotifStatus(null);
+    if (notifsOn) {
+      setNotificationsEnabled(false);
+      setNotifsOn(false);
+      setNotifStatus("Alerts turned off");
+      setTimeout(() => setNotifStatus(null), 2200);
+      return;
+    }
+    const granted = await requestNotificationPermission();
+    if (!granted) {
+      setNotifStatus("Permission denied in device settings");
+      return;
+    }
+    setNotificationsEnabled(true);
+    setNotifsOn(true);
+    await scheduleBillReminders(bills);
+    setNotifStatus("Alerts enabled for bills & entry edits");
+    setTimeout(() => setNotifStatus(null), 2600);
+  };
 
   useEffect(() => {
     setDisplayName(profile.full_name);
@@ -367,6 +443,121 @@ export function AccountView({
           >
             Privacy Policy
           </button>
+        </div>
+      </section>
+
+      {/* Optional Security & Notifications */}
+      <section className="rounded-2xl border border-stone-900/[0.08] bg-white p-4 space-y-3.5">
+        <div>
+          <h3 className="text-base font-semibold text-[#1C1C1E]">Security & alerts</h3>
+          <p className="text-xs text-[#52525B] mt-0.5">
+            Optional on-device PIN lock and bill/edit notifications
+          </p>
+        </div>
+
+        {/* App PIN Lock */}
+        <div className="rounded-xl border border-stone-900/[0.08] bg-[#F6F5F2] p-3 space-y-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <Lock className="h-4 w-4 shrink-0 text-[#52525B]" />
+              <div className="min-w-0">
+                <div className="text-xs font-semibold text-[#1C1C1E]">App PIN lock</div>
+                <div className="text-[11px] text-[#52525B]">
+                  {hasPin ? "Active · locks when app resumes" : "Off · require 4-digit PIN to open"}
+                </div>
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5">
+              {hasPin && (
+                <button
+                  type="button"
+                  onClick={handleRemovePin}
+                  className="rounded-lg border border-stone-900/10 bg-white px-2 py-1 text-[11px] font-medium text-rose-700 hover:bg-rose-50 cursor-pointer"
+                >
+                  Turn off
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPinForm((v) => !v);
+                  setPinError(null);
+                }}
+                className="rounded-lg bg-[#1C1C1E] px-2.5 py-1 text-[11px] font-medium text-white hover:bg-[#2C2C30] cursor-pointer"
+              >
+                {showPinForm ? "Cancel" : hasPin ? "Change" : "Set PIN"}
+              </button>
+            </div>
+          </div>
+
+          {pinSavedMsg && (
+            <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-700">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              <span>{pinSavedMsg}</span>
+            </div>
+          )}
+
+          {showPinForm && (
+            <form onSubmit={(e) => void handleSavePin(e)} className="space-y-2 pt-1">
+              <div className="grid grid-cols-2 gap-2">
+                <SoftInput
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={4}
+                  placeholder="4-digit PIN"
+                  value={pinInput}
+                  onValueChange={(v) => setPinInput(v.replace(/\D/g, "").slice(0, 4))}
+                  required
+                />
+                <SoftInput
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={4}
+                  placeholder="Repeat PIN"
+                  value={pinConfirm}
+                  onValueChange={(v) => setPinConfirm(v.replace(/\D/g, "").slice(0, 4))}
+                  required
+                />
+              </div>
+              {pinError && <p className="text-[11px] font-medium text-rose-700">{pinError}</p>}
+              <SoftButton type="submit" variant="filled" className="w-full !h-9 text-xs font-medium">
+                Save 4-digit PIN
+              </SoftButton>
+            </form>
+          )}
+        </div>
+
+        {/* Optional Local Notifications (Bills + Entry Edits) */}
+        <div className="rounded-xl border border-stone-900/[0.08] bg-[#F6F5F2] p-3 space-y-1.5">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <Bell className="h-4 w-4 shrink-0 text-[#52525B]" />
+              <div className="min-w-0">
+                <div className="text-xs font-semibold text-[#1C1C1E]">
+                  Notifications (bills & edits)
+                </div>
+                <div className="text-[11px] text-[#52525B]">
+                  {notifsOn
+                    ? "On · alerts for due bills, new entries, and edits"
+                    : "Off · opt in for bill reminders & edit alerts"}
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleToggleNotifications()}
+              className={`shrink-0 rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors cursor-pointer ${
+                notifsOn
+                  ? "bg-[#1C1C1E] text-white"
+                  : "border border-stone-900/10 bg-white text-[#1C1C1E]"
+              }`}
+            >
+              {notifsOn ? "On" : "Enable"}
+            </button>
+          </div>
+          {notifStatus && (
+            <p className="text-[11px] font-medium text-[#8F703F]">{notifStatus}</p>
+          )}
         </div>
       </section>
 
