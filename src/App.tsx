@@ -14,6 +14,7 @@ import {
   WifiOff,
 } from "lucide-react";
 import { App as CapApp } from "@capacitor/app";
+import { Browser } from "@capacitor/browser";
 import { Capacitor } from "@capacitor/core";
 import { StatusBar, Style } from "@capacitor/status-bar";
 import { AccountView } from "./components/AccountView";
@@ -184,6 +185,40 @@ export function App() {
   useEffect(() => {
     return () => {
       if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    };
+  }, []);
+
+  // Native Android OAuth deep-link callback (Chrome Custom Tabs -> app.keeper.household://auth-callback)
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    const listener = CapApp.addListener("appUrlOpen", async ({ url }) => {
+      if (!url) return;
+      if (url.startsWith("app.keeper.household://auth-callback")) {
+        void Browser.close().catch(() => {});
+        if (!supabase) return;
+        try {
+          const parsed = new URL(url);
+          const code = parsed.searchParams.get("code");
+          if (code) {
+            await supabase.auth.exchangeCodeForSession(code);
+            return;
+          }
+          const hashParams = new URLSearchParams(parsed.hash.replace(/^#/, ""));
+          const accessToken = hashParams.get("access_token");
+          const refreshToken = hashParams.get("refresh_token");
+          if (accessToken && refreshToken) {
+            await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            });
+          }
+        } catch {
+          // Ignore malformed callback URL
+        }
+      }
+    });
+    return () => {
+      void listener.then((handle) => handle.remove());
     };
   }, []);
 

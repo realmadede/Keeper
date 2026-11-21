@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Browser } from "@capacitor/browser";
+import { Capacitor } from "@capacitor/core";
 import { getMonthKey } from "../lib/analytics";
 import { createDemoSeed } from "../lib/demoData";
 import { toISODate } from "../lib/format";
@@ -693,6 +695,23 @@ export function useKeeperStore(): KeeperStore {
       setError("Supabase is not configured yet. Add your project URL and key in .env.");
       return;
     }
+    if (Capacitor.isNativePlatform()) {
+      const { data, error: err } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: "app.keeper.household://auth-callback",
+          skipBrowserRedirect: true,
+        },
+      });
+      if (err) {
+        setError(err.message);
+        throw err;
+      }
+      if (data?.url) {
+        await Browser.open({ url: data.url });
+      }
+      return;
+    }
     const { error: err } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
@@ -821,7 +840,7 @@ export function useKeeperStore(): KeeperStore {
       return;
     }
     if (supabase) {
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: "local" });
     }
   }, [isDemoMode]);
 
