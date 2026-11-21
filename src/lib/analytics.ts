@@ -41,7 +41,9 @@ export interface MemberContributionStatus {
   member: HouseholdMember;
   contributedThisWeek: number;
   carryOverCredit: number;
+  priorShortfall: number;
   effectiveContributed: number;
+  remainingDue: number;
   advanceBalance: number;
   weeksCoveredAhead: number;
   coveredByAdvance: boolean;
@@ -506,6 +508,7 @@ export function computePeriodSummary(
     }
 
     let carryOverCredit = 0;
+    let priorShortfall = 0;
     if (memberWeeklyShare > 0 && priorContributed > 0 && earliestPriorISO) {
       const joinedISO = member.joined_at ? member.joined_at.slice(0, 10) : earliestPriorISO;
       const anchorISO =
@@ -514,15 +517,21 @@ export function computePeriodSummary(
           : joinedISO > earliestPriorISO
             ? joinedISO
             : earliestPriorISO;
-      const elapsedWeeks = Math.max(
-        1,
-        Math.round((currentStartMondayMs - toCycleStartMs(anchorISO)) / WEEK_MS),
-      );
-      const priorExpected = elapsedWeeks * memberWeeklyShare;
-      carryOverCredit = Math.max(0, priorContributed - priorExpected);
+      if (anchorISO < currentPeriod.startISO) {
+        const elapsedWeeks = Math.max(
+          1,
+          Math.round((currentStartMondayMs - toCycleStartMs(anchorISO)) / WEEK_MS),
+        );
+        const priorExpected = elapsedWeeks * memberWeeklyShare;
+        carryOverCredit = Math.max(0, priorContributed - priorExpected);
+        priorShortfall = Math.max(0, priorExpected - priorContributed);
+      }
     }
 
-    const effectiveContributed = contributedThisWeek + carryOverCredit;
+    // Prior unpaid shortfall is deducted from this week's contribution until cleared
+    const effectiveContributed = contributedThisWeek + carryOverCredit - priorShortfall;
+    const remainingDue =
+      expectedShare > 0 ? Math.max(0, expectedShare - effectiveContributed) : 0;
     const advanceBalance =
       expectedShare > 0 ? Math.max(0, effectiveContributed - expectedShare) : 0;
     const weeksCoveredAhead =
@@ -536,13 +545,15 @@ export function computePeriodSummary(
 
     const percentOfShare =
       expectedShare > 0
-        ? Math.min(100, Math.round((effectiveContributed / expectedShare) * 100))
+        ? Math.max(0, Math.min(100, Math.round((effectiveContributed / expectedShare) * 100)))
         : 100;
     return {
       member,
       contributedThisWeek,
       carryOverCredit,
+      priorShortfall,
       effectiveContributed,
+      remainingDue,
       advanceBalance,
       weeksCoveredAhead,
       coveredByAdvance,
@@ -761,4 +772,127 @@ export function computeMemberTotals(
       totalPaid: s.contributionsPaid + s.billsPaid + s.needsPaid,
     }))
     .sort((a, b) => b.totalPaid - a.totalPaid);
+}
+
+export interface PairwiseSettlement {
+  from: HouseholdMember;
+  to: HouseholdMember;
+  amount: number;
+  billIds: string[];
+  needIds: string[];
+  itemCount: number;
+}
+
+/**
+ * Aggregates all unsettled 1-member bills and bought needs into net roommate-to-roommate
+ * transfers so roommates can settle multiple items in one tap.
+ */
+export function computeWhoOwesWhom(
+  members: HouseholdMember[],
+  bills: RecurringBill[],
+  needs: HouseholdNeed[],
+): PairwiseSettlement[] {
+  const memberCount = Math.max(1, members.length);
+  const memberById = new Map(members.map((m) => [m.user_id, m]));
+
+  // Track directed debts: key = `${debtorId}->${creditorId}`
+  const directed = new Map<
+    string,
+    { amount: number; billIds: Set<string>; needIds: Set<string> }
+  >();
+
+  const addDebt = (
+    debtorId: string,
+    creditorId: string,
+    share: number,
+    source: { billId?: string; needId?: string },
+  ) => {
+    if (debtorId === creditorId || share <= 0) return;
+    const key = `${debtorId}->${creditorId}`;
+    const entry = directed.get(key) ?? {
+      amount: 0,
+      billIds: new Set<string>(),
+      needIds: new Set<string>(),
+    };
+    entry.amount += share;
+    if (source.billId) entry.billIds.add(source.billId);
+    if (source.needId) entry.needIds.add(source.needId);
+    directed.set(key, entry);
+  };
+
+  for (const b of bills) {
+    if (!b.last_paid_month || b.paid_mode !== "single" || !b.paid_by) continue;
+    if (!memberById.has(b.paid_by)) continue;
+    const poolUsed = Math.max(0, Math.min(b.amount, b.pool_amount_used ?? 0));
+    const remainder = Math.max(0, b.amount - poolUsed);
+    if (remainder <= 0) continue;
+    const share = Math.round(remainder / memberCount);
+    const settled = new Set(b.settled_by ?? []);
+    for (const m of members) {
+      if (m.user_id === b.paid_by || settled.has(m.user_id)) continue;
+      addDebt(m.user_id, b.paid_by, share, { billId: b.id });
+    }
+  }
+
+  for (const n of needs) {
+    if (!n.is_bought || n.paid_mode !== "single" || !n.paid_by) continue;
+    if (!memberById.has(n.paid_by)) continue;
+    const finalAmt = n.actual_amount ?? n.estimated_amount ?? 0;
+    const poolUsed = Math.max(0, Math.min(finalAmt, n.pool_amount_used ?? 0));
+    const remainder = Math.max(0, finalAmt - poolUsed);
+    if (remainder <= 0) continue;
+    const share = Math.round(remainder / memberCount);
+    const settled = new Set(n.settled_by ?? []);
+    for (const m of members) {
+      if (m.user_id === n.paid_by || settled.has(m.user_id)) continue;
+      addDebt(m.user_id, n.paid_by, share, { needId: n.id });
+    }
+  }
+
+  // Net opposing pairs (A->B vs B->A) so roommates only make one net transfer
+  const visitedPairs = new Set<string>();
+  const settlements: PairwiseSettlement[] = [];
+
+  for (const [key, ab] of directed.entries()) {
+    const [aId, bId] = key.split("->");
+    const canonical = aId < bId ? `${aId}|${bId}` : `${bId}|${aId}`;
+    if (visitedPairs.has(canonical)) continue;
+    visitedPairs.add(canonical);
+
+    const ba = directed.get(`${bId}->${aId}`);
+    const net = ab.amount - (ba?.amount ?? 0);
+    const allBillIds = new Set([...ab.billIds, ...(ba?.billIds ?? [])]);
+    const allNeedIds = new Set([...ab.needIds, ...(ba?.needIds ?? [])]);
+    const itemCount = allBillIds.size + allNeedIds.size;
+
+    if (net > 0) {
+      const from = memberById.get(aId);
+      const to = memberById.get(bId);
+      if (from && to) {
+        settlements.push({
+          from,
+          to,
+          amount: net,
+          billIds: Array.from(allBillIds),
+          needIds: Array.from(allNeedIds),
+          itemCount,
+        });
+      }
+    } else if (net < 0) {
+      const from = memberById.get(bId);
+      const to = memberById.get(aId);
+      if (from && to) {
+        settlements.push({
+          from,
+          to,
+          amount: Math.abs(net),
+          billIds: Array.from(allBillIds),
+          needIds: Array.from(allNeedIds),
+          itemCount,
+        });
+      }
+    }
+  }
+
+  return settlements.sort((a, b) => b.amount - a.amount);
 }

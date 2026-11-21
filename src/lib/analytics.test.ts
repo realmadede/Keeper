@@ -3,6 +3,7 @@ import {
   computeMemberTotals,
   computePeriodSummary,
   computeWeeklySummary,
+  computeWhoOwesWhom,
   getBillDueStatus,
   getWeekWindow,
   resolveWeekStartDay,
@@ -190,6 +191,42 @@ describe("computeWeeklySummary", () => {
     expect(amani.weeksCoveredAhead).toBe(2);
     expect(amani.percentOfShare).toBe(100);
   });
+
+  it("deducts prior-week contribution shortfall from upcoming week contributions until cleared", () => {
+    const shortfallTxns: Transaction[] = [
+      {
+        id: "t-short-w1",
+        household_id: "h1",
+        recorded_by: "u1",
+        paid_by: "u1",
+        type: "contribution",
+        amount: 10000, // Expected 30,000 in week Nov 9-15 -> 20,000 shortfall
+        category: "contribution",
+        description: "Partial week 1",
+        transaction_date: "2026-11-10",
+        created_at: "2026-11-10T09:00:00Z",
+      },
+      {
+        id: "t-short-w2",
+        household_id: "h1",
+        recorded_by: "u1",
+        paid_by: "u1",
+        type: "contribution",
+        amount: 30000, // Pays 30,000 in week Nov 16-22 -> 20,000 clears last week's debt, 10,000 counts for this week
+        category: "contribution",
+        description: "Week 2 pool",
+        transaction_date: "2026-11-17",
+        created_at: "2026-11-17T09:00:00Z",
+      },
+    ];
+    const summary = computeWeeklySummary(shortfallTxns, MEMBERS, 30000, 0, REF_DATE);
+    const amani = summary.memberStatuses.find((s) => s.member.user_id === "u1")!;
+    expect(amani.contributedThisWeek).toBe(30000);
+    expect(amani.priorShortfall).toBe(20000);
+    expect(amani.effectiveContributed).toBe(10000); // 30k - 20k debt
+    expect(amani.remainingDue).toBe(20000);
+    expect(amani.percentOfShare).toBe(33);
+  });
 });
 
 describe("getBillDueStatus", () => {
@@ -307,5 +344,50 @@ describe("computeMemberTotals", () => {
     expect(neema.needsPaid).toBe(20000); // fronted full 20,000
     expect(neema.totalPaid).toBe(45000);
     expect(neema.netPayback).toBe(10000); // owed 10,000 back
+  });
+});
+
+describe("computeWhoOwesWhom", () => {
+  it("nets opposing 1-member bill and need debts into a single roommate transfer", () => {
+    const bills: RecurringBill[] = [
+      {
+        id: "b1",
+        household_id: "h1",
+        created_by: "u1",
+        title: "Wi-Fi",
+        amount: 60000, // u1 covered -> u2 owes u1 30,000
+        pool_amount_used: 0,
+        category: "wifi_internet",
+        due_day: 1,
+        last_paid_month: "2026-11",
+        paid_mode: "single",
+        paid_by: "u1",
+        settled_by: [],
+        created_at: "2026-11-01T00:00:00Z",
+      },
+    ];
+    const needs: HouseholdNeed[] = [
+      {
+        id: "n1",
+        household_id: "h1",
+        added_by: "u2",
+        title: "Gas",
+        actual_amount: 20000, // u2 covered -> u1 owes u2 10,000
+        pool_amount_used: 0,
+        paid_mode: "single",
+        paid_by: "u2",
+        settled_by: [],
+        category: "supplies",
+        is_bought: true,
+        bought_at: "2026-11-19T10:00:00Z",
+        created_at: "2026-11-19T09:00:00Z",
+      },
+    ];
+    const transfers = computeWhoOwesWhom(MEMBERS, bills, needs);
+    expect(transfers).toHaveLength(1);
+    expect(transfers[0].from.user_id).toBe("u2");
+    expect(transfers[0].to.user_id).toBe("u1");
+    expect(transfers[0].amount).toBe(20000); // 30k - 10k net
+    expect(transfers[0].itemCount).toBe(2);
   });
 });

@@ -12,6 +12,7 @@ import {
   RotateCw,
   WifiOff,
 } from "lucide-react";
+import { AccountView } from "./components/AccountView";
 import { AddTransactionModal, type TransactionPrefill } from "./components/AddTransactionModal";
 import { AuthScreen } from "./components/AuthScreen";
 import { BottomDock } from "./components/BottomDock";
@@ -23,6 +24,7 @@ import { KpiCards } from "./components/KpiCards";
 import { LedgerView } from "./components/LedgerView";
 import { SoftButton } from "./components/LightControls";
 import { LoadingSkeleton } from "./components/LoadingSkeleton";
+import { getStoredPinHash, PinLockScreen } from "./components/PinLockScreen";
 import { TransactionList } from "./components/TransactionList";
 import { WelcomeScreen } from "./components/WelcomeScreen";
 
@@ -45,7 +47,7 @@ import { formatTZS } from "./lib/format";
 import { sanitizeInviteCode } from "./lib/security";
 import type { ActiveTab, BudgetSubTab, PeriodKey, Transaction, TransactionType } from "./types";
 
-const TAB_ORDER: ActiveTab[] = ["overview", "ledger", "budget", "household"];
+const TAB_ORDER: ActiveTab[] = ["overview", "ledger", "budget", "household", "account"];
 const PENDING_JOIN_KEY = "keeper_pending_join_code";
 const LAST_SEEN_PREFIX = "keeper_last_seen_v1:";
 const WEEK_START_PREFIX = "keeper_week_start_v1:";
@@ -55,6 +57,7 @@ const TAB_TITLES: Record<ActiveTab, string> = {
   ledger: "Household ledger",
   budget: "Budget & house",
   household: "My household",
+  account: "Account & support",
 };
 
 function readInitialJoinCode(): string | null {
@@ -101,6 +104,8 @@ export function App() {
   const [isOffline, setIsOffline] = useState(() =>
     typeof navigator !== "undefined" ? !navigator.onLine : false,
   );
+  const [pinHash, setPinHash] = useState<string | null>(() => getStoredPinHash());
+  const [isLocked, setIsLocked] = useState<boolean>(() => Boolean(getStoredPinHash()));
 
   const paneRefs = useRef<(HTMLDivElement | null)[]>([]);
   const touchStart = useRef<{ x: number; y: number; blocked: boolean } | null>(null);
@@ -413,6 +418,10 @@ export function App() {
       handleSelectTab(TAB_ORDER[activeIndex - 1]);
     }
   };
+
+  if (pinHash && isLocked) {
+    return <PinLockScreen expectedHash={pinHash} onUnlock={() => setIsLocked(false)} />;
+  }
 
   if (store.loading) {
     return <LoadingSkeleton onRetry={() => void store.refresh()} />;
@@ -788,6 +797,7 @@ export function App() {
                   onChangeWeekStart={handleChangeWeekStart}
                   needs={store.needs}
                   bills={store.bills}
+                  billPayments={store.billPayments}
                   onUpdateBudget={store.updateBudget}
                   onAddNeed={async (title, category, options) => {
                     await store.addNeed(title, category, options);
@@ -858,15 +868,38 @@ export function App() {
                   needs={store.needs}
                   isDemoMode={store.isDemoMode}
                   realtimeConnected={store.realtimeConnected}
-                  onUpdateProfile={store.updateProfile}
-                  onUpdatePassword={store.updatePassword}
                   onRenameHousehold={store.renameHousehold}
                   onPromoteMember={store.promoteMember}
                   onRemoveMember={store.removeMember}
                   onRegenerateInviteCode={store.regenerateInviteCode}
+                  onSettlePairwiseDebts={async (fromId, toId, billIds, needIds) => {
+                    await store.settlePairwiseDebts(fromId, toId, billIds, needIds);
+                    showToast("Settled all pending items");
+                  }}
+                />
+              )}
+            </div>
+
+            {/* Screen 5: Account & Support (mounted on demand) */}
+            <div
+              ref={(el) => {
+                paneRefs.current[4] = el;
+              }}
+              aria-hidden={activeTab !== "account"}
+              className="h-full w-full shrink-0 overflow-y-auto no-scrollbar px-4 pb-28"
+            >
+              {visitedTabs.has("account") && (
+                <AccountView
+                  profile={store.profile}
+                  bills={store.bills}
+                  isDemoMode={store.isDemoMode}
+                  onUpdateProfile={store.updateProfile}
+                  onUpdatePassword={store.updatePassword}
                   onLeaveHousehold={store.leaveHousehold}
                   onDeleteAccount={store.deleteAccount}
                   onSignOut={store.signOut}
+                  onSubmitFeedback={store.submitAppFeedback}
+                  onPinHashChange={setPinHash}
                 />
               )}
             </div>

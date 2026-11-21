@@ -89,7 +89,21 @@ export interface RecurringBill {
   created_at: string;
 }
 
-export type ActiveTab = "overview" | "ledger" | "budget" | "household";
+export interface BillPaymentRecord {
+  id: string;
+  household_id: string;
+  bill_id: string;
+  bill_title: string;
+  amount: number;
+  pool_amount_used: number;
+  paid_date: string; // YYYY-MM-DD
+  paid_mode: "all" | "single";
+  paid_by: string | null;
+  recorded_by: string | null;
+  created_at: string;
+}
+
+export type ActiveTab = "overview" | "ledger" | "budget" | "household" | "account";
 export type BudgetSubTab = "pool" | "bills" | "needs";
 export type PeriodKey = "this_week" | "last_week" | "two_weeks_ago" | "this_month" | "last_month";
 
