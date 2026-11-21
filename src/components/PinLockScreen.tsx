@@ -1,5 +1,10 @@
-import { useState } from "react";
-import { Delete, Lock } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Delete, Fingerprint, Lock } from "lucide-react";
+import {
+  checkBiometricAvailable,
+  isBiometricsEnabled,
+  verifyBiometricIdentity,
+} from "../lib/biometrics";
 import { KeeperLogo } from "./KeeperLogo";
 
 const PIN_HASH_KEY = "keeper_app_pin_hash_v1";
@@ -12,7 +17,6 @@ export async function hashPin(pin: string): Promise<string> {
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("");
   }
-  // Fallback deterministic hash for non-secure contexts
   let h = 2166136261;
   for (const b of bytes) {
     h ^= b;
@@ -43,16 +47,48 @@ interface PinLockScreenProps {
   onUnlock: () => void;
 }
 
-const DIGITS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "del"] as const;
+const DIGITS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "bio", "0", "del"] as const;
 
 export function PinLockScreen({ expectedHash, onUnlock }: PinLockScreenProps) {
   const [digits, setDigits] = useState("");
+  const [revealedIndex, setRevealedIndex] = useState<number | null>(null);
   const [error, setError] = useState(false);
+  const [canUseBiometric, setCanUseBiometric] = useState(false);
+  const hideTimerRef = useRef<number | null>(null);
+
+  const triggerBiometric = useCallback(async () => {
+    const ok = await verifyBiometricIdentity();
+    if (ok) onUnlock();
+  }, [onUnlock]);
+
+  useEffect(() => {
+    return () => {
+      if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    if (!isBiometricsEnabled()) return;
+    void checkBiometricAvailable().then((avail) => {
+      if (!active || !avail) return;
+      setCanUseBiometric(true);
+      void triggerBiometric();
+    });
+    return () => {
+      active = false;
+    };
+  }, [triggerBiometric]);
 
   const handlePress = async (key: string) => {
-    if (key === "") return;
+    if (key === "bio") {
+      if (canUseBiometric) void triggerBiometric();
+      return;
+    }
     setError(false);
     if (key === "del") {
+      if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
+      setRevealedIndex(null);
       setDigits((prev) => prev.slice(0, -1));
       return;
     }
@@ -60,14 +96,25 @@ export function PinLockScreen({ expectedHash, onUnlock }: PinLockScreenProps) {
     const next = digits + key;
     setDigits(next);
 
+    // Briefly reveal the newly typed digit for ~2 seconds before masking into a dot
+    if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
+    setRevealedIndex(next.length - 1);
+    hideTimerRef.current = window.setTimeout(() => {
+      setRevealedIndex(null);
+    }, 2000);
+
     if (next.length === 4) {
       const hashed = await hashPin(next);
       if (hashed === expectedHash) {
         setDigits("");
+        setRevealedIndex(null);
         onUnlock();
       } else {
         setError(true);
-        setTimeout(() => setDigits(""), 350);
+        setTimeout(() => {
+          setDigits("");
+          setRevealedIndex(null);
+        }, 380);
       }
     }
   };
@@ -84,21 +131,32 @@ export function PinLockScreen({ expectedHash, onUnlock }: PinLockScreenProps) {
           <h1 className="text-lg font-semibold text-[#1C1C1E]">Enter 4-digit PIN</h1>
         </div>
 
-        {/* 4 PIN Dots */}
+        {/* 4 PIN Slots (briefly shows last typed digit for 2s, then masks into obsidian dot) */}
         <div className="flex items-center justify-center gap-3.5">
           {[0, 1, 2, 3].map((idx) => {
             const filled = idx < digits.length;
+            const showChar = filled && revealedIndex === idx;
             return (
               <span
                 key={idx}
-                className={`h-3.5 w-3.5 rounded-full border transition-colors ${
+                className={`flex h-9 w-9 items-center justify-center rounded-xl border text-base font-semibold transition-colors ${
                   error
-                    ? "border-rose-600 bg-rose-600"
+                    ? "border-rose-600 bg-rose-50 text-rose-700"
                     : filled
-                      ? "border-[#1C1C1E] bg-[#1C1C1E]"
-                      : "border-stone-400 bg-transparent"
+                      ? "border-[#1C1C1E] bg-white text-[#1C1C1E]"
+                      : "border-stone-300 bg-white/60 text-transparent"
                 }`}
-              />
+              >
+                {showChar ? (
+                  digits[idx]
+                ) : filled ? (
+                  <span
+                    className={`h-2.5 w-2.5 rounded-full ${
+                      error ? "bg-rose-600" : "bg-[#1C1C1E]"
+                    }`}
+                  />
+                ) : null}
+              </span>
             );
           })}
         </div>
@@ -106,22 +164,39 @@ export function PinLockScreen({ expectedHash, onUnlock }: PinLockScreenProps) {
         {error ? (
           <p className="text-xs font-medium text-rose-700">Incorrect PIN — try again</p>
         ) : (
-          <p className="text-xs text-[#8E8E93]">Enter your passcode to view household records</p>
+          <p className="text-xs text-[#8E8E93]">
+            {canUseBiometric
+              ? "Use fingerprint/face or enter your 4-digit PIN"
+              : "Enter your passcode to view household records"}
+          </p>
         )}
 
         {/* Tactile Keypad */}
         <div className="grid grid-cols-3 gap-3 pt-1">
-          {DIGITS.map((key, idx) =>
-            key === "" ? (
-              <div key={`empty-${idx}`} />
+          {DIGITS.map((key) =>
+            key === "bio" && !canUseBiometric ? (
+              <div key="empty-bio" />
             ) : (
               <button
                 key={key}
                 type="button"
+                aria-label={
+                  key === "bio"
+                    ? "Unlock with fingerprint or face"
+                    : key === "del"
+                      ? "Delete digit"
+                      : `Digit ${key}`
+                }
                 onClick={() => void handlePress(key)}
                 className="flex h-14 items-center justify-center rounded-2xl border border-stone-900/[0.08] bg-white text-lg font-semibold text-[#1C1C1E] shadow-[0_2px_8px_rgba(28,28,30,0.04)] active:scale-95 active:bg-stone-100 transition-[transform,background-color] cursor-pointer"
               >
-                {key === "del" ? <Delete className="h-5 w-5 text-[#52525B]" /> : key}
+                {key === "del" ? (
+                  <Delete className="h-5 w-5 text-[#52525B]" />
+                ) : key === "bio" ? (
+                  <Fingerprint className="h-6 w-6 text-[#8F703F]" />
+                ) : (
+                  key
+                )}
               </button>
             ),
           )}
