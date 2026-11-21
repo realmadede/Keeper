@@ -12,7 +12,11 @@ import {
   RotateCw,
   WifiOff,
 } from "lucide-react";
+import { App as CapApp } from "@capacitor/app";
+import { Capacitor } from "@capacitor/core";
+import { StatusBar, Style } from "@capacitor/status-bar";
 import { AddTransactionModal, type TransactionPrefill } from "./components/AddTransactionModal";
+import { AndroidOnboarding } from "./components/AndroidOnboarding";
 import { AuthScreen } from "./components/AuthScreen";
 import { BottomDock } from "./components/BottomDock";
 import { BudgetView } from "./components/BudgetView";
@@ -24,7 +28,6 @@ import { LedgerView } from "./components/LedgerView";
 import { SoftButton } from "./components/LightControls";
 import { LoadingSkeleton } from "./components/LoadingSkeleton";
 import { TransactionList } from "./components/TransactionList";
-import { WelcomeScreen } from "./components/WelcomeScreen";
 
 // Lazy-load Recharts visualizations so Welcome/Auth screens skip downloading chart code
 const WeeklyBarChart = lazy(() =>
@@ -49,6 +52,23 @@ const TAB_ORDER: ActiveTab[] = ["overview", "ledger", "budget", "household"];
 const PENDING_JOIN_KEY = "keeper_pending_join_code";
 const LAST_SEEN_PREFIX = "keeper_last_seen_v1:";
 const WEEK_START_PREFIX = "keeper_week_start_v1:";
+const ANDROID_ONBOARDED_KEY = "keeper_android_onboarded_v1";
+
+function hasCompletedOnboarding(): boolean {
+  try {
+    return localStorage.getItem(ANDROID_ONBOARDED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function markOnboardingComplete(): void {
+  try {
+    localStorage.setItem(ANDROID_ONBOARDED_KEY, "1");
+  } catch {
+    // Ignore storage errors
+  }
+}
 
 const TAB_TITLES: Record<ActiveTab, string> = {
   overview: "Household overview",
@@ -90,8 +110,8 @@ export function App() {
   const [pendingJoinCode, setPendingJoinCode] = useState<string | null>(() =>
     readInitialJoinCode(),
   );
-  const [authView, setAuthView] = useState<"welcome" | "signin" | "signup">(
-    pendingJoinCode ? "signup" : "welcome",
+  const [authView, setAuthView] = useState<"onboarding" | "signin" | "signup">(() =>
+    pendingJoinCode ? "signup" : hasCompletedOnboarding() ? "signin" : "onboarding",
   );
   const autoJoinedCodeRef = useRef<string | null>(null);
   const [lastSeenAt, setLastSeenAt] = useState<string | null>(null);
@@ -118,6 +138,31 @@ export function App() {
       if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
     };
   }, []);
+
+  // Native Android status bar & hardware Back button handling
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    void StatusBar.setStyle({ style: Style.Light }).catch(() => {});
+    void StatusBar.setBackgroundColor({ color: "#F6F5F2" }).catch(() => {});
+
+    const listener = CapApp.addListener("backButton", () => {
+      if (modalOpen) {
+        setModalOpen(false);
+        setEditingTx(null);
+        setPrefillDraft(null);
+        return;
+      }
+      if (activeTab !== "overview") {
+        setActiveTab("overview");
+        return;
+      }
+      void CapApp.minimizeApp();
+    });
+
+    return () => {
+      void listener.then((handle) => handle.remove());
+    };
+  }, [activeTab, modalOpen]);
 
   useEffect(() => {
     const goOnline = () => {
@@ -419,14 +464,26 @@ export function App() {
   }
 
   if (!store.profile || store.passwordRecoveryMode) {
-    if (!store.passwordRecoveryMode && !pendingJoinCode && authView === "welcome") {
+    if (!store.passwordRecoveryMode && !pendingJoinCode && authView === "onboarding") {
       return (
-        <WelcomeScreen
+        <AndroidOnboarding
           isSupabaseReady={store.isSupabaseReady}
-          onSignUp={() => setAuthView("signup")}
-          onSignIn={() => setAuthView("signin")}
-          onJoinWithCode={handleStartJoinWithCode}
-          onEnterDemo={store.enterDemoMode}
+          onFinishToSignUp={() => {
+            markOnboardingComplete();
+            setAuthView("signup");
+          }}
+          onFinishToSignIn={() => {
+            markOnboardingComplete();
+            setAuthView("signin");
+          }}
+          onJoinWithCode={(code) => {
+            markOnboardingComplete();
+            handleStartJoinWithCode(code);
+          }}
+          onEnterDemo={() => {
+            markOnboardingComplete();
+            store.enterDemoMode();
+          }}
         />
       );
     }
@@ -445,7 +502,7 @@ export function App() {
           } catch {
             // Ignore storage errors
           }
-          setAuthView("welcome");
+          setAuthView("onboarding");
         }}
         onSignIn={store.signIn}
         onSignUp={store.signUp}
