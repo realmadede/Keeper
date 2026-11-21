@@ -129,3 +129,11 @@ export function loadHouseholdSnapshot(userId: string): OfflineHouseholdSnapshot 
     return null;
   }
 }
+
+export function clearHouseholdSnapshot(userId: string): void {
+  try {
+    localStorage.removeItem(`${SNAPSHOT_PREFIX}${userId}`);
+  } catch {
+    // Ignore storage errors
+  }
+}

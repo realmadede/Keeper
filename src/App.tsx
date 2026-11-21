@@ -1103,8 +1103,16 @@ export function App() {
               {visitedTabs.has("account") && (
                 <AccountView
                   profile={store.profile}
+                  householdName={store.household.name}
+                  memberRole={
+                    store.members.find((m) => m.user_id === store.profile?.id)?.role ?? "member"
+                  }
                   bills={store.bills}
                   isDemoMode={store.isDemoMode}
+                  pendingSyncCount={store.pendingSyncCount}
+                  onSyncNow={async () => {
+                    await store.syncOfflineQueue();
+                  }}
                   onUpdateProfile={store.updateProfile}
                   onUpdatePassword={store.updatePassword}
                   onLeaveHousehold={store.leaveHousehold}

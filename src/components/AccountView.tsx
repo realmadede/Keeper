@@ -1,14 +1,21 @@
 import { useEffect, useState, type FormEvent } from "react";
 import {
   AlertCircle,
+  AlertTriangle,
   Bell,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Database,
+  DoorOpen,
   Fingerprint,
   KeyRound,
   Lock,
   LogOut,
   Pencil,
+  RefreshCw,
+  Shield,
   Trash2,
   User,
 } from "lucide-react";
@@ -25,6 +32,7 @@ import {
   scheduleBillReminders,
   setNotificationsEnabled,
 } from "../lib/notifications";
+import { clearHouseholdSnapshot } from "../lib/offlineQueue";
 import type { Profile, RecurringBill } from "../types";
 import { LegalModal, type LegalDocType } from "./LegalModal";
 import { SoftButton, SoftInput } from "./LightControls";
@@ -45,8 +53,12 @@ const AVATAR_SWATCHES = [
 
 interface AccountViewProps {
   profile: Profile;
+  householdName?: string;
+  memberRole?: "admin" | "member";
   bills: RecurringBill[];
   isDemoMode: boolean;
+  pendingSyncCount?: number;
+  onSyncNow?: () => Promise<void>;
   onUpdateProfile: (fullName: string, avatarColor: string) => Promise<void>;
   onUpdatePassword: (newPassword: string) => Promise<void>;
   onLeaveHousehold: () => Promise<void>;
@@ -58,8 +70,12 @@ interface AccountViewProps {
 
 export function AccountView({
   profile,
+  householdName,
+  memberRole = "member",
   bills,
   isDemoMode,
+  pendingSyncCount = 0,
+  onSyncNow,
   onUpdateProfile,
   onUpdatePassword,
   onLeaveHousehold,
@@ -81,7 +97,15 @@ export function AccountView({
   const [savingPw, setSavingPw] = useState(false);
   const [pwSaved, setPwSaved] = useState(false);
 
+  const [signOutWarning, setSignOutWarning] = useState(false);
+  const [syncingBeforeSignOut, setSyncingBeforeSignOut] = useState(false);
+
+  const [dangerZoneOpen, setDangerZoneOpen] = useState(false);
+  const [cacheClearedMsg, setCacheClearedMsg] = useState<string | null>(null);
+  const [confirmLeaveHouse, setConfirmLeaveHouse] = useState(false);
+  const [leavingHouse, setLeavingHouse] = useState(false);
   const [confirmDeleteAccount, setConfirmDeleteAccount] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [legalDoc, setLegalDoc] = useState<LegalDocType | null>(null);
 
@@ -243,6 +267,39 @@ export function AccountView({
     }
   };
 
+  const handleLeaveHousehold = async () => {
+    setLeavingHouse(true);
+    try {
+      await onLeaveHousehold();
+    } finally {
+      setLeavingHouse(false);
+    }
+  };
+
+  const handleSignOutClick = () => {
+    if (!isDemoMode && pendingSyncCount > 0) {
+      setSignOutWarning(true);
+      return;
+    }
+    void onSignOut();
+  };
+
+  const handleSyncBeforeSignOut = async () => {
+    if (!onSyncNow) return;
+    setSyncingBeforeSignOut(true);
+    try {
+      await onSyncNow();
+    } finally {
+      setSyncingBeforeSignOut(false);
+    }
+  };
+
+  const handleClearLocalCache = () => {
+    clearHouseholdSnapshot(profile.id);
+    setCacheClearedMsg("Local offline cache cleared");
+    setTimeout(() => setCacheClearedMsg(null), 2400);
+  };
+
   return (
     <div className="space-y-4">
       {/* My Profile & Account Settings */}
@@ -260,6 +317,14 @@ export function AccountView({
                 {profile.full_name}
               </div>
               <div className="truncate text-xs text-[#8E8E93]">{profile.email}</div>
+              {householdName && (
+                <div className="mt-1 inline-flex items-center gap-1 rounded-md bg-[#F6F5F2] px-2 py-0.5 text-[10px] font-medium text-[#52525B]">
+                  <Shield className="h-2.5 w-2.5 text-[#8F703F]" />
+                  <span>{memberRole === "admin" ? "Admin" : "Member"}</span>
+                  <span>·</span>
+                  <span className="truncate max-w-[140px]">{householdName}</span>
+                </div>
+              )}
             </div>
           </div>
           <button
@@ -422,81 +487,6 @@ export function AccountView({
           </div>
         )}
 
-        {/* Sign Out / Leave House */}
-        <div className="grid grid-cols-2 gap-2.5 pt-1">
-          <SoftButton
-            onClick={() => void onSignOut()}
-            icon={<LogOut className="h-4 w-4" />}
-            className="w-full text-xs font-medium"
-          >
-            {isDemoMode ? "Exit demo" : "Sign out"}
-          </SoftButton>
-          <SoftButton
-            variant="destructive"
-            onClick={() => void onLeaveHousehold()}
-            className="w-full text-xs font-medium"
-          >
-            {isDemoMode ? "Reset demo" : "Leave house"}
-          </SoftButton>
-        </div>
-
-        {/* Self-Service Account Deletion */}
-        {!isDemoMode && (
-          <div className="border-t border-stone-900/[0.06] pt-3">
-            {confirmDeleteAccount ? (
-              <div className="rounded-xl border border-rose-700/20 bg-rose-50/70 p-3 space-y-2">
-                <p className="text-xs font-medium text-rose-700">
-                  Permanently delete your Keeper account? This cannot be undone.
-                </p>
-                <div className="flex items-center justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setConfirmDeleteAccount(false)}
-                    className="rounded-md bg-white px-2.5 py-1 text-xs font-medium text-[#52525B] border border-stone-900/10 cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    disabled={deletingAccount}
-                    onClick={() => void handleDeleteAccount()}
-                    className="rounded-md bg-rose-700 px-2.5 py-1 text-xs font-medium text-white hover:bg-rose-800 disabled:opacity-50 cursor-pointer"
-                  >
-                    {deletingAccount ? "Deleting..." : "Delete account"}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setConfirmDeleteAccount(true)}
-                className="inline-flex items-center gap-1.5 text-xs font-medium text-rose-700 hover:text-rose-800 transition-colors cursor-pointer"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                Delete my account
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* Quiet Legal Footer Links */}
-        <div className="flex items-center justify-center gap-3 border-t border-stone-900/[0.06] pt-3 text-[11px] text-[#8E8E93]">
-          <button
-            type="button"
-            onClick={() => setLegalDoc("terms")}
-            className="hover:text-[#1C1C1E] underline underline-offset-2 transition-colors cursor-pointer"
-          >
-            Terms of Service
-          </button>
-          <span>·</span>
-          <button
-            type="button"
-            onClick={() => setLegalDoc("privacy")}
-            className="hover:text-[#1C1C1E] underline underline-offset-2 transition-colors cursor-pointer"
-          >
-            Privacy Policy
-          </button>
-        </div>
       </section>
 
       {/* Optional Security & Notifications */}
@@ -682,6 +672,250 @@ export function AccountView({
       </section>
 
       <SupportAndAboutCard onSubmitFeedback={onSubmitFeedback} />
+
+      {/* Standalone Sign Out Section */}
+      <section className="rounded-2xl border border-stone-900/[0.08] bg-white p-4 space-y-3">
+        {signOutWarning && pendingSyncCount > 0 ? (
+          <div className="rounded-xl border border-amber-700/20 bg-amber-50/80 p-3 space-y-2.5">
+            <div className="flex items-start gap-2 text-xs text-amber-900">
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-700" />
+              <p className="leading-snug">
+                You have{" "}
+                <strong>
+                  {pendingSyncCount} unsynced offline{" "}
+                  {pendingSyncCount === 1 ? "entry" : "entries"}
+                </strong>
+                . Sync before signing out so your changes are saved to the house.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setSignOutWarning(false)}
+                className="rounded-lg border border-stone-900/10 bg-white px-2.5 py-1.5 text-xs font-medium text-[#52525B] cursor-pointer"
+              >
+                Cancel
+              </button>
+              {onSyncNow && (
+                <button
+                  type="button"
+                  disabled={syncingBeforeSignOut}
+                  onClick={() => void handleSyncBeforeSignOut()}
+                  className="inline-flex items-center gap-1 rounded-lg bg-[#1C1C1E] px-2.5 py-1.5 text-xs font-medium text-white disabled:opacity-50 cursor-pointer"
+                >
+                  <RefreshCw
+                    className={`h-3 w-3 ${syncingBeforeSignOut ? "animate-spin" : ""}`}
+                  />
+                  {syncingBeforeSignOut ? "Syncing..." : "Sync now"}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => void onSignOut()}
+                className="rounded-lg bg-rose-700 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-rose-800 cursor-pointer"
+              >
+                Sign out anyway
+              </button>
+            </div>
+          </div>
+        ) : (
+          <SoftButton
+            onClick={handleSignOutClick}
+            icon={<LogOut className="h-4 w-4" />}
+            className="w-full !h-10 text-xs font-medium"
+          >
+            {isDemoMode ? "Exit demo" : "Sign out"}
+          </SoftButton>
+        )}
+      </section>
+
+      {/* Collapsed Danger Zone (hidden by default at bottom) */}
+      <section className="rounded-2xl border border-stone-900/[0.08] bg-white overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setDangerZoneOpen((prev) => !prev)}
+          aria-expanded={dangerZoneOpen}
+          className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-[#F6F5F2]/60 cursor-pointer"
+        >
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-3.5 w-3.5 text-[#8E8E93]" />
+            <span className="text-xs font-medium text-[#52525B]">Danger zone & data</span>
+          </div>
+          {dangerZoneOpen ? (
+            <ChevronUp className="h-4 w-4 text-[#8E8E93]" />
+          ) : (
+            <ChevronDown className="h-4 w-4 text-[#8E8E93]" />
+          )}
+        </button>
+
+        {dangerZoneOpen && (
+          <div className="border-t border-stone-900/[0.06] px-4 py-3.5 space-y-3.5">
+            {/* Clear Local Offline Cache */}
+            {!isDemoMode && (
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-xs font-medium text-[#1C1C1E]">Clear local cache</div>
+                  <div className="text-[11px] text-[#52525B]">
+                    Removes cached offline copy on this device without deleting house data
+                  </div>
+                  {cacheClearedMsg && (
+                    <div className="mt-1 flex items-center gap-1 text-[11px] font-medium text-emerald-700">
+                      <CheckCircle2 className="h-3 w-3" />
+                      <span>{cacheClearedMsg}</span>
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleClearLocalCache}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-stone-900/10 bg-[#F6F5F2] px-2.5 py-1.5 text-[11px] font-medium text-[#1C1C1E] hover:bg-stone-200/60 cursor-pointer"
+                >
+                  <Database className="h-3 w-3" />
+                  Clear
+                </button>
+              </div>
+            )}
+
+            {/* Leave House (with confirmation) */}
+            <div className={!isDemoMode ? "border-t border-stone-900/[0.06] pt-3.5" : ""}>
+              {confirmLeaveHouse ? (
+                <div className="rounded-xl border border-amber-700/20 bg-amber-50/70 p-3 space-y-2.5">
+                  <p className="text-xs font-medium text-amber-900">
+                    {isDemoMode
+                      ? "Reset demo household data back to the default sample?"
+                      : `Leave ${householdName ?? "this household"}? You will need an invite code to rejoin.`}
+                  </p>
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setConfirmLeaveHouse(false)}
+                      className="rounded-lg border border-stone-900/10 bg-white px-2.5 py-1 text-xs font-medium text-[#52525B] cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={leavingHouse}
+                      onClick={() => void handleLeaveHousehold()}
+                      className="rounded-lg bg-rose-700 px-2.5 py-1 text-xs font-medium text-white hover:bg-rose-800 disabled:opacity-50 cursor-pointer"
+                    >
+                      {leavingHouse
+                        ? "Leaving..."
+                        : isDemoMode
+                          ? "Confirm reset"
+                          : "Confirm leave"}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-xs font-medium text-[#1C1C1E]">
+                      {isDemoMode ? "Reset demo household" : "Leave house"}
+                    </div>
+                    <div className="text-[11px] text-[#52525B]">
+                      {isDemoMode
+                        ? "Restore the sample roommates and transactions"
+                        : "Remove yourself from this shared household"}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmLeaveHouse(true)}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-rose-700/20 bg-rose-50/60 px-2.5 py-1.5 text-[11px] font-medium text-rose-700 hover:bg-rose-100/70 cursor-pointer"
+                  >
+                    <DoorOpen className="h-3 w-3" />
+                    {isDemoMode ? "Reset" : "Leave"}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Delete Account (requires typing DELETE) */}
+            {!isDemoMode && (
+              <div className="border-t border-stone-900/[0.06] pt-3.5">
+                {confirmDeleteAccount ? (
+                  <div className="rounded-xl border border-rose-700/20 bg-rose-50/70 p-3 space-y-2.5">
+                    <p className="text-xs font-medium text-rose-800">
+                      Permanently delete your Keeper account? This cannot be undone. Type{" "}
+                      <span className="font-mono font-semibold">DELETE</span> to confirm.
+                    </p>
+                    <input
+                      type="text"
+                      value={deleteConfirmText}
+                      onChange={(e) => setDeleteConfirmText(e.target.value)}
+                      placeholder="Type DELETE"
+                      autoCapitalize="characters"
+                      className="w-full rounded-lg border border-rose-700/25 bg-white px-3 py-1.5 text-xs text-[#1C1C1E] placeholder:text-[#8E8E93] focus:outline-none focus:ring-2 focus:ring-rose-700/25"
+                    />
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setConfirmDeleteAccount(false);
+                          setDeleteConfirmText("");
+                        }}
+                        className="rounded-lg border border-stone-900/10 bg-white px-2.5 py-1 text-xs font-medium text-[#52525B] cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        disabled={
+                          deletingAccount || deleteConfirmText.trim().toUpperCase() !== "DELETE"
+                        }
+                        onClick={() => void handleDeleteAccount()}
+                        className="rounded-lg bg-rose-700 px-2.5 py-1 text-xs font-medium text-white hover:bg-rose-800 disabled:opacity-40 cursor-pointer"
+                      >
+                        {deletingAccount ? "Deleting..." : "Delete account"}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-xs font-medium text-rose-700">Delete my account</div>
+                      <div className="text-[11px] text-[#52525B]">
+                        Permanently erase your account and profile
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setConfirmDeleteAccount(true);
+                        setDeleteConfirmText("");
+                      }}
+                      className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-rose-700/20 bg-rose-50/60 px-2.5 py-1.5 text-[11px] font-medium text-rose-700 hover:bg-rose-100/70 cursor-pointer"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      Delete
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </section>
+
+      {/* Quiet Legal Footer */}
+      <div className="flex items-center justify-center gap-3 pb-2 text-[11px] text-[#8E8E93]">
+        <button
+          type="button"
+          onClick={() => setLegalDoc("terms")}
+          className="hover:text-[#1C1C1E] underline underline-offset-2 transition-colors cursor-pointer"
+        >
+          Terms of Service
+        </button>
+        <span>·</span>
+        <button
+          type="button"
+          onClick={() => setLegalDoc("privacy")}
+          className="hover:text-[#1C1C1E] underline underline-offset-2 transition-colors cursor-pointer"
+        >
+          Privacy Policy
+        </button>
+      </div>
 
       <LegalModal doc={legalDoc} onClose={() => setLegalDoc(null)} />
     </div>
