@@ -6,6 +6,9 @@
     background-color: #f6f5f2;
     color: #1c1c1e;
     scrollbar-gutter: stable;
+    overflow-x: hidden;
+    touch-action: manipulation;
+    overscroll-behavior-x: none;
   }
 
   body {
@@ -13,6 +16,9 @@
     min-height: 100dvh;
     background-color: #f6f5f2;
     color: #1c1c1e;
+    overflow-x: hidden;
+    touch-action: manipulation;
+    overscroll-behavior-x: none;
   }
 }
 
