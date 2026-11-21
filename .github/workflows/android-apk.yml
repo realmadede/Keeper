@@ -47,7 +47,7 @@ jobs:
           KEEPER_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEEPER_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEEPER_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          KEEPER_VERSION_CODE: ${{ 100 + github.run_number }}
+          KEEPER_VERSION_CODE: ${{ github.run_number }}
           KEEPER_VERSION_NAME: 1.0.${{ github.run_number }}
         run: |
           chmod +x gradlew
