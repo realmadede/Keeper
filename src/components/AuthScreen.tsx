@@ -43,7 +43,6 @@ function GoogleMark() {
 }
 
 export function AuthScreen({
-  isSupabaseReady,
   initialMode = "signin",
   passwordRecoveryMode = false,
   pendingInviteCode,
@@ -452,8 +451,8 @@ export function AuthScreen({
             </>
           )}
 
-          {/* Auto-hide Demo Mode once real Supabase credentials are configured */}
-          {!isSupabaseReady && !passwordRecoveryMode && mode !== "forgot" && (
+          {/* Demo Mode preview always accessible */}
+          {!passwordRecoveryMode && mode !== "forgot" && (
             <div className="mt-3 text-center">
               <button
                 type="button"

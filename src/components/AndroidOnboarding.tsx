@@ -5,7 +5,6 @@ import { KeeperLogo } from "./KeeperLogo";
 import { SoftButton, SoftInput } from "./LightControls";
 
 interface AndroidOnboardingProps {
-  isSupabaseReady: boolean;
   onFinishToSignUp: () => void;
   onFinishToSignIn: () => void;
   onJoinWithCode: (cleanCode: string) => void;
@@ -37,7 +36,6 @@ const SLIDES = [
 ] as const;
 
 export function AndroidOnboarding({
-  isSupabaseReady,
   onFinishToSignUp,
   onFinishToSignIn,
   onJoinWithCode,
@@ -204,18 +202,14 @@ export function AndroidOnboarding({
           >
             {showInviteBox ? "Hide invite key" : "Have an invite key?"}
           </button>
-          {!isSupabaseReady && (
-            <>
-              <span className="text-stone-300">·</span>
-              <button
-                type="button"
-                onClick={onEnterDemo}
-                className="font-medium text-[#52525B] hover:text-[#1C1C1E] transition-colors cursor-pointer"
-              >
-                Try demo
-              </button>
-            </>
-          )}
+          <span className="text-stone-300">·</span>
+          <button
+            type="button"
+            onClick={onEnterDemo}
+            className="font-medium text-[#52525B] hover:text-[#1C1C1E] transition-colors cursor-pointer"
+          >
+            Try demo
+          </button>
         </div>
       </div>
     </div>

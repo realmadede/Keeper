@@ -467,7 +467,6 @@ export function App() {
     if (!store.passwordRecoveryMode && !pendingJoinCode && authView === "onboarding") {
       return (
         <AndroidOnboarding
-          isSupabaseReady={store.isSupabaseReady}
           onFinishToSignUp={() => {
             markOnboardingComplete();
             setAuthView("signup");
