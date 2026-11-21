@@ -78,7 +78,8 @@ export function TransactionList({
             const avatarColor = creditedProfile?.avatar_color ?? "#BFA377";
             const recordedOnBehalf =
               isContribution && tx.paid_by && tx.paid_by !== tx.recorded_by;
-            const canManage = tx.recorded_by === currentUserId;
+            const isPendingSync = tx.id.startsWith("offline-");
+            const canManage = tx.recorded_by === currentUserId && !isPendingSync;
             const isExpanded = expandedId === tx.id;
             const confirmingDelete = confirmDeleteId === tx.id;
             const isNew = Boolean(newTransactionIds?.has(tx.id));
@@ -105,6 +106,12 @@ export function TransactionList({
                         <span className="truncate text-sm font-medium text-[#1C1C1E]">
                           {displayName}
                         </span>
+                        {isPendingSync && (
+                          <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-stone-100 px-1.5 py-0.5 text-[11px] font-medium text-[#8F703F]">
+                            <span className="h-1.5 w-1.5 rounded-full bg-[#C6A87C]" />
+                            Pending sync
+                          </span>
+                        )}
                         {isNew && (
                           <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-stone-100 px-1.5 py-0.5 text-[11px] font-medium text-[#8F703F]">
                             <span className="h-1.5 w-1.5 rounded-full bg-[#C6A87C]" />

@@ -70,6 +70,7 @@ function compareSemver(a: string, b: string): number {
 
 export function SupportAndAboutCard({ onSubmitFeedback }: SupportAndAboutCardProps) {
   const platform = detectPlatform();
+  const isNativeApp = platform === "android" || platform === "ios";
 
   // Rating state
   const [rating, setRating] = useState<number>(() => {
@@ -307,26 +308,47 @@ export function SupportAndAboutCard({ onSubmitFeedback }: SupportAndAboutCardPro
           <span className="truncate">Report / Idea</span>
         </button>
 
-        <button
-          type="button"
-          disabled={checkingUpdate}
-          onClick={() => {
-            setActiveAction("update");
-            void handleCheckUpdate();
-          }}
-          className={`inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-stone-900/10 px-3 text-xs font-medium disabled:opacity-60 transition-colors cursor-pointer ${
-            activeAction === "update"
-              ? "bg-[#1C1C1E] text-white hover:bg-[#2C2C30]"
-              : "bg-[#F6F5F2] text-[#1C1C1E] hover:bg-stone-200/60"
-          }`}
-        >
-          <RefreshCw
-            className={`h-3.5 w-3.5 shrink-0 ${checkingUpdate ? "animate-spin" : ""} ${
-              activeAction === "update" ? "text-[#E4CCA0]" : "text-[#52525B]"
+        {isNativeApp ? (
+          <button
+            type="button"
+            disabled={checkingUpdate}
+            onClick={() => {
+              setActiveAction("update");
+              void handleCheckUpdate();
+            }}
+            className={`inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-stone-900/10 px-3 text-xs font-medium disabled:opacity-60 transition-colors cursor-pointer ${
+              activeAction === "update"
+                ? "bg-[#1C1C1E] text-white hover:bg-[#2C2C30]"
+                : "bg-[#F6F5F2] text-[#1C1C1E] hover:bg-stone-200/60"
             }`}
-          />
-          <span className="truncate">{checkingUpdate ? "Checking..." : "Check updates"}</span>
-        </button>
+          >
+            <RefreshCw
+              className={`h-3.5 w-3.5 shrink-0 ${checkingUpdate ? "animate-spin" : ""} ${
+                activeAction === "update" ? "text-[#E4CCA0]" : "text-[#52525B]"
+              }`}
+            />
+            <span className="truncate">{checkingUpdate ? "Checking..." : "Check updates"}</span>
+          </button>
+        ) : (
+          <a
+            href={ANDROID_APK_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => setActiveAction("update")}
+            className={`inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-stone-900/10 px-3 text-xs font-medium transition-colors ${
+              activeAction === "update"
+                ? "bg-[#1C1C1E] text-white hover:bg-[#2C2C30]"
+                : "bg-[#F6F5F2] text-[#1C1C1E] hover:bg-stone-200/60"
+            }`}
+          >
+            <Download
+              className={`h-3.5 w-3.5 shrink-0 ${
+                activeAction === "update" ? "text-[#E4CCA0]" : "text-[#52525B]"
+              }`}
+            />
+            <span className="truncate">Android app</span>
+          </a>
+        )}
 
         <button
           type="button"
