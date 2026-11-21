@@ -923,6 +923,7 @@ export function App() {
                   onLeaveHousehold={store.leaveHousehold}
                   onDeleteAccount={store.deleteAccount}
                   onSignOut={store.signOut}
+                  onSubmitFeedback={store.submitAppFeedback}
                 />
               )}
             </div>

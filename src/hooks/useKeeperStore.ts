@@ -105,6 +105,13 @@ export interface KeeperStore {
   toggleBillMemberSettled: (billId: string, memberUserId: string) => Promise<void>;
   deleteBill: (id: string) => Promise<void>;
   updateBudget: (weeklyBudget: number, memberShare: number) => Promise<void>;
+  submitAppFeedback: (input: {
+    kind: "rating" | "bug" | "feature";
+    rating?: number | null;
+    comment: string;
+    platform: string;
+    appVersion: string;
+  }) => Promise<void>;
   leaveHousehold: () => Promise<void>;
 }
 
@@ -1799,6 +1806,42 @@ export function useKeeperStore(): KeeperStore {
     [fetchHouseholdBundle, household, isDemoMode, profile],
   );
 
+  const submitAppFeedback = useCallback(
+    async (input: {
+      kind: "rating" | "bug" | "feature";
+      rating?: number | null;
+      comment: string;
+      platform: string;
+      appVersion: string;
+    }) => {
+      const payload = {
+        user_id: profile?.id ?? "demo",
+        kind: input.kind,
+        rating:
+          typeof input.rating === "number" && input.rating >= 1 && input.rating <= 5
+            ? Math.round(input.rating)
+            : null,
+        comment: input.comment.trim().slice(0, 1000),
+        platform: input.platform.slice(0, 32),
+        app_version: input.appVersion.slice(0, 32),
+      };
+
+      try {
+        const raw = localStorage.getItem("keeper_app_feedback_v1");
+        const list = raw ? (JSON.parse(raw) as unknown[]) : [];
+        list.push({ ...payload, created_at: new Date().toISOString() });
+        localStorage.setItem("keeper_app_feedback_v1", JSON.stringify(list.slice(-20)));
+      } catch {
+        // Ignore storage error
+      }
+
+      if (isDemoMode || !supabase || !profile) return;
+      // Save to Supabase if `app_feedback` table exists (fail silently to local fallback if migration not yet run)
+      await supabase.from("app_feedback").insert(payload);
+    },
+    [isDemoMode, profile],
+  );
+
   const leaveHousehold = useCallback(async () => {
     setError(null);
     if (isDemoMode) {
@@ -1867,6 +1910,7 @@ export function useKeeperStore(): KeeperStore {
     toggleBillMemberSettled,
     deleteBill,
     updateBudget,
+    submitAppFeedback,
     leaveHousehold,
   };
 }

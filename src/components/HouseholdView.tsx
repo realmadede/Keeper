@@ -31,6 +31,7 @@ import type {
 } from "../types";
 import { LegalModal, type LegalDocType } from "./LegalModal";
 import { SoftButton, SoftInput, SoftSegmented } from "./LightControls";
+import { SupportAndAboutCard, type AppFeedbackInput } from "./SupportAndAboutCard";
 
 const AVATAR_SWATCHES = [
   "#BFA377",
@@ -61,6 +62,7 @@ interface HouseholdViewProps {
   onLeaveHousehold: () => Promise<void>;
   onDeleteAccount: () => Promise<void>;
   onSignOut: () => Promise<void>;
+  onSubmitFeedback: (input: AppFeedbackInput) => Promise<void>;
 }
 
 export function HouseholdView({
@@ -81,6 +83,7 @@ export function HouseholdView({
   onLeaveHousehold,
   onDeleteAccount,
   onSignOut,
+  onSubmitFeedback,
 }: HouseholdViewProps) {
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -974,6 +977,8 @@ export function HouseholdView({
           </button>
         </div>
       </section>
+
+      <SupportAndAboutCard onSubmitFeedback={onSubmitFeedback} />
 
       <LegalModal doc={legalDoc} onClose={() => setLegalDoc(null)} />
     </div>
