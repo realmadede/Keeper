@@ -13,10 +13,28 @@ Keeper is a private shared household ledger built for roommates and friends shar
 - **Weekly & Monthly Views (`W1–W5`)**: Switch between `This Week`, `Last Week`, `2 Weeks Ago`, `This Month`, and `Last Month`, with automatic Monday–Sunday daily bars or `W1–W5` weekly buckets.
 - **All-Time Carry-Over Cash on Hand Pool**: Tracks both the active period's remaining balance and the all-time carry-over house pool (`Total All-Time Contributions - Total All-Time Expenses`).
 - **Contributions & Paid-By Attribution**: Log pooled contributions (including treasurers recording a contribution on behalf of another roommate) and categorized household expenses (`Food & Groceries`, `Electricity & Water`, `House Rent`, `Security & Internet`, `House Supplies`, `Transport & Gas`).
-- **Recurring Bills Due-Date Tracker**: Track monthly house bills (rent, fiber Wi-Fi, water, security) with automatic `Due in Xd`, `Overdue`, and `Paid this month` badges, plus 1-tap **Record payment** expense prefill.
-- **Shared House Needs Checklist**: Roommates can add items the house needs to restock and tap **Buy & log** to convert a needed item directly into a recorded expense.
+- **Recurring Bills Due-Date Tracker**: Track monthly or multi-month house bills (rent, Wi-Fi, water, security) separately from weekly contributions, with `Split by all (N)` vs. `Paid by 1 member`, 1-tap roommate payback checkmarks, and optional leftover pool money usage.
+- **Shared House Needs Shopping List**: Add needed items with optional quantity and estimated TZS price, view live per-member shopping totals, mark items bought with actual price paid, split or track 1-member paybacks, and optionally apply leftover pool cash.
+- **Member Totals & Statements**: View every roommate's combined out-of-pocket total across weekly pool contributions, bills, and needs (with pending payback balances and 1-tap WhatsApp statement copy).
 - **Multi-Field Ledger Search, WhatsApp Summary & CSV Export**: Search hundreds of transactions by description, roommate, category, date, or TZS amount; copy a formatted weekly/monthly WhatsApp summary in one tap; or export filtered records to CSV.
 - **Admin & Account Controls**: Household admins can rename the house, rotate the invite key (revoking old codes), promote members to admin, or remove a roommate. Every member can customize their display name and avatar color, leave a household, or permanently delete their account.
+
+---
+
+## Android App (`Android` Branch)
+
+Keeper has a **separate standalone Android app** maintained on the [`Android`](https://github.com/realmadede/Keeper/tree/Android) branch (built with **Capacitor**):
+
+- **Detached from the web landing page**: Opens into a 3-slide native onboarding flow matching Keeper's warm-stone, obsidian, and brass design, with native status bar styling, custom Keeper launcher icon, and Android hardware Back button support.
+- **Same live data & features**: Connects to the same Supabase backend and real-time sync as the web app on `main`.
+- **Direct APK download**: Pushes to the `Android` branch automatically build `Keeper.apk` via GitHub Actions (`.github/workflows/android-apk.yml`) and publish it to GitHub Releases — linked directly from the **Download for Android** button on the web landing page.
+- **Local build & USB phone install** (on the `Android` branch):
+  ```bash
+  git checkout Android
+  npm ci
+  ANDROID_HOME=$HOME/Android/Sdk npm run android:apk
+  npm run android:install   # installs directly onto a USB-connected Android phone
+  ```
 
 ---
 
