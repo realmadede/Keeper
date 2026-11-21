@@ -1,10 +1,10 @@
 import { useEffect, useState, type FormEvent } from "react";
 import {
+  AlertCircle,
   Bell,
   Check,
   CheckCircle2,
-  Eye,
-  EyeOff,
+  Fingerprint,
   KeyRound,
   Lock,
   LogOut,
@@ -12,6 +12,12 @@ import {
   Trash2,
   User,
 } from "lucide-react";
+import {
+  checkBiometricAvailable,
+  isBiometricsEnabled,
+  setBiometricsEnabled,
+  verifyBiometricIdentity,
+} from "../lib/biometrics";
 import { getInitials } from "../lib/format";
 import {
   isNotificationsEnabled,
@@ -22,6 +28,7 @@ import {
 import type { Profile, RecurringBill } from "../types";
 import { LegalModal, type LegalDocType } from "./LegalModal";
 import { SoftButton, SoftInput } from "./LightControls";
+import { MaskedSecretInput } from "./MaskedSecretInput";
 import { getStoredPinHash, hashPin, setStoredPinHash } from "./PinLockScreen";
 import { SupportAndAboutCard, type AppFeedbackInput } from "./SupportAndAboutCard";
 
@@ -70,8 +77,6 @@ export function AccountView({
   const [editingPassword, setEditingPassword] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [showNewPw, setShowNewPw] = useState(false);
-  const [showConfirmPw, setShowConfirmPw] = useState(false);
   const [pwError, setPwError] = useState<string | null>(null);
   const [savingPw, setSavingPw] = useState(false);
   const [pwSaved, setPwSaved] = useState(false);
@@ -80,7 +85,7 @@ export function AccountView({
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [legalDoc, setLegalDoc] = useState<LegalDocType | null>(null);
 
-  // Optional App PIN Lock & Notifications state
+  // Optional App PIN Lock, Biometrics & Notifications state
   const [hasPin, setHasPin] = useState(() => Boolean(getStoredPinHash()));
   const [showPinForm, setShowPinForm] = useState(false);
   const [pinInput, setPinInput] = useState("");
@@ -88,8 +93,42 @@ export function AccountView({
   const [pinError, setPinError] = useState<string | null>(null);
   const [pinSavedMsg, setPinSavedMsg] = useState<string | null>(null);
 
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [biometricsOn, setBiometricsOn] = useState(() => isBiometricsEnabled());
+  const [bioMsg, setBioMsg] = useState<string | null>(null);
+
   const [notifsOn, setNotifsOn] = useState(() => isNotificationsEnabled());
   const [notifStatus, setNotifStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void checkBiometricAvailable().then((avail) => {
+      if (active) setBiometricAvailable(avail);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const handleToggleBiometrics = async () => {
+    setBioMsg(null);
+    if (biometricsOn) {
+      setBiometricsEnabled(false);
+      setBiometricsOn(false);
+      setBioMsg("Fingerprint / face unlock turned off");
+      setTimeout(() => setBioMsg(null), 2200);
+      return;
+    }
+    const verified = await verifyBiometricIdentity();
+    if (!verified) {
+      setBioMsg("Biometric verification cancelled");
+      return;
+    }
+    setBiometricsEnabled(true);
+    setBiometricsOn(true);
+    setBioMsg("Fingerprint / face unlock enabled");
+    setTimeout(() => setBioMsg(null), 2400);
+  };
 
   const handleSavePin = async (e: FormEvent) => {
     e.preventDefault();
@@ -117,6 +156,8 @@ export function AccountView({
     setStoredPinHash(null);
     onPinHashChange(null);
     setHasPin(false);
+    setBiometricsEnabled(false);
+    setBiometricsOn(false);
     setShowPinForm(false);
     setPinSavedMsg("PIN lock turned off");
     setTimeout(() => setPinSavedMsg(null), 2400);
@@ -307,65 +348,71 @@ export function AccountView({
               </div>
             )}
 
-            {editingPassword && (
-              <form
-                onSubmit={(e) => void handleSavePassword(e)}
-                className="mt-2.5 rounded-xl border border-stone-900/[0.08] bg-[#F6F5F2] p-3.5 space-y-2.5"
-              >
-                <div className="relative">
-                  <SoftInput
-                    type={showNewPw ? "text" : "password"}
+            {editingPassword && (() => {
+              const hasConfirm = confirmPassword.length > 0;
+              const pwMatches = newPassword.length >= 6 && newPassword === confirmPassword;
+              return (
+                <form
+                  onSubmit={(e) => void handleSavePassword(e)}
+                  className="mt-2.5 rounded-xl border border-stone-900/[0.08] bg-[#F6F5F2] p-3.5 space-y-2.5"
+                >
+                  <MaskedSecretInput
                     placeholder="New password (min. 6 characters)"
                     minLength={6}
                     value={newPassword}
                     onValueChange={setNewPassword}
                     icon={<KeyRound className="h-4 w-4" />}
-                    className="!pr-11"
                     required
+                    ariaLabel="New password"
                   />
-                  <button
-                    type="button"
-                    aria-label={showNewPw ? "Hide new password" : "Show new password"}
-                    onClick={() => setShowNewPw((prev) => !prev)}
-                    className="absolute right-2 top-1/2 z-10 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-[#8E8E93] hover:text-[#1C1C1E] transition-colors cursor-pointer"
-                  >
-                    {showNewPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
 
-                <div className="relative">
-                  <SoftInput
-                    type={showConfirmPw ? "text" : "password"}
+                  <MaskedSecretInput
                     placeholder="Repeat new password"
                     minLength={6}
                     value={confirmPassword}
                     onValueChange={setConfirmPassword}
                     icon={<KeyRound className="h-4 w-4" />}
-                    className="!pr-11"
                     required
+                    ariaLabel="Repeat new password"
                   />
-                  <button
-                    type="button"
-                    aria-label={showConfirmPw ? "Hide confirm password" : "Show confirm password"}
-                    onClick={() => setShowConfirmPw((prev) => !prev)}
-                    className="absolute right-2 top-1/2 z-10 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-[#8E8E93] hover:text-[#1C1C1E] transition-colors cursor-pointer"
+
+                  {hasConfirm && (
+                    <div
+                      className={`flex items-center gap-1.5 text-xs font-medium ${
+                        pwMatches ? "text-emerald-700" : "text-rose-700"
+                      }`}
+                    >
+                      {pwMatches ? (
+                        <>
+                          <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                          <span>Passwords match</span>
+                        </>
+                      ) : (
+                        <>
+                          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                          <span>
+                            {newPassword.length < 6
+                              ? "Use at least 6 characters"
+                              : "Passwords do not match"}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {pwError && <p className="text-xs font-medium text-rose-700">{pwError}</p>}
+
+                  <SoftButton
+                    type="submit"
+                    variant="filled"
+                    disabled={savingPw || !pwMatches}
+                    className="w-full !h-9 text-xs font-medium"
                   >
-                    {showConfirmPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-
-                {pwError && <p className="text-xs font-medium text-rose-700">{pwError}</p>}
-
-                <SoftButton
-                  type="submit"
-                  variant="filled"
-                  disabled={savingPw}
-                  className="w-full !h-9 text-xs font-medium"
-                >
-                  {savingPw ? "Updating..." : "Update password"}
-                </SoftButton>
-              </form>
-            )}
+                    {savingPw ? "Updating..." : "Update password"}
+                  </SoftButton>
+                </form>
+              );
+            })()}
           </div>
         )}
 
@@ -497,35 +544,100 @@ export function AccountView({
             </div>
           )}
 
-          {showPinForm && (
-            <form onSubmit={(e) => void handleSavePin(e)} className="space-y-2 pt-1">
-              <div className="grid grid-cols-2 gap-2">
-                <SoftInput
-                  type="password"
-                  inputMode="numeric"
-                  maxLength={4}
-                  placeholder="4-digit PIN"
-                  value={pinInput}
-                  onValueChange={(v) => setPinInput(v.replace(/\D/g, "").slice(0, 4))}
-                  required
-                />
-                <SoftInput
-                  type="password"
-                  inputMode="numeric"
-                  maxLength={4}
-                  placeholder="Repeat PIN"
-                  value={pinConfirm}
-                  onValueChange={(v) => setPinConfirm(v.replace(/\D/g, "").slice(0, 4))}
-                  required
-                />
-              </div>
-              {pinError && <p className="text-[11px] font-medium text-rose-700">{pinError}</p>}
-              <SoftButton type="submit" variant="filled" className="w-full !h-9 text-xs font-medium">
-                Save 4-digit PIN
-              </SoftButton>
-            </form>
-          )}
+          {showPinForm && (() => {
+            const hasPinConfirm = pinConfirm.length > 0;
+            const pinsMatch = /^\d{4}$/.test(pinInput) && pinInput === pinConfirm;
+            return (
+              <form onSubmit={(e) => void handleSavePin(e)} className="space-y-2 pt-1">
+                <div className="grid grid-cols-2 gap-2">
+                  <MaskedSecretInput
+                    numericOnly
+                    maxLength={4}
+                    placeholder="4-digit PIN"
+                    value={pinInput}
+                    onValueChange={setPinInput}
+                    allowToggleReveal={false}
+                    required
+                    ariaLabel="4-digit PIN"
+                  />
+                  <MaskedSecretInput
+                    numericOnly
+                    maxLength={4}
+                    placeholder="Repeat PIN"
+                    value={pinConfirm}
+                    onValueChange={setPinConfirm}
+                    allowToggleReveal={false}
+                    required
+                    ariaLabel="Repeat 4-digit PIN"
+                  />
+                </div>
+                {hasPinConfirm && (
+                  <div
+                    className={`flex items-center gap-1.5 text-[11px] font-medium ${
+                      pinsMatch ? "text-emerald-700" : "text-rose-700"
+                    }`}
+                  >
+                    {pinsMatch ? (
+                      <>
+                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                        <span>PINs match</span>
+                      </>
+                    ) : (
+                      <>
+                        <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                        <span>
+                          {pinInput.length < 4 ? "Enter 4 digits first" : "PINs do not match"}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                )}
+                {pinError && <p className="text-[11px] font-medium text-rose-700">{pinError}</p>}
+                <SoftButton
+                  type="submit"
+                  variant="filled"
+                  disabled={!pinsMatch}
+                  className="w-full !h-9 text-xs font-medium"
+                >
+                  Save 4-digit PIN
+                </SoftButton>
+              </form>
+            );
+          })()}
         </div>
+
+        {/* Optional Fingerprint / Face Unlock (shown on Android devices with biometric hardware once PIN is set) */}
+        {hasPin && biometricAvailable && (
+          <div className="rounded-xl border border-stone-900/[0.08] bg-[#F6F5F2] p-3 space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <Fingerprint className="h-4 w-4 shrink-0 text-[#8F703F]" />
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold text-[#1C1C1E]">
+                    Fingerprint / Face unlock
+                  </div>
+                  <div className="text-[11px] text-[#52525B]">
+                    {biometricsOn
+                      ? "On · unlock with biometrics (PIN as backup)"
+                      : "Off · tap to enable biometric unlock"}
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleToggleBiometrics()}
+                className={`shrink-0 rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors cursor-pointer ${
+                  biometricsOn
+                    ? "bg-[#1C1C1E] text-white"
+                    : "border border-stone-900/10 bg-white text-[#1C1C1E]"
+                }`}
+              >
+                {biometricsOn ? "On" : "Enable"}
+              </button>
+            </div>
+            {bioMsg && <p className="text-[11px] font-medium text-[#8F703F]">{bioMsg}</p>}
+          </div>
+        )}
 
         {/* Optional Local Notifications (Bills + Entry Edits) */}
         <div className="rounded-xl border border-stone-900/[0.08] bg-[#F6F5F2] p-3 space-y-1.5">
