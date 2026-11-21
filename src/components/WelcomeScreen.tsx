@@ -5,6 +5,10 @@ import { KeeperLogo } from "./KeeperLogo";
 import { LegalModal, type LegalDocType } from "./LegalModal";
 import { SoftButton, SoftInput } from "./LightControls";
 
+const ANDROID_APK_URL =
+  import.meta.env.VITE_ANDROID_APK_URL ||
+  "https://github.com/realmadede/Keeper/releases/latest/download/Keeper.apk";
+
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
@@ -218,10 +222,19 @@ export function WelcomeScreen({
             )}
           </div>
 
-          {/* 1-Tap PWA Install Prompt & Quiet Legal Links */}
+          {/* Android APK Download, 1-Tap PWA Install Prompt & Quiet Legal Links */}
           <div className="space-y-2.5 border-t border-stone-900/[0.06] pt-3 text-center">
-            {!isStandalone && (
-              <div>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <a
+                href={ANDROID_APK_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-stone-900/10 bg-[#1C1C1E] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#2C2C30] transition-colors"
+              >
+                <Download className="h-3.5 w-3.5 text-[#E4CCA0]" />
+                <span>Download for Android</span>
+              </a>
+              {!isStandalone && (
                 <button
                   type="button"
                   onClick={() => void handleInstallClick()}
@@ -232,15 +245,15 @@ export function WelcomeScreen({
                   ) : (
                     <Smartphone className="h-3.5 w-3.5 text-[#8F703F]" />
                   )}
-                  <span>Add Keeper to Home Screen</span>
+                  <span>Add to Home Screen</span>
                 </button>
-                {showInstallGuide && !deferredPrompt && (
-                  <div className="mt-2 rounded-xl border border-stone-900/[0.08] bg-[#F6F5F2] p-2.5 text-left text-xs text-[#52525B] space-y-1">
-                    <div className="font-medium text-[#1C1C1E]">Install on your phone</div>
-                    <div>1. Tap the Share or browser menu button</div>
-                    <div>2. Select Add to Home Screen</div>
-                  </div>
-                )}
+              )}
+            </div>
+            {!isStandalone && showInstallGuide && !deferredPrompt && (
+              <div className="rounded-xl border border-stone-900/[0.08] bg-[#F6F5F2] p-2.5 text-left text-xs text-[#52525B] space-y-1">
+                <div className="font-medium text-[#1C1C1E]">Install on your phone</div>
+                <div>1. Tap the Share or browser menu button</div>
+                <div>2. Select Add to Home Screen</div>
               </div>
             )}
             <div className="flex items-center justify-center gap-3 text-[11px] text-[#8E8E93]">
