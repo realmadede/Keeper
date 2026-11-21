@@ -40,14 +40,29 @@ jobs:
       - name: Sync Capacitor Android project
         run: npx cap sync android
 
-      - name: Build Android APK
+      - name: Build signed Release APK (or Debug fallback if keystore secret not set)
         working-directory: android
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEEPER_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEEPER_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEEPER_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEEPER_VERSION_CODE: ${{ 100 + github.run_number }}
+          KEEPER_VERSION_NAME: 1.0.${{ github.run_number }}
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug
-
-      - name: Copy APK to Keeper.apk
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk Keeper.apk
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > release-keystore.jks
+            export KEEPER_KEYSTORE_PATH="$PWD/release-keystore.jks"
+            ./gradlew assembleRelease
+            cp app/build/outputs/apk/release/app-release.apk ../Keeper.apk
+            rm -f release-keystore.jks
+            echo "BUILD_TYPE=Signed Release (v1.0.${{ github.run_number }})" >> $GITHUB_ENV
+          else
+            ./gradlew assembleDebug
+            cp app/build/outputs/apk/debug/app-debug.apk ../Keeper.apk
+            echo "BUILD_TYPE=Debug (add ANDROID_KEYSTORE_BASE64 secret to sign release APKs)" >> $GITHUB_ENV
+          fi
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -59,7 +74,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: android-latest
-          name: Keeper Android App
-          body: Latest Keeper Android APK built from the `Android` branch.
+          name: Keeper Android App (v1.0.${{ github.run_number }})
+          body: |
+            Latest Keeper Android APK built from the `Android` branch.
+            Build type: ${{ env.BUILD_TYPE }}
           make_latest: true
           files: Keeper.apk
