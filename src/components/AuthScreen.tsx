@@ -1,8 +1,13 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ArrowLeft, ArrowRight, Check, Eye, EyeOff, KeyRound, Mail, User } from "lucide-react";
 import { KeeperLogo } from "./KeeperLogo";
 import { LegalModal, type LegalDocType } from "./LegalModal";
 import { SoftButton, SoftInput, SoftSegmented } from "./LightControls";
+import {
+  createGoogleNoncePair,
+  GOOGLE_CLIENT_ID,
+  loadGoogleIdentityScript,
+} from "../lib/googleIdentity";
 
 interface AuthScreenProps {
   isSupabaseReady: boolean;
@@ -14,6 +19,7 @@ interface AuthScreenProps {
   onSignIn: (email: string, password: string) => Promise<void>;
   onSignUp: (fullName: string, email: string, password: string) => Promise<void>;
   onSignInWithGoogle: () => Promise<void>;
+  onSignInWithGoogleIdToken?: (idToken: string, nonce: string) => Promise<void>;
   onResetPassword: (email: string) => Promise<void>;
   onUpdatePassword: (newPassword: string) => Promise<void>;
   onEnterDemo: () => void;
@@ -51,6 +57,7 @@ export function AuthScreen({
   onSignIn,
   onSignUp,
   onSignInWithGoogle,
+  onSignInWithGoogleIdToken,
   onResetPassword,
   onUpdatePassword,
   onEnterDemo,
@@ -68,6 +75,65 @@ export function AuthScreen({
   const [resetSent, setResetSent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [googleSubmitting, setGoogleSubmitting] = useState(false);
+  const [gisReady, setGisReady] = useState(false);
+  const googleBtnRef = useRef<HTMLDivElement | null>(null);
+  const useGis = Boolean(GOOGLE_CLIENT_ID && onSignInWithGoogleIdToken);
+
+  useEffect(() => {
+    if (!useGis || passwordRecoveryMode || mode === "forgot" || !onSignInWithGoogleIdToken) {
+      return;
+    }
+    let cancelled = false;
+    setGisReady(false);
+
+    void (async () => {
+      try {
+        const [gis, { rawNonce, hashedNonce }] = await Promise.all([
+          loadGoogleIdentityScript(),
+          createGoogleNoncePair(),
+        ]);
+        if (cancelled || !googleBtnRef.current) return;
+
+        gis.initialize({
+          client_id: GOOGLE_CLIENT_ID,
+          nonce: hashedNonce,
+          ux_mode: "popup",
+          callback: (response) => {
+            if (!response.credential) {
+              setLocalError("Google sign-in was cancelled.");
+              return;
+            }
+            setLocalError(null);
+            setGoogleSubmitting(true);
+            void onSignInWithGoogleIdToken(response.credential, rawNonce)
+              .catch(() => {
+                // Error surfaced via store
+              })
+              .finally(() => {
+                setGoogleSubmitting(false);
+              });
+          },
+        });
+
+        googleBtnRef.current.innerHTML = "";
+        gis.renderButton(googleBtnRef.current, {
+          theme: "outline",
+          size: "large",
+          shape: "rectangular",
+          text: mode === "signup" ? "signup_with" : "signin_with",
+          width: Math.min(360, googleBtnRef.current.clientWidth || 356),
+          logo_alignment: "center",
+        });
+        setGisReady(true);
+      } catch {
+        if (!cancelled) setGisReady(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [useGis, passwordRecoveryMode, mode, onSignInWithGoogleIdToken]);
 
   const handleGoogleAuth = async () => {
     setLocalError(null);
@@ -435,19 +501,57 @@ export function AuthScreen({
                 <div className="h-px flex-1 bg-stone-900/[0.08]" />
               </div>
 
-              <SoftButton
-                type="button"
-                onClick={() => void handleGoogleAuth()}
-                disabled={googleSubmitting || submitting}
-                icon={<GoogleMark />}
-                className="w-full !h-10 text-xs font-medium"
-              >
-                {googleSubmitting
-                  ? "Connecting to Google..."
-                  : mode === "signup"
-                    ? "Sign up with Google"
-                    : "Sign in with Google"}
-              </SoftButton>
+              {useGis ? (
+                <div className="relative">
+                  <div
+                    ref={googleBtnRef}
+                    className={`flex w-full items-center justify-center ${
+                      gisReady ? "min-h-[40px]" : "h-0 overflow-hidden"
+                    } ${googleSubmitting || submitting ? "pointer-events-none opacity-60" : ""}`}
+                  />
+                  {mode === "signup" && !acceptedTerms && gisReady && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setLocalError(
+                          "Please agree to the Terms of Service and Privacy Policy first.",
+                        )
+                      }
+                      aria-label="Agree to terms before signing up with Google"
+                      className="absolute inset-0 z-10 cursor-pointer rounded-md bg-transparent"
+                    />
+                  )}
+                  {!gisReady && (
+                    <SoftButton
+                      type="button"
+                      onClick={() => void handleGoogleAuth()}
+                      disabled={googleSubmitting || submitting}
+                      icon={<GoogleMark />}
+                      className="w-full !h-10 text-xs font-medium"
+                    >
+                      {googleSubmitting
+                        ? "Connecting to Google..."
+                        : mode === "signup"
+                          ? "Sign up with Google"
+                          : "Sign in with Google"}
+                    </SoftButton>
+                  )}
+                </div>
+              ) : (
+                <SoftButton
+                  type="button"
+                  onClick={() => void handleGoogleAuth()}
+                  disabled={googleSubmitting || submitting}
+                  icon={<GoogleMark />}
+                  className="w-full !h-10 text-xs font-medium"
+                >
+                  {googleSubmitting
+                    ? "Connecting to Google..."
+                    : mode === "signup"
+                      ? "Sign up with Google"
+                      : "Sign in with Google"}
+                </SoftButton>
+              )}
             </>
           )}
 

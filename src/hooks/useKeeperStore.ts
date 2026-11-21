@@ -67,6 +67,7 @@ export interface KeeperStore {
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (fullName: string, email: string, password: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
+  signInWithGoogleIdToken: (idToken: string, nonce: string) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   updatePassword: (newPassword: string) => Promise<void>;
   updateProfile: (fullName: string, avatarColor: string) => Promise<void>;
@@ -899,6 +900,30 @@ export function useKeeperStore(): KeeperStore {
       throw err;
     }
   }, []);
+
+  const signInWithGoogleIdToken = useCallback(
+    async (idToken: string, nonce: string) => {
+      setError(null);
+      if (!supabase) {
+        setError("Supabase is not configured yet. Add your project URL and key in .env.");
+        return;
+      }
+      const { data, error: err } = await supabase.auth.signInWithIdToken({
+        provider: "google",
+        token: idToken,
+        nonce,
+      });
+      if (err) {
+        setError(err.message);
+        throw err;
+      }
+      if (data.session?.user) {
+        setIsDemoMode(false);
+        await fetchHouseholdBundle(data.session.user.id, data.session.user);
+      }
+    },
+    [fetchHouseholdBundle],
+  );
 
   const resetPassword = useCallback(async (email: string) => {
     setError(null);
@@ -2364,6 +2389,7 @@ export function useKeeperStore(): KeeperStore {
     signIn,
     signUp,
     signInWithGoogle,
+    signInWithGoogleIdToken,
     resetPassword,
     updatePassword,
     updateProfile,

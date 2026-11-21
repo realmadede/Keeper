@@ -471,6 +471,7 @@ export function App() {
         onSignIn={store.signIn}
         onSignUp={store.signUp}
         onSignInWithGoogle={store.signInWithGoogle}
+        onSignInWithGoogleIdToken={store.signInWithGoogleIdToken}
         onResetPassword={store.resetPassword}
         onUpdatePassword={store.updatePassword}
         onEnterDemo={store.enterDemoMode}
