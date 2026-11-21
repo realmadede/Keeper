@@ -99,6 +99,12 @@ export function AccountView({
 
   const [notifsOn, setNotifsOn] = useState(() => isNotificationsEnabled());
   const [notifStatus, setNotifStatus] = useState<string | null>(null);
+  const isNativeApp =
+    typeof window !== "undefined" &&
+    Boolean(
+      (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor
+        ?.isNativePlatform?.(),
+    );
 
   useEffect(() => {
     let active = true;
@@ -639,38 +645,40 @@ export function AccountView({
           </div>
         )}
 
-        {/* Optional Local Notifications (Bills + Entry Edits) */}
-        <div className="rounded-xl border border-stone-900/[0.08] bg-[#F6F5F2] p-3 space-y-1.5">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <Bell className="h-4 w-4 shrink-0 text-[#52525B]" />
-              <div className="min-w-0">
-                <div className="text-xs font-semibold text-[#1C1C1E]">
-                  Notifications (bills & edits)
-                </div>
-                <div className="text-[11px] text-[#52525B]">
-                  {notifsOn
-                    ? "On · alerts for due bills, new entries, and edits"
-                    : "Off · opt in for bill reminders & edit alerts"}
+        {/* Optional Local Notifications (Native Android app only) */}
+        {isNativeApp && (
+          <div className="rounded-xl border border-stone-900/[0.08] bg-[#F6F5F2] p-3 space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <Bell className="h-4 w-4 shrink-0 text-[#52525B]" />
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold text-[#1C1C1E]">
+                    Notifications (bills & edits)
+                  </div>
+                  <div className="text-[11px] text-[#52525B]">
+                    {notifsOn
+                      ? "On · alerts for due bills, new entries, and edits"
+                      : "Off · opt in for bill reminders & edit alerts"}
+                  </div>
                 </div>
               </div>
+              <button
+                type="button"
+                onClick={() => void handleToggleNotifications()}
+                className={`shrink-0 rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors cursor-pointer ${
+                  notifsOn
+                    ? "bg-[#1C1C1E] text-white"
+                    : "border border-stone-900/10 bg-white text-[#1C1C1E]"
+                }`}
+              >
+                {notifsOn ? "On" : "Enable"}
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => void handleToggleNotifications()}
-              className={`shrink-0 rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors cursor-pointer ${
-                notifsOn
-                  ? "bg-[#1C1C1E] text-white"
-                  : "border border-stone-900/10 bg-white text-[#1C1C1E]"
-              }`}
-            >
-              {notifsOn ? "On" : "Enable"}
-            </button>
+            {notifStatus && (
+              <p className="text-[11px] font-medium text-[#8F703F]">{notifStatus}</p>
+            )}
           </div>
-          {notifStatus && (
-            <p className="text-[11px] font-medium text-[#8F703F]">{notifStatus}</p>
-          )}
-        </div>
+        )}
       </section>
 
       <SupportAndAboutCard onSubmitFeedback={onSubmitFeedback} />

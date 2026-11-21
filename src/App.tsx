@@ -274,7 +274,14 @@ export function App() {
   useEffect(() => {
     const goOnline = () => {
       setIsOffline(false);
-      void store.refresh();
+      void (async () => {
+        const synced = await store.syncOfflineQueue();
+        if (synced > 0) {
+          showToast(`Synced ${synced} offline ${synced === 1 ? "entry" : "entries"}`);
+        } else {
+          await store.refresh();
+        }
+      })();
     };
     const goOffline = () => setIsOffline(true);
     window.addEventListener("online", goOnline);
@@ -283,7 +290,7 @@ export function App() {
       window.removeEventListener("online", goOnline);
       window.removeEventListener("offline", goOffline);
     };
-  }, [store.refresh]);
+  }, [showToast, store.refresh, store.syncOfflineQueue]);
 
   // Load "last seen" timestamp for highlighting new roommate entries since last visit
   useEffect(() => {
@@ -529,6 +536,11 @@ export function App() {
   };
 
   const handleManualSync = async () => {
+    const synced = await store.syncOfflineQueue();
+    if (synced > 0) {
+      showToast(`Synced ${synced} offline ${synced === 1 ? "entry" : "entries"}`);
+      return;
+    }
     await store.refresh();
     showToast("Household synced");
   };
@@ -748,7 +760,23 @@ export function App() {
         {isOffline && (
           <div className="mx-4 mb-2 shrink-0 flex items-center gap-2 rounded-xl border border-stone-900/10 bg-white px-3.5 py-2 text-xs font-medium text-[#8F703F]">
             <WifiOff className="h-3.5 w-3.5 shrink-0" />
-            <span>You are offline — reconnect to sync household changes</span>
+            <span>Offline — new entries are saved locally and sync when back online</span>
+          </div>
+        )}
+
+        {store.pendingSyncCount > 0 && !isOffline && (
+          <div className="mx-4 mb-2 shrink-0 flex items-center justify-between gap-2 rounded-xl border border-[#C6A87C]/40 bg-white px-3.5 py-2 text-xs font-medium text-[#8F703F]">
+            <span>
+              {store.pendingSyncCount} offline{" "}
+              {store.pendingSyncCount === 1 ? "entry" : "entries"} waiting to sync
+            </span>
+            <button
+              type="button"
+              onClick={() => void handleManualSync()}
+              className="shrink-0 rounded-lg bg-[#1C1C1E] px-2.5 py-1 text-[11px] font-medium text-white hover:bg-[#2C2C30] cursor-pointer"
+            >
+              Sync now
+            </button>
           </div>
         )}
 

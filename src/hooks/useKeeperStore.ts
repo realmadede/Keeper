@@ -6,6 +6,15 @@ import { createDemoSeed } from "../lib/demoData";
 import { formatTZS, toISODate } from "../lib/format";
 import { notifyHouseholdChange } from "../lib/notifications";
 import {
+  enqueueOfflineItem,
+  isLikelyNetworkError,
+  loadHouseholdSnapshot,
+  loadOfflineQueue,
+  removeOfflineItem,
+  saveHouseholdSnapshot,
+  type OfflineQueueItem,
+} from "../lib/offlineQueue";
+import {
   createRateLimiter,
   generateClientInviteCode,
   sanitizeInviteCode,
@@ -44,9 +53,11 @@ export interface KeeperStore {
   isSupabaseReady: boolean;
   passwordRecoveryMode: boolean;
   realtimeConnected: boolean;
+  pendingSyncCount: number;
   error: string | null;
   clearError: () => void;
   refresh: () => Promise<void>;
+  syncOfflineQueue: () => Promise<number>;
   profile: Profile | null;
   household: Household | null;
   members: HouseholdMember[];
@@ -155,6 +166,7 @@ export function useKeeperStore(): KeeperStore {
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [passwordRecoveryMode, setPasswordRecoveryMode] = useState(false);
   const [realtimeConnected, setRealtimeConnected] = useState(false);
+  const [pendingSyncCount, setPendingSyncCount] = useState(() => loadOfflineQueue().length);
   const [error, setError] = useState<string | null>(null);
 
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -181,6 +193,21 @@ export function useKeeperStore(): KeeperStore {
       }
 
       const task = (async () => {
+        // Hydrate from cached offline snapshot if offline so the app still opens cleanly
+        if (typeof navigator !== "undefined" && !navigator.onLine) {
+          const cached = loadHouseholdSnapshot(userId);
+          if (cached) {
+            if (cached.profile) setProfile(cached.profile);
+            if (cached.household) setHousehold(cached.household);
+            setMembers(cached.members);
+            setTransactions(cached.transactions);
+            setNeeds(cached.needs);
+            setBills(cached.bills);
+            setBillPayments(cached.billPayments);
+          }
+          return;
+        }
+
         // Roundtrip 1 (parallelized): profile + active household membership
         const [profileRes, membershipRes] = await Promise.all([
           supabase
@@ -464,6 +491,7 @@ export function useKeeperStore(): KeeperStore {
           setBills(normalizedBills);
         }
 
+        let resolvedBillPayments: BillPaymentRecord[] = [];
         // Load historical bill payments (DB table with automatic localStorage fallback)
         try {
           const bpRes = await supabase
@@ -474,31 +502,135 @@ export function useKeeperStore(): KeeperStore {
             .order("created_at", { ascending: false })
             .limit(200);
           if (bpRes.data && !bpRes.error) {
-            setBillPayments(
-              bpRes.data.map((row: Record<string, unknown>) => ({
-                id: String(row.id),
-                household_id: String(row.household_id),
-                bill_id: String(row.bill_id),
-                bill_title: String(row.bill_title),
-                amount: Number(row.amount),
-                pool_amount_used: Number(row.pool_amount_used ?? 0),
-                paid_date: String(row.paid_date),
-                paid_mode: row.paid_mode === "single" ? "single" : "all",
-                paid_by: row.paid_by ? String(row.paid_by) : null,
-                recorded_by: row.recorded_by ? String(row.recorded_by) : null,
-                created_at: String(row.created_at),
-              })),
-            );
+            resolvedBillPayments = bpRes.data.map((row: Record<string, unknown>) => ({
+              id: String(row.id),
+              household_id: String(row.household_id),
+              bill_id: String(row.bill_id),
+              bill_title: String(row.bill_title),
+              amount: Number(row.amount),
+              pool_amount_used: Number(row.pool_amount_used ?? 0),
+              paid_date: String(row.paid_date),
+              paid_mode: row.paid_mode === "single" ? "single" : "all",
+              paid_by: row.paid_by ? String(row.paid_by) : null,
+              recorded_by: row.recorded_by ? String(row.recorded_by) : null,
+              created_at: String(row.created_at),
+            }));
+            setBillPayments(resolvedBillPayments);
           } else {
             const rawLocal = localStorage.getItem("keeper_bill_payments_v1");
             if (rawLocal) {
               const parsed = JSON.parse(rawLocal) as BillPaymentRecord[];
-              setBillPayments(parsed.filter((p) => p.household_id === activeHouseholdId));
+              resolvedBillPayments = parsed.filter((p) => p.household_id === activeHouseholdId);
+              setBillPayments(resolvedBillPayments);
             }
           }
         } catch {
           // Ignore if bill_payments table not created yet
         }
+
+        // Merge any pending offline-queued entries into state & persist fresh offline snapshot
+        const queuedForHouse = loadOfflineQueue().filter((q) => q.householdId === activeHouseholdId);
+        setPendingSyncCount(loadOfflineQueue().length);
+        const activeProf =
+          (profileRes.data as Profile | null) ?? profileMap.get(userId) ?? null;
+
+        let mergedTx: Transaction[] = [];
+        setTransactions((prev) => {
+          const existingIds = new Set(prev.map((t) => t.id));
+          const pendingTx: Transaction[] = queuedForHouse
+            .filter((q): q is Extract<OfflineQueueItem, { kind: "add_transaction" }> => q.kind === "add_transaction")
+            .filter((q) => !existingIds.has(q.id))
+            .map((q) => ({
+              id: q.id,
+              household_id: activeHouseholdId,
+              recorded_by: userId,
+              paid_by: q.payload.paid_by,
+              type: q.payload.type,
+              amount: q.payload.amount,
+              category: q.payload.category,
+              description: q.payload.description,
+              transaction_date: q.payload.transaction_date,
+              created_at: q.createdAt,
+              updated_at: null,
+              recorder: activeProf ?? undefined,
+              payer: profileMap.get(q.payload.paid_by) ?? activeProf ?? undefined,
+            }));
+          mergedTx = [...pendingTx, ...prev].sort(
+            (a, b) =>
+              b.transaction_date.localeCompare(a.transaction_date) ||
+              b.created_at.localeCompare(a.created_at),
+          );
+          return mergedTx;
+        });
+
+        let mergedNeeds: HouseholdNeed[] = [];
+        setNeeds((prev) => {
+          const existingIds = new Set(prev.map((n) => n.id));
+          const pendingNeeds: HouseholdNeed[] = queuedForHouse
+            .filter((q): q is Extract<OfflineQueueItem, { kind: "add_need" }> => q.kind === "add_need")
+            .filter((q) => !existingIds.has(q.id))
+            .map((q) => ({
+              id: q.id,
+              household_id: activeHouseholdId,
+              added_by: userId,
+              title: q.payload.title,
+              quantity: q.payload.quantity,
+              estimated_amount: q.payload.estimatedAmount,
+              actual_amount: null,
+              paid_mode: "all",
+              paid_by: null,
+              settled_by: [],
+              pool_amount_used: 0,
+              category: q.payload.category,
+              is_bought: false,
+              bought_at: null,
+              created_at: q.createdAt,
+              adder: activeProf ?? undefined,
+            }));
+          mergedNeeds = [...pendingNeeds, ...prev];
+          return mergedNeeds;
+        });
+
+        saveHouseholdSnapshot(userId, {
+          profile: activeProf,
+          household: {
+            ...h,
+            currency: "TZS",
+            weekly_budget_target: Number(h.weekly_budget_target),
+            member_weekly_share: Number(h.member_weekly_share),
+          },
+          members: Array.from(profileMap.values()).map((p) => {
+            const rawMember = (membersRes.data ?? []).find(
+              (r: Record<string, unknown>) => String(r.user_id) === p.id,
+            ) as Record<string, unknown> | undefined;
+            return {
+              household_id: activeHouseholdId,
+              user_id: p.id,
+              role: rawMember?.role === "admin" ? "admin" : "member",
+              joined_at: String(rawMember?.joined_at ?? ""),
+              profile: p,
+            };
+          }),
+          transactions: mergedTx,
+          needs: mergedNeeds,
+          bills: (billsRes.data ?? []).map((row: Record<string, unknown>) => ({
+            id: String(row.id),
+            household_id: String(row.household_id),
+            created_by: row.created_by ? String(row.created_by) : null,
+            title: String(row.title),
+            amount: Number(row.amount),
+            category: row.category as ExpenseCategoryId,
+            due_day: Number(row.due_day),
+            interval_months: Number(row.interval_months) || 1,
+            last_paid_month: row.last_paid_month ? String(row.last_paid_month) : null,
+            paid_mode: row.paid_mode === "single" ? "single" : "all",
+            paid_by: typeof row.paid_by === "string" ? row.paid_by : null,
+            settled_by: Array.isArray(row.settled_by) ? row.settled_by.map(String) : [],
+            pool_amount_used: Number(row.pool_amount_used ?? 0),
+            created_at: String(row.created_at),
+          })),
+          billPayments: resolvedBillPayments,
+        });
       })();
 
       inFlightFetchRef.current = task;
@@ -1092,34 +1224,94 @@ export function useKeeperStore(): KeeperStore {
 
       if (!supabase) return;
       const targetCategory = input.type === "contribution" ? "contribution" : input.category;
-      let { error: err } = await supabase.from("transactions").insert({
-        household_id: household.id,
-        recorded_by: profile.id,
-        paid_by: paidById,
-        type: input.type,
-        amount: Math.round(input.amount),
-        category: targetCategory,
-        description: input.description.trim(),
-        transaction_date: input.transaction_date,
-      });
-      if (err && targetCategory === "wifi_internet") {
-        const retry = await supabase.from("transactions").insert({
+      const queueLocally = () => {
+        const offlineId = `offline-tx-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+        const nowIso = new Date().toISOString();
+        const nextQueue = enqueueOfflineItem({
+          id: offlineId,
+          householdId: household.id,
+          kind: "add_transaction",
+          createdAt: nowIso,
+          payload: {
+            type: input.type,
+            amount: Math.round(input.amount),
+            category: targetCategory,
+            description: input.description.trim(),
+            transaction_date: input.transaction_date,
+            paid_by: paidById,
+          },
+        });
+        setPendingSyncCount(nextQueue.length);
+        const payerProfile = members.find((m) => m.user_id === paidById)?.profile ?? profile;
+        const optimistic: Transaction = {
+          id: offlineId,
           household_id: household.id,
           recorded_by: profile.id,
           paid_by: paidById,
           type: input.type,
           amount: Math.round(input.amount),
-          category: "security_internet",
+          category: targetCategory,
+          description: input.description.trim(),
+          transaction_date: input.transaction_date,
+          created_at: nowIso,
+          updated_at: null,
+          recorder: profile,
+          payer: payerProfile,
+        };
+        setTransactions((prev) =>
+          [optimistic, ...prev].sort(
+            (a, b) =>
+              b.transaction_date.localeCompare(a.transaction_date) ||
+              b.created_at.localeCompare(a.created_at),
+          ),
+        );
+      };
+
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        queueLocally();
+        return;
+      }
+
+      try {
+        let { error: err } = await supabase.from("transactions").insert({
+          household_id: household.id,
+          recorded_by: profile.id,
+          paid_by: paidById,
+          type: input.type,
+          amount: Math.round(input.amount),
+          category: targetCategory,
           description: input.description.trim(),
           transaction_date: input.transaction_date,
         });
-        err = retry.error;
+        if (err && targetCategory === "wifi_internet" && !isLikelyNetworkError(err)) {
+          const retry = await supabase.from("transactions").insert({
+            household_id: household.id,
+            recorded_by: profile.id,
+            paid_by: paidById,
+            type: input.type,
+            amount: Math.round(input.amount),
+            category: "security_internet",
+            description: input.description.trim(),
+            transaction_date: input.transaction_date,
+          });
+          err = retry.error;
+        }
+        if (err) {
+          if (isLikelyNetworkError(err)) {
+            queueLocally();
+            return;
+          }
+          setError(err.message);
+          throw err;
+        }
+        await fetchHouseholdBundle(profile.id);
+      } catch (e) {
+        if (isLikelyNetworkError(e)) {
+          queueLocally();
+          return;
+        }
+        throw e;
       }
-      if (err) {
-        setError(err.message);
-        throw err;
-      }
-      await fetchHouseholdBundle(profile.id);
     },
     [fetchHouseholdBundle, household, isDemoMode, members, profile],
   );
@@ -1239,51 +1431,105 @@ export function useKeeperStore(): KeeperStore {
       }
 
       if (!supabase) return;
-      let { data: inserted, error: err } = await supabase
-        .from("household_needs")
-        .insert({
+      const queueNeedLocally = () => {
+        const offlineId = `offline-need-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+        const nowIso = new Date().toISOString();
+        const nextQueue = enqueueOfflineItem({
+          id: offlineId,
+          householdId: household.id,
+          kind: "add_need",
+          createdAt: nowIso,
+          payload: {
+            title: cleanTitle,
+            category,
+            quantity: cleanQty,
+            estimatedAmount: safeEst,
+          },
+        });
+        setPendingSyncCount(nextQueue.length);
+        const optimistic: HouseholdNeed = {
+          id: offlineId,
           household_id: household.id,
           added_by: profile.id,
           title: cleanTitle,
           quantity: cleanQty,
           estimated_amount: safeEst,
+          actual_amount: null,
+          paid_mode: "all",
+          paid_by: null,
+          settled_by: [],
+          pool_amount_used: 0,
           category,
-        })
-        .select("id")
-        .single();
-      if (err) {
-        const fallbackCategory = category === "wifi_internet" ? "security_internet" : category;
-        const retry = await supabase
+          is_bought: false,
+          bought_at: null,
+          created_at: nowIso,
+          adder: profile,
+        };
+        setNeeds((prev) => [optimistic, ...prev]);
+      };
+
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        queueNeedLocally();
+        return;
+      }
+
+      try {
+        let { data: inserted, error: err } = await supabase
           .from("household_needs")
           .insert({
             household_id: household.id,
             added_by: profile.id,
             title: cleanTitle,
-            category: fallbackCategory,
+            quantity: cleanQty,
+            estimated_amount: safeEst,
+            category,
           })
           .select("id")
           .single();
-        inserted = retry.data;
-        err = retry.error;
-      }
-      if (err) {
-        setError(err.message);
-        throw err;
-      }
-      if (inserted?.id && (cleanQty || safeEst)) {
-        try {
-          const raw = localStorage.getItem("keeper_need_meta_v1");
-          const map = raw ? (JSON.parse(raw) as Record<string, Record<string, unknown>>) : {};
-          map[String(inserted.id)] = {
-            quantity: cleanQty,
-            estimated_amount: safeEst,
-          };
-          localStorage.setItem("keeper_need_meta_v1", JSON.stringify(map));
-        } catch {
-          // Ignore storage error
+        if (err && !isLikelyNetworkError(err)) {
+          const fallbackCategory = category === "wifi_internet" ? "security_internet" : category;
+          const retry = await supabase
+            .from("household_needs")
+            .insert({
+              household_id: household.id,
+              added_by: profile.id,
+              title: cleanTitle,
+              category: fallbackCategory,
+            })
+            .select("id")
+            .single();
+          inserted = retry.data;
+          err = retry.error;
         }
+        if (err) {
+          if (isLikelyNetworkError(err)) {
+            queueNeedLocally();
+            return;
+          }
+          setError(err.message);
+          throw err;
+        }
+        if (inserted?.id && (cleanQty || safeEst)) {
+          try {
+            const raw = localStorage.getItem("keeper_need_meta_v1");
+            const map = raw ? (JSON.parse(raw) as Record<string, Record<string, unknown>>) : {};
+            map[String(inserted.id)] = {
+              quantity: cleanQty,
+              estimated_amount: safeEst,
+            };
+            localStorage.setItem("keeper_need_meta_v1", JSON.stringify(map));
+          } catch {
+            // Ignore storage error
+          }
+        }
+        await fetchHouseholdBundle(profile.id);
+      } catch (e) {
+        if (isLikelyNetworkError(e)) {
+          queueNeedLocally();
+          return;
+        }
+        throw e;
       }
-      await fetchHouseholdBundle(profile.id);
     },
     [fetchHouseholdBundle, household, isDemoMode, profile],
   );
@@ -2022,6 +2268,74 @@ export function useKeeperStore(): KeeperStore {
     [isDemoMode, profile],
   );
 
+  const syncOfflineQueue = useCallback(async (): Promise<number> => {
+    if (isDemoMode || !supabase || !profile) return 0;
+    if (typeof navigator !== "undefined" && !navigator.onLine) return 0;
+    const queue = loadOfflineQueue();
+    if (queue.length === 0) {
+      setPendingSyncCount(0);
+      return 0;
+    }
+
+    let synced = 0;
+    for (const item of queue) {
+      try {
+        if (item.kind === "add_transaction") {
+          let { error: err } = await supabase.from("transactions").insert({
+            household_id: item.householdId,
+            recorded_by: profile.id,
+            paid_by: item.payload.paid_by,
+            type: item.payload.type,
+            amount: item.payload.amount,
+            category: item.payload.category,
+            description: item.payload.description,
+            transaction_date: item.payload.transaction_date,
+          });
+          if (err && item.payload.category === "wifi_internet" && !isLikelyNetworkError(err)) {
+            const retry = await supabase.from("transactions").insert({
+              household_id: item.householdId,
+              recorded_by: profile.id,
+              paid_by: item.payload.paid_by,
+              type: item.payload.type,
+              amount: item.payload.amount,
+              category: "security_internet",
+              description: item.payload.description,
+              transaction_date: item.payload.transaction_date,
+            });
+            err = retry.error;
+          }
+          if (err) {
+            if (isLikelyNetworkError(err)) break;
+            continue;
+          }
+        } else if (item.kind === "add_need") {
+          const { error: err } = await supabase.from("household_needs").insert({
+            household_id: item.householdId,
+            added_by: profile.id,
+            title: item.payload.title,
+            quantity: item.payload.quantity,
+            estimated_amount: item.payload.estimatedAmount,
+            category: item.payload.category,
+          });
+          if (err) {
+            if (isLikelyNetworkError(err)) break;
+            continue;
+          }
+        }
+        const remaining = removeOfflineItem(item.id);
+        setPendingSyncCount(remaining.length);
+        synced += 1;
+      } catch (e) {
+        if (isLikelyNetworkError(e)) break;
+      }
+    }
+
+    if (synced > 0) {
+      await fetchHouseholdBundle(profile.id);
+    }
+    return synced;
+  }, [fetchHouseholdBundle, isDemoMode, profile]);
+
   const leaveHousehold = useCallback(async () => {
     setError(null);
     if (isDemoMode) {
@@ -2053,9 +2367,11 @@ export function useKeeperStore(): KeeperStore {
     isSupabaseReady: isSupabaseConfigured,
     passwordRecoveryMode,
     realtimeConnected,
+    pendingSyncCount,
     error,
     clearError,
     refresh,
+    syncOfflineQueue,
     profile,
     household,
     members,
