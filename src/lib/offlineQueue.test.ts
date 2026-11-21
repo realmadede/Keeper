@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  clearLastUserId,
   enqueueOfflineItem,
   isLikelyNetworkError,
+  loadLastHouseholdSnapshot,
   loadOfflineQueue,
   removeOfflineItem,
+  saveHouseholdSnapshot,
   saveOfflineQueue,
   type OfflineQueueItem,
 } from "./offlineQueue";
@@ -75,5 +78,22 @@ describe("offlineQueue", () => {
       true,
     );
     expect(isLikelyNetworkError(new Error("new row violates check constraint"))).toBe(false);
+  });
+
+  it("persists and restores the last signed-in user snapshot for instant offline boot", () => {
+    saveHouseholdSnapshot("u1", {
+      profile: { id: "u1", full_name: "Amani", email: "amani@example.com", avatar_color: "#BFA377" },
+      household: null,
+      members: [],
+      transactions: [],
+      needs: [],
+      bills: [],
+      billPayments: [],
+    });
+    const loaded = loadLastHouseholdSnapshot();
+    expect(loaded?.profile?.id).toBe("u1");
+
+    clearLastUserId();
+    expect(loadLastHouseholdSnapshot()).toBeNull();
   });
 });

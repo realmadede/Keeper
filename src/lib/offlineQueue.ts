@@ -13,6 +13,7 @@ import type {
 
 const QUEUE_KEY = "keeper_offline_queue_v1";
 const SNAPSHOT_PREFIX = "keeper_offline_snapshot_v1:";
+const LAST_USER_KEY = "keeper_last_user_id_v1";
 
 export type OfflineQueueItem =
   | {
@@ -113,6 +114,7 @@ export function saveHouseholdSnapshot(
       savedAt: new Date().toISOString(),
     };
     localStorage.setItem(`${SNAPSHOT_PREFIX}${userId}`, JSON.stringify(payload));
+    localStorage.setItem(LAST_USER_KEY, userId);
   } catch {
     // Ignore storage quota errors
   }
@@ -130,9 +132,30 @@ export function loadHouseholdSnapshot(userId: string): OfflineHouseholdSnapshot 
   }
 }
 
+export function loadLastHouseholdSnapshot(): OfflineHouseholdSnapshot | null {
+  try {
+    const userId = localStorage.getItem(LAST_USER_KEY);
+    if (!userId) return null;
+    return loadHouseholdSnapshot(userId);
+  } catch {
+    return null;
+  }
+}
+
+export function clearLastUserId(): void {
+  try {
+    localStorage.removeItem(LAST_USER_KEY);
+  } catch {
+    // Ignore storage errors
+  }
+}
+
 export function clearHouseholdSnapshot(userId: string): void {
   try {
     localStorage.removeItem(`${SNAPSHOT_PREFIX}${userId}`);
+    if (localStorage.getItem(LAST_USER_KEY) === userId) {
+      localStorage.removeItem(LAST_USER_KEY);
+    }
   } catch {
     // Ignore storage errors
   }

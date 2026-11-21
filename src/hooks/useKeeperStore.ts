@@ -6,12 +6,15 @@ import { createDemoSeed } from "../lib/demoData";
 import { formatTZS, toISODate } from "../lib/format";
 import { notifyHouseholdChange } from "../lib/notifications";
 import {
+  clearLastUserId,
   enqueueOfflineItem,
   isLikelyNetworkError,
   loadHouseholdSnapshot,
+  loadLastHouseholdSnapshot,
   loadOfflineQueue,
   removeOfflineItem,
   saveHouseholdSnapshot,
+  type OfflineHouseholdSnapshot,
   type OfflineQueueItem,
 } from "../lib/offlineQueue";
 import {
@@ -160,8 +163,89 @@ function loadDemoState() {
   return fresh;
 }
 
+function mergeQueuedIntoSnapshot(
+  cached: OfflineHouseholdSnapshot,
+): OfflineHouseholdSnapshot {
+  if (!cached.household || !cached.profile) return cached;
+  const houseId = cached.household.id;
+  const userId = cached.profile.id;
+  const queued = loadOfflineQueue().filter((q) => q.householdId === houseId);
+  if (queued.length === 0) return cached;
+
+  const memberProfiles = new Map<string, Profile>();
+  for (const m of cached.members) {
+    memberProfiles.set(m.profile.id, m.profile);
+  }
+
+  const existingTxIds = new Set(cached.transactions.map((t) => t.id));
+  const pendingTx: Transaction[] = queued
+    .filter(
+      (q): q is Extract<OfflineQueueItem, { kind: "add_transaction" }> =>
+        q.kind === "add_transaction",
+    )
+    .filter((q) => !existingTxIds.has(q.id))
+    .map((q) => ({
+      id: q.id,
+      household_id: houseId,
+      recorded_by: userId,
+      paid_by: q.payload.paid_by,
+      type: q.payload.type,
+      amount: q.payload.amount,
+      category: q.payload.category,
+      description: q.payload.description,
+      transaction_date: q.payload.transaction_date,
+      created_at: q.createdAt,
+      updated_at: null,
+      recorder: cached.profile ?? undefined,
+      payer: memberProfiles.get(q.payload.paid_by) ?? cached.profile ?? undefined,
+    }));
+
+  const existingNeedIds = new Set(cached.needs.map((n) => n.id));
+  const pendingNeeds: HouseholdNeed[] = queued
+    .filter((q): q is Extract<OfflineQueueItem, { kind: "add_need" }> => q.kind === "add_need")
+    .filter((q) => !existingNeedIds.has(q.id))
+    .map((q) => ({
+      id: q.id,
+      household_id: houseId,
+      added_by: userId,
+      title: q.payload.title,
+      quantity: q.payload.quantity,
+      estimated_amount: q.payload.estimatedAmount,
+      actual_amount: null,
+      paid_mode: "all",
+      paid_by: null,
+      settled_by: [],
+      pool_amount_used: 0,
+      category: q.payload.category,
+      is_bought: false,
+      bought_at: null,
+      created_at: q.createdAt,
+      adder: cached.profile ?? undefined,
+    }));
+
+  return {
+    ...cached,
+    transactions: [...pendingTx, ...cached.transactions].sort(
+      (a, b) =>
+        b.transaction_date.localeCompare(a.transaction_date) ||
+        b.created_at.localeCompare(a.created_at),
+    ),
+    needs: [...pendingNeeds, ...cached.needs],
+  };
+}
+
 export function useKeeperStore(): KeeperStore {
-  const [loading, setLoading] = useState(isSupabaseConfigured);
+  const initialSnapshotRef = useRef<OfflineHouseholdSnapshot | null | undefined>(undefined);
+  if (initialSnapshotRef.current === undefined) {
+    const rawSnap = isSupabaseConfigured ? loadLastHouseholdSnapshot() : null;
+    initialSnapshotRef.current =
+      rawSnap && rawSnap.profile && rawSnap.household
+        ? mergeQueuedIntoSnapshot(rawSnap)
+        : null;
+  }
+  const bootSnap = initialSnapshotRef.current;
+
+  const [loading, setLoading] = useState(isSupabaseConfigured && !bootSnap);
   const [refreshing, setRefreshing] = useState(false);
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [passwordRecoveryMode, setPasswordRecoveryMode] = useState(false);
@@ -169,13 +253,17 @@ export function useKeeperStore(): KeeperStore {
   const [pendingSyncCount, setPendingSyncCount] = useState(() => loadOfflineQueue().length);
   const [error, setError] = useState<string | null>(null);
 
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [household, setHousehold] = useState<Household | null>(null);
-  const [members, setMembers] = useState<HouseholdMember[]>([]);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [needs, setNeeds] = useState<HouseholdNeed[]>([]);
-  const [bills, setBills] = useState<RecurringBill[]>([]);
-  const [billPayments, setBillPayments] = useState<BillPaymentRecord[]>([]);
+  const [profile, setProfile] = useState<Profile | null>(() => bootSnap?.profile ?? null);
+  const [household, setHousehold] = useState<Household | null>(() => bootSnap?.household ?? null);
+  const [members, setMembers] = useState<HouseholdMember[]>(() => bootSnap?.members ?? []);
+  const [transactions, setTransactions] = useState<Transaction[]>(
+    () => bootSnap?.transactions ?? [],
+  );
+  const [needs, setNeeds] = useState<HouseholdNeed[]>(() => bootSnap?.needs ?? []);
+  const [bills, setBills] = useState<RecurringBill[]>(() => bootSnap?.bills ?? []);
+  const [billPayments, setBillPayments] = useState<BillPaymentRecord[]>(
+    () => bootSnap?.billPayments ?? [],
+  );
 
   const inFlightFetchRef = useRef<Promise<void> | null>(null);
   const realtimeTimerRef = useRef<number | null>(null);
@@ -193,21 +281,28 @@ export function useKeeperStore(): KeeperStore {
       }
 
       const task = (async () => {
+        const hydrateFromCache = () => {
+          const rawCached = loadHouseholdSnapshot(userId);
+          if (!rawCached) return false;
+          const cached = mergeQueuedIntoSnapshot(rawCached);
+          if (cached.profile) setProfile(cached.profile);
+          if (cached.household) setHousehold(cached.household);
+          setMembers(cached.members);
+          setTransactions(cached.transactions);
+          setNeeds(cached.needs);
+          setBills(cached.bills);
+          setBillPayments(cached.billPayments);
+          setPendingSyncCount(loadOfflineQueue().length);
+          return true;
+        };
+
         // Hydrate from cached offline snapshot if offline so the app still opens cleanly
-        if (typeof navigator !== "undefined" && !navigator.onLine) {
-          const cached = loadHouseholdSnapshot(userId);
-          if (cached) {
-            if (cached.profile) setProfile(cached.profile);
-            if (cached.household) setHousehold(cached.household);
-            setMembers(cached.members);
-            setTransactions(cached.transactions);
-            setNeeds(cached.needs);
-            setBills(cached.bills);
-            setBillPayments(cached.billPayments);
-          }
+        if (typeof navigator !== "undefined" && navigator.onLine === false) {
+          hydrateFromCache();
           return;
         }
 
+        try {
         // Roundtrip 1 (parallelized): profile + active household membership
         const [profileRes, membershipRes] = await Promise.all([
           supabase
@@ -223,6 +318,14 @@ export function useKeeperStore(): KeeperStore {
             .limit(1),
         ]);
 
+        if (membershipRes.error) {
+          if (isLikelyNetworkError(membershipRes.error) && hydrateFromCache()) {
+            return;
+          }
+          setError(membershipRes.error.message);
+          return;
+        }
+
         if (profileRes.data) {
           setProfile(profileRes.data as Profile);
         } else if (fallbackUser) {
@@ -237,11 +340,6 @@ export function useKeeperStore(): KeeperStore {
             email: fallbackUser.email ?? "",
             avatar_color: "#BFA377",
           });
-        }
-
-        if (membershipRes.error) {
-          setError(membershipRes.error.message);
-          return;
         }
 
         const activeHouseholdId = membershipRes.data?.[0]?.household_id as string | undefined;
@@ -287,6 +385,9 @@ export function useKeeperStore(): KeeperStore {
         ]);
 
         if (householdRes.error) {
+          if (isLikelyNetworkError(householdRes.error) && hydrateFromCache()) {
+            return;
+          }
           setError(householdRes.error.message);
           return;
         }
@@ -631,6 +732,12 @@ export function useKeeperStore(): KeeperStore {
           })),
           billPayments: resolvedBillPayments,
         });
+        } catch (err) {
+          if (isLikelyNetworkError(err) && hydrateFromCache()) {
+            return;
+          }
+          throw err;
+        }
       })();
 
       inFlightFetchRef.current = task;
@@ -662,12 +769,17 @@ export function useKeeperStore(): KeeperStore {
         setIsDemoMode(false);
         await fetchHouseholdBundle(session.user.id, session.user);
       } else {
-        setProfile(null);
-        setHousehold(null);
-        setMembers([]);
-        setTransactions([]);
-        setNeeds([]);
-        setBills([]);
+        // When offline, keep the cached snapshot hydrated unless the user explicitly signed out
+        const isOffline = typeof navigator !== "undefined" && navigator.onLine === false;
+        if (event === "SIGNED_OUT" || !isOffline || !loadLastHouseholdSnapshot()) {
+          setProfile(null);
+          setHousehold(null);
+          setMembers([]);
+          setTransactions([]);
+          setNeeds([]);
+          setBills([]);
+          setBillPayments([]);
+        }
       }
       if (mounted) setLoading(false);
     });
@@ -1020,12 +1132,14 @@ export function useKeeperStore(): KeeperStore {
       setError(err.message);
       throw err;
     }
-    await supabase.auth.signOut();
+    clearLastUserId();
+    await supabase.auth.signOut({ scope: "local" });
   }, [isDemoMode]);
 
   const signOut = useCallback(async () => {
     setError(null);
     setPasswordRecoveryMode(false);
+    clearLastUserId();
     if (isDemoMode) {
       setIsDemoMode(false);
       setProfile(null);
@@ -1034,6 +1148,13 @@ export function useKeeperStore(): KeeperStore {
       setTransactions([]);
       return;
     }
+    setProfile(null);
+    setHousehold(null);
+    setMembers([]);
+    setTransactions([]);
+    setNeeds([]);
+    setBills([]);
+    setBillPayments([]);
     if (supabase) {
       await supabase.auth.signOut({ scope: "local" });
     }
