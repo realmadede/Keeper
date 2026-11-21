@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   ChevronLeft,
   Copy,
+  Download,
   Plus,
   RotateCw,
   WifiOff,
@@ -15,6 +16,7 @@ import {
 import { App as CapApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
 import { StatusBar, Style } from "@capacitor/status-bar";
+import { AccountView } from "./components/AccountView";
 import { AddTransactionModal, type TransactionPrefill } from "./components/AddTransactionModal";
 import { AndroidOnboarding } from "./components/AndroidOnboarding";
 import { AuthScreen } from "./components/AuthScreen";
@@ -46,13 +48,25 @@ import {
 } from "./lib/analytics";
 import { formatTZS } from "./lib/format";
 import { sanitizeInviteCode } from "./lib/security";
+import { supabase } from "./lib/supabase";
 import type { ActiveTab, BudgetSubTab, PeriodKey, Transaction, TransactionType } from "./types";
 
-const TAB_ORDER: ActiveTab[] = ["overview", "ledger", "budget", "household"];
+const APP_VERSION = (import.meta.env.VITE_APP_VERSION as string | undefined) || "1.0.0";
+const TAB_ORDER: ActiveTab[] = ["overview", "ledger", "budget", "household", "account"];
 const PENDING_JOIN_KEY = "keeper_pending_join_code";
 const LAST_SEEN_PREFIX = "keeper_last_seen_v1:";
 const WEEK_START_PREFIX = "keeper_week_start_v1:";
 const ANDROID_ONBOARDED_KEY = "keeper_android_onboarded_v1";
+
+function compareSemver(a: string, b: string): number {
+  const pa = a.replace(/^v/i, "").split(".").map((n) => Number(n) || 0);
+  const pb = b.replace(/^v/i, "").split(".").map((n) => Number(n) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
 
 function hasCompletedOnboarding(): boolean {
   try {
@@ -75,6 +89,7 @@ const TAB_TITLES: Record<ActiveTab, string> = {
   ledger: "Household ledger",
   budget: "Budget & house",
   household: "My household",
+  account: "Account & support",
 };
 
 function readInitialJoinCode(): string | null {
@@ -121,6 +136,39 @@ export function App() {
   const [isOffline, setIsOffline] = useState(() =>
     typeof navigator !== "undefined" ? !navigator.onLine : false,
   );
+  const [forceUpdate, setForceUpdate] = useState<{
+    minVersion: string;
+    message: string;
+    downloadUrl: string;
+  } | null>(null);
+
+  // Remote minimum version check (fails open if offline or table not yet created)
+  useEffect(() => {
+    if (!supabase) return;
+    let active = true;
+    void supabase
+      .from("app_config")
+      .select("min_app_version, update_message, download_url")
+      .eq("id", 1)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!active || !data?.min_app_version) return;
+        if (compareSemver(String(data.min_app_version), APP_VERSION) > 0) {
+          setForceUpdate({
+            minVersion: String(data.min_app_version),
+            message:
+              String(data.update_message || "") ||
+              "A newer version of Keeper is required. Please download the latest update to continue.",
+            downloadUrl:
+              String(data.download_url || "") ||
+              "https://github.com/realmadede/Keeper/releases/latest/download/Keeper.apk",
+          });
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const paneRefs = useRef<(HTMLDivElement | null)[]>([]);
   const touchStart = useRef<{ x: number; y: number; blocked: boolean } | null>(null);
@@ -458,6 +506,32 @@ export function App() {
       handleSelectTab(TAB_ORDER[activeIndex - 1]);
     }
   };
+
+  if (forceUpdate) {
+    return (
+      <div className="min-h-dvh flex items-center justify-center px-5 py-8">
+        <div className="w-full max-w-[380px] rounded-[24px] border border-stone-900/[0.08] bg-white p-6 text-center shadow-[0_8px_28px_rgba(28,28,30,0.06)] space-y-4">
+          <KeeperLogo size={54} className="mx-auto" />
+          <div className="space-y-1.5">
+            <h1 className="text-lg font-semibold text-[#1C1C1E]">Update required</h1>
+            <p className="text-xs leading-relaxed text-[#52525B]">{forceUpdate.message}</p>
+            <p className="font-mono text-[11px] text-[#8E8E93]">
+              Installed v{APP_VERSION} · Required v{forceUpdate.minVersion}+
+            </p>
+          </div>
+          <a
+            href={forceUpdate.downloadUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#1C1C1E] px-4 text-sm font-medium text-white hover:bg-[#2C2C30] transition-colors"
+          >
+            <Download className="h-4 w-4 text-[#E4CCA0]" />
+            <span>Download latest Keeper</span>
+          </a>
+        </div>
+      </div>
+    );
+  }
 
   if (store.loading) {
     return <LoadingSkeleton onRetry={() => void store.refresh()} />;
@@ -914,12 +988,28 @@ export function App() {
                   needs={store.needs}
                   isDemoMode={store.isDemoMode}
                   realtimeConnected={store.realtimeConnected}
-                  onUpdateProfile={store.updateProfile}
-                  onUpdatePassword={store.updatePassword}
                   onRenameHousehold={store.renameHousehold}
                   onPromoteMember={store.promoteMember}
                   onRemoveMember={store.removeMember}
                   onRegenerateInviteCode={store.regenerateInviteCode}
+                />
+              )}
+            </div>
+
+            {/* Screen 5: Account & Support (mounted on demand) */}
+            <div
+              ref={(el) => {
+                paneRefs.current[4] = el;
+              }}
+              aria-hidden={activeTab !== "account"}
+              className="h-full w-full shrink-0 overflow-y-auto no-scrollbar px-4 pb-28"
+            >
+              {visitedTabs.has("account") && (
+                <AccountView
+                  profile={store.profile}
+                  isDemoMode={store.isDemoMode}
+                  onUpdateProfile={store.updateProfile}
+                  onUpdatePassword={store.updatePassword}
                   onLeaveHousehold={store.leaveHousehold}
                   onDeleteAccount={store.deleteAccount}
                   onSignOut={store.signOut}

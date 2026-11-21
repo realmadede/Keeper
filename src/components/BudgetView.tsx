@@ -116,6 +116,7 @@ export function BudgetView({
   const [saving, setSaving] = useState(false);
   const [savedToast, setSavedToast] = useState(false);
   const [copiedSummary, setCopiedSummary] = useState(false);
+  const [remindedUserId, setRemindedUserId] = useState<string | null>(null);
 
   // Add Need form
   const [needTitle, setNeedTitle] = useState("");
@@ -196,6 +197,31 @@ export function BudgetView({
       if (navigator.share) {
         await navigator.share({ title: `${household.name} Summary`, text }).catch(() => {});
       }
+    }
+  };
+
+  const handleRemindMember = async (
+    userId: string,
+    fullName: string,
+    remainingDue: number,
+    priorShortfall: number,
+  ) => {
+    const firstName = fullName.split(" ")[0];
+    const extra =
+      priorShortfall > 0
+        ? ` (includes ${formatTZS(priorShortfall)} carried over from prior week)`
+        : "";
+    const text = `Hi ${firstName}, quick Keeper reminder for ${household.name}: ${formatTZS(remainingDue)} remaining on this ${weekWindow.kind}'s pool share${extra}.`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: `${household.name} pool reminder`, text });
+        return;
+      }
+      await navigator.clipboard.writeText(text);
+      setRemindedUserId(userId);
+      setTimeout(() => setRemindedUserId(null), 2200);
+    } catch {
+      // User cancelled share or clipboard blocked
     }
   };
 
@@ -434,13 +460,15 @@ export function BudgetView({
               {summary.memberStatuses.map((status) => {
                 const done =
                   status.effectiveContributed >= status.expectedShare && status.expectedShare > 0;
-                const partial = status.effectiveContributed > 0 && !done;
+                const partial =
+                  !done && (status.effectiveContributed > 0 || status.contributedThisWeek > 0);
+                const reminded = remindedUserId === status.member.user_id;
                 return (
                   <div key={status.member.user_id} className="py-3 first:pt-1 last:pb-0">
-                    <div className="flex items-center justify-between gap-2 mb-2">
-                      <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="flex items-start gap-3 min-w-0">
                         <div
-                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white"
+                          className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white"
                           style={{ backgroundColor: status.member.profile.avatar_color }}
                         >
                           {getInitials(status.member.profile.full_name)}
@@ -458,6 +486,16 @@ export function BudgetView({
                               </span>
                             )}
                           </div>
+                          {status.priorShortfall > 0 && (
+                            <div className="mt-0.5 text-[11px] font-medium text-rose-700 tabular-nums">
+                              -{formatTZS(status.priorShortfall)} prior week shortfall deducted
+                            </div>
+                          )}
+                          {!done && status.remainingDue > 0 && (
+                            <div className="mt-0.5 text-[11px] font-medium text-[#8F703F] tabular-nums">
+                              {formatTZS(status.remainingDue)} remaining
+                            </div>
+                          )}
                           {status.advanceBalance > 0 && (
                             <div className="mt-0.5 text-[11px] font-medium text-[#8F703F] tabular-nums">
                               Advance +{formatTZS(status.advanceBalance)}
@@ -470,32 +508,50 @@ export function BudgetView({
                           )}
                         </div>
                       </div>
-                      <span
-                        className={`inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium ${
-                          done
-                            ? "bg-emerald-50 text-emerald-700"
-                            : partial
-                              ? "bg-stone-100 text-[#8F703F]"
-                              : "bg-stone-100 text-[#8E8E93]"
-                        }`}
-                      >
+                      <div className="flex shrink-0 flex-col items-end gap-1">
                         <span
-                          className={`h-1.5 w-1.5 rounded-full ${
+                          className={`inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium ${
                             done
-                              ? "bg-emerald-600"
+                              ? "bg-emerald-50 text-emerald-700"
                               : partial
-                                ? "bg-[#C6A87C]"
-                                : "bg-stone-400"
+                                ? "bg-stone-100 text-[#8F703F]"
+                                : "bg-stone-100 text-[#8E8E93]"
                           }`}
-                        />
-                        {status.coveredByAdvance
-                          ? "Covered"
-                          : done
-                            ? "Paid"
-                            : partial
-                              ? "Partial"
-                              : "Pending"}
-                      </span>
+                        >
+                          <span
+                            className={`h-1.5 w-1.5 rounded-full ${
+                              done
+                                ? "bg-emerald-600"
+                                : partial
+                                  ? "bg-[#C6A87C]"
+                                  : "bg-stone-400"
+                            }`}
+                          />
+                          {status.coveredByAdvance
+                            ? "Covered"
+                            : done
+                              ? "Paid"
+                              : partial
+                                ? "Partial"
+                                : "Pending"}
+                        </span>
+                        {!done && status.remainingDue > 0 && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void handleRemindMember(
+                                status.member.user_id,
+                                status.member.profile.full_name,
+                                status.remainingDue,
+                                status.priorShortfall,
+                              )
+                            }
+                            className="rounded-md bg-[#F6F5F2] border border-stone-900/10 px-2 py-0.5 text-[11px] font-medium text-[#1C1C1E] hover:bg-stone-200/60 transition-colors cursor-pointer"
+                          >
+                            {reminded ? "Copied" : "Remind"}
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <div className="h-1 w-full rounded-full bg-stone-100 overflow-hidden">
                       <div

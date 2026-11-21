@@ -190,6 +190,42 @@ describe("computeWeeklySummary", () => {
     expect(amani.weeksCoveredAhead).toBe(2);
     expect(amani.percentOfShare).toBe(100);
   });
+
+  it("deducts prior-week contribution shortfall from upcoming week contributions until cleared", () => {
+    const shortfallTxns: Transaction[] = [
+      {
+        id: "t-short-w1",
+        household_id: "h1",
+        recorded_by: "u1",
+        paid_by: "u1",
+        type: "contribution",
+        amount: 10000, // Expected 30,000 in week Nov 9-15 -> 20,000 shortfall
+        category: "contribution",
+        description: "Partial week 1",
+        transaction_date: "2026-11-10",
+        created_at: "2026-11-10T09:00:00Z",
+      },
+      {
+        id: "t-short-w2",
+        household_id: "h1",
+        recorded_by: "u1",
+        paid_by: "u1",
+        type: "contribution",
+        amount: 30000, // Pays 30,000 in week Nov 16-22 -> 20,000 clears last week's debt, 10,000 counts for this week
+        category: "contribution",
+        description: "Week 2 pool",
+        transaction_date: "2026-11-17",
+        created_at: "2026-11-17T09:00:00Z",
+      },
+    ];
+    const summary = computeWeeklySummary(shortfallTxns, MEMBERS, 30000, 0, REF_DATE);
+    const amani = summary.memberStatuses.find((s) => s.member.user_id === "u1")!;
+    expect(amani.contributedThisWeek).toBe(30000);
+    expect(amani.priorShortfall).toBe(20000);
+    expect(amani.effectiveContributed).toBe(10000); // 30k - 20k debt
+    expect(amani.remainingDue).toBe(20000);
+    expect(amani.percentOfShare).toBe(33);
+  });
 });
 
 describe("getBillDueStatus", () => {

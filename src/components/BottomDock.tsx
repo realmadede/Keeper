@@ -1,5 +1,5 @@
 import { TabBar } from "glisse";
-import { Home, PieChart, Plus, ShoppingBag, User } from "lucide-react";
+import { Home, PieChart, Plus, ShoppingBag, User, Users } from "lucide-react";
 import type { ActiveTab } from "../types";
 
 interface BottomDockProps {
@@ -13,7 +13,7 @@ export function BottomDock({ activeTab, onSelectTab, onOpenAdd }: BottomDockProp
     <nav
       aria-label="Primary navigation"
       data-theme="dark"
-      className="keeper-dock fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 z-40 flex -translate-x-1/2 items-center gap-2.5"
+      className="keeper-dock fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 z-40 flex max-w-[calc(100vw-0.75rem)] -translate-x-1/2 items-center gap-2"
     >
       {/* iOS-style Glisse Liquid Glass TabBar */}
       <TabBar
@@ -24,22 +24,27 @@ export function BottomDock({ activeTab, onSelectTab, onOpenAdd }: BottomDockProp
           {
             value: "overview",
             label: "Home",
-            icon: <Home className="h-[18px] w-[18px]" strokeWidth={1.75} />,
+            icon: <Home className="h-[17px] w-[17px]" strokeWidth={1.75} />,
           },
           {
             value: "ledger",
             label: "Ledger",
-            icon: <ShoppingBag className="h-[18px] w-[18px]" strokeWidth={1.75} />,
+            icon: <ShoppingBag className="h-[17px] w-[17px]" strokeWidth={1.75} />,
           },
           {
             value: "budget",
             label: "Budget",
-            icon: <PieChart className="h-[18px] w-[18px]" strokeWidth={1.75} />,
+            icon: <PieChart className="h-[17px] w-[17px]" strokeWidth={1.75} />,
           },
           {
             value: "household",
             label: "House",
-            icon: <User className="h-[18px] w-[18px]" strokeWidth={1.75} />,
+            icon: <Users className="h-[17px] w-[17px]" strokeWidth={1.75} />,
+          },
+          {
+            value: "account",
+            label: "Account",
+            icon: <User className="h-[17px] w-[17px]" strokeWidth={1.75} />,
           },
         ]}
       />
@@ -49,9 +54,9 @@ export function BottomDock({ activeTab, onSelectTab, onOpenAdd }: BottomDockProp
         type="button"
         aria-label="Record contribution or expense"
         onClick={onOpenAdd}
-        className="flex h-[56px] w-[56px] shrink-0 items-center justify-center rounded-full border border-white/20 bg-[#BFA377] text-white shadow-[0_12px_28px_rgba(28,28,30,0.28)] transition-[transform,background-color] duration-100 hover:bg-[#AF9367] active:scale-95 cursor-pointer select-none"
+        className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-full border border-white/20 bg-[#BFA377] text-white shadow-[0_12px_28px_rgba(28,28,30,0.28)] transition-[transform,background-color] duration-100 hover:bg-[#AF9367] active:scale-95 cursor-pointer select-none"
       >
-        <Plus className="h-6 w-6 text-white" strokeWidth={2.25} />
+        <Plus className="h-5 w-5 text-white" strokeWidth={2.25} />
       </button>
     </nav>
   );

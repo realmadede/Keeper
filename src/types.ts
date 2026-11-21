@@ -89,7 +89,7 @@ export interface RecurringBill {
   created_at: string;
 }
 
-export type ActiveTab = "overview" | "ledger" | "budget" | "household";
+export type ActiveTab = "overview" | "ledger" | "budget" | "household" | "account";
 export type BudgetSubTab = "pool" | "bills" | "needs";
 export type PeriodKey = "this_week" | "last_week" | "two_weeks_ago" | "this_month" | "last_month";
 

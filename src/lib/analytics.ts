@@ -41,7 +41,9 @@ export interface MemberContributionStatus {
   member: HouseholdMember;
   contributedThisWeek: number;
   carryOverCredit: number;
+  priorShortfall: number;
   effectiveContributed: number;
+  remainingDue: number;
   advanceBalance: number;
   weeksCoveredAhead: number;
   coveredByAdvance: boolean;
@@ -506,6 +508,7 @@ export function computePeriodSummary(
     }
 
     let carryOverCredit = 0;
+    let priorShortfall = 0;
     if (memberWeeklyShare > 0 && priorContributed > 0 && earliestPriorISO) {
       const joinedISO = member.joined_at ? member.joined_at.slice(0, 10) : earliestPriorISO;
       const anchorISO =
@@ -514,15 +517,21 @@ export function computePeriodSummary(
           : joinedISO > earliestPriorISO
             ? joinedISO
             : earliestPriorISO;
-      const elapsedWeeks = Math.max(
-        1,
-        Math.round((currentStartMondayMs - toCycleStartMs(anchorISO)) / WEEK_MS),
-      );
-      const priorExpected = elapsedWeeks * memberWeeklyShare;
-      carryOverCredit = Math.max(0, priorContributed - priorExpected);
+      if (anchorISO < currentPeriod.startISO) {
+        const elapsedWeeks = Math.max(
+          1,
+          Math.round((currentStartMondayMs - toCycleStartMs(anchorISO)) / WEEK_MS),
+        );
+        const priorExpected = elapsedWeeks * memberWeeklyShare;
+        carryOverCredit = Math.max(0, priorContributed - priorExpected);
+        priorShortfall = Math.max(0, priorExpected - priorContributed);
+      }
     }
 
-    const effectiveContributed = contributedThisWeek + carryOverCredit;
+    // Prior unpaid shortfall is deducted from this week's contribution until cleared
+    const effectiveContributed = contributedThisWeek + carryOverCredit - priorShortfall;
+    const remainingDue =
+      expectedShare > 0 ? Math.max(0, expectedShare - effectiveContributed) : 0;
     const advanceBalance =
       expectedShare > 0 ? Math.max(0, effectiveContributed - expectedShare) : 0;
     const weeksCoveredAhead =
@@ -536,13 +545,15 @@ export function computePeriodSummary(
 
     const percentOfShare =
       expectedShare > 0
-        ? Math.min(100, Math.round((effectiveContributed / expectedShare) * 100))
+        ? Math.max(0, Math.min(100, Math.round((effectiveContributed / expectedShare) * 100)))
         : 100;
     return {
       member,
       contributedThisWeek,
       carryOverCredit,
+      priorShortfall,
       effectiveContributed,
+      remainingDue,
       advanceBalance,
       weeksCoveredAhead,
       coveredByAdvance,

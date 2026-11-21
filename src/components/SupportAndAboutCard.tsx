@@ -100,7 +100,10 @@ export function SupportAndAboutCard({ onSubmitFeedback }: SupportAndAboutCardPro
     | { state: "error" }
   >({ state: "idle" });
 
-  // Share & FAQ state
+  // Share, active action highlight & FAQ state
+  const [activeAction, setActiveAction] = useState<"contact" | "report" | "update" | "share">(
+    "contact",
+  );
   const [sharedApp, setSharedApp] = useState(false);
   const [showFaq, setShowFaq] = useState(false);
   const [openFaqIdx, setOpenFaqIdx] = useState<number | null>(0);
@@ -265,46 +268,90 @@ export function SupportAndAboutCard({ onSubmitFeedback }: SupportAndAboutCardPro
         )}
       </form>
 
-      {/* 2. Direct Actions Grid: Contact Developer (Gmail), Report Bug, Check Updates, Share */}
+      {/* 2. Direct Actions Grid: active obsidian black shifts to whichever button is tapped */}
       <div className="grid grid-cols-2 gap-2">
         <a
           href={contactMailto}
-          className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-stone-900/10 bg-[#1C1C1E] px-3 text-xs font-medium text-white hover:bg-[#2C2C30] transition-colors"
+          onClick={() => setActiveAction("contact")}
+          className={`inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-stone-900/10 px-3 text-xs font-medium transition-colors ${
+            activeAction === "contact"
+              ? "bg-[#1C1C1E] text-white hover:bg-[#2C2C30]"
+              : "bg-[#F6F5F2] text-[#1C1C1E] hover:bg-stone-200/60"
+          }`}
         >
-          <Mail className="h-3.5 w-3.5 text-[#E4CCA0] shrink-0" />
+          <Mail
+            className={`h-3.5 w-3.5 shrink-0 ${
+              activeAction === "contact" ? "text-[#E4CCA0]" : "text-[#52525B]"
+            }`}
+          />
           <span className="truncate">Contact developer</span>
         </a>
 
         <button
           type="button"
-          onClick={() => setShowReportForm((v) => !v)}
-          className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-stone-900/10 bg-[#F6F5F2] px-3 text-xs font-medium text-[#1C1C1E] hover:bg-stone-200/60 transition-colors cursor-pointer"
+          onClick={() => {
+            setActiveAction("report");
+            setShowReportForm((v) => !v);
+          }}
+          className={`inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-stone-900/10 px-3 text-xs font-medium transition-colors cursor-pointer ${
+            activeAction === "report"
+              ? "bg-[#1C1C1E] text-white hover:bg-[#2C2C30]"
+              : "bg-[#F6F5F2] text-[#1C1C1E] hover:bg-stone-200/60"
+          }`}
         >
-          <Bug className="h-3.5 w-3.5 text-[#52525B] shrink-0" />
+          <Bug
+            className={`h-3.5 w-3.5 shrink-0 ${
+              activeAction === "report" ? "text-[#E4CCA0]" : "text-[#52525B]"
+            }`}
+          />
           <span className="truncate">Report / Idea</span>
         </button>
 
         <button
           type="button"
           disabled={checkingUpdate}
-          onClick={() => void handleCheckUpdate()}
-          className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-stone-900/10 bg-[#F6F5F2] px-3 text-xs font-medium text-[#1C1C1E] hover:bg-stone-200/60 disabled:opacity-60 transition-colors cursor-pointer"
+          onClick={() => {
+            setActiveAction("update");
+            void handleCheckUpdate();
+          }}
+          className={`inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-stone-900/10 px-3 text-xs font-medium disabled:opacity-60 transition-colors cursor-pointer ${
+            activeAction === "update"
+              ? "bg-[#1C1C1E] text-white hover:bg-[#2C2C30]"
+              : "bg-[#F6F5F2] text-[#1C1C1E] hover:bg-stone-200/60"
+          }`}
         >
           <RefreshCw
-            className={`h-3.5 w-3.5 text-[#52525B] shrink-0 ${checkingUpdate ? "animate-spin" : ""}`}
+            className={`h-3.5 w-3.5 shrink-0 ${checkingUpdate ? "animate-spin" : ""} ${
+              activeAction === "update" ? "text-[#E4CCA0]" : "text-[#52525B]"
+            }`}
           />
           <span className="truncate">{checkingUpdate ? "Checking..." : "Check updates"}</span>
         </button>
 
         <button
           type="button"
-          onClick={() => void handleShareApp()}
-          className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-stone-900/10 bg-[#F6F5F2] px-3 text-xs font-medium text-[#1C1C1E] hover:bg-stone-200/60 transition-colors cursor-pointer"
+          onClick={() => {
+            setActiveAction("share");
+            void handleShareApp();
+          }}
+          className={`inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-stone-900/10 px-3 text-xs font-medium transition-colors cursor-pointer ${
+            activeAction === "share"
+              ? "bg-[#1C1C1E] text-white hover:bg-[#2C2C30]"
+              : "bg-[#F6F5F2] text-[#1C1C1E] hover:bg-stone-200/60"
+          }`}
         >
           {sharedApp ? (
-            <Check className="h-3.5 w-3.5 text-emerald-700 shrink-0" />
+            <Check
+              className={`h-3.5 w-3.5 shrink-0 ${
+                activeAction === "share" ? "text-[#E4CCA0]" : "text-emerald-700"
+              }`}
+            />
           ) : (
-            <Share2 className="h-3.5 w-3.5 text-[#52525B] shrink-0" />
+            <Share2
+              className={`h-3.5 w-3.5 shrink-0 ${
+                activeAction === "share" ? "text-[#E4CCA0]" : "text-[#52525B]"
+              }`}
+            />
           )}
           <span className="truncate">{sharedApp ? "Link copied" : "Share Keeper"}</span>
         </button>
