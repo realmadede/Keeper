@@ -54,7 +54,7 @@ import { sanitizeInviteCode } from "./lib/security";
 import { supabase } from "./lib/supabase";
 import type { ActiveTab, BudgetSubTab, PeriodKey, Transaction, TransactionType } from "./types";
 
-const APP_VERSION = (import.meta.env.VITE_APP_VERSION as string | undefined) || "1.0.0";
+const APP_VERSION = (import.meta.env.VITE_APP_VERSION as string | undefined) || "1.1.0";
 const TAB_ORDER: ActiveTab[] = ["overview", "ledger", "budget", "household", "account"];
 const PENDING_JOIN_KEY = "keeper_pending_join_code";
 const LAST_SEEN_PREFIX = "keeper_last_seen_v1:";

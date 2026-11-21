@@ -35,7 +35,7 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-          VITE_APP_VERSION: 1.0.${{ github.run_number }}
+          VITE_APP_VERSION: 1.1.${{ github.run_number }}
         run: npm run build
 
       - name: Sync Capacitor Android project
@@ -49,7 +49,7 @@ jobs:
           KEEPER_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEEPER_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           KEEPER_VERSION_CODE: ${{ github.run_number }}
-          KEEPER_VERSION_NAME: 1.0.${{ github.run_number }}
+          KEEPER_VERSION_NAME: 1.1.${{ github.run_number }}
         run: |
           chmod +x gradlew
           if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
@@ -58,7 +58,7 @@ jobs:
             ./gradlew assembleRelease
             cp app/build/outputs/apk/release/app-release.apk ../Keeper.apk
             rm -f release-keystore.jks
-            echo "BUILD_TYPE=Signed Release (v1.0.${{ github.run_number }})" >> "$GITHUB_ENV"
+            echo "BUILD_TYPE=Signed Release (v1.1.${{ github.run_number }})" >> "$GITHUB_ENV"
           else
             ./gradlew assembleDebug
             cp app/build/outputs/apk/debug/app-debug.apk ../Keeper.apk
@@ -69,7 +69,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TITLE="Keeper Android App (v1.0.${{ github.run_number }})"
+          TITLE="Keeper Android App (v1.1.${{ github.run_number }})"
           NOTES="Latest Keeper Android APK built from the Android branch. Build type: $BUILD_TYPE"
           if gh release view android-latest >/dev/null 2>&1; then
             gh release upload android-latest Keeper.apk --clobber
