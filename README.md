@@ -12,12 +12,12 @@ Keeper is a private shared household ledger built for roommates and friends shar
 - **Email & Google OAuth Sign-In**: Instant account creation with email/password or 1-tap Google OAuth, plus custom branded password recovery emails ([`supabase/templates/recovery.html`](./supabase/templates/recovery.html)).
 - **Weekly & Monthly Views (`W1–W5`)**: Switch between `This Week`, `Last Week`, `2 Weeks Ago`, `This Month`, and `Last Month`, with automatic Monday–Sunday daily bars or `W1–W5` weekly buckets.
 - **All-Time Carry-Over Cash on Hand Pool**: Tracks both the active period's remaining balance and the all-time carry-over house pool (`Total All-Time Contributions - Total All-Time Expenses`).
-- **Contributions & Paid-By Attribution**: Log pooled contributions (including treasurers recording a contribution on behalf of another roommate) and categorized household expenses (`Food & Groceries`, `Electricity & Water`, `House Rent`, `Security & Internet`, `House Supplies`, `Transport & Gas`).
+- **Contributions, Carry-Over Advance & Shortfall Tracking**: Log pooled contributions (including treasurers recording on behalf of another roommate) and categorized household expenses (`Food & Groceries`, `Electricity & Water`, `House Rent`, `Security`, `Wi-Fi & Internet`, `House Supplies`, `Transport & Gas`). Overpayments carry forward as advance credit; partial-contribution shortfalls automatically deduct from upcoming weeks until cleared, with a 1-tap **Remind** button.
 - **Recurring Bills Due-Date Tracker**: Track monthly or multi-month house bills (rent, Wi-Fi, water, security) separately from weekly contributions, with `Split by all (N)` vs. `Paid by 1 member`, 1-tap roommate payback checkmarks, and optional leftover pool money usage.
 - **Shared House Needs Shopping List**: Add needed items with optional quantity and estimated TZS price, view live per-member shopping totals, mark items bought with actual price paid, split or track 1-member paybacks, and optionally apply leftover pool cash.
 - **Member Totals & Statements**: View every roommate's combined out-of-pocket total across weekly pool contributions, bills, and needs (with pending payback balances and 1-tap WhatsApp statement copy).
 - **Multi-Field Ledger Search, WhatsApp Summary & CSV Export**: Search hundreds of transactions by description, roommate, category, date, or TZS amount; copy a formatted weekly/monthly WhatsApp summary in one tap; or export filtered records to CSV.
-- **Admin & Account Controls**: Household admins can rename the house, rotate the invite key (revoking old codes), promote members to admin, or remove a roommate. Every member can customize their display name and avatar color, leave a household, or permanently delete their account.
+- **5-Tab Navigation (`Home`, `Ledger`, `Budget`, `House`, `Account`)**: Dedicated **House** tab for House Key Pass + QR code, roommates, admin controls, and member totals; dedicated **Account** tab for profile editing, password updates, account deletion, and **Support & About** (in-app 5-star ratings, direct Gmail developer contact, bug/feature reporting, GitHub Release update checker, native share sheet, and Quick Help FAQ).
 
 ---
 
@@ -25,9 +25,13 @@ Keeper is a private shared household ledger built for roommates and friends shar
 
 Keeper has a **separate standalone Android app** maintained on the [`Android`](https://github.com/realmadede/Keeper/tree/Android) branch (built with **Capacitor**):
 
-- **Detached from the web landing page**: Opens into a 3-slide native onboarding flow matching Keeper's warm-stone, obsidian, and brass design, with native status bar styling, custom Keeper launcher icon, and Android hardware Back button support.
-- **Same live data & features**: Connects to the same Supabase backend and real-time sync as the web app on `main`.
-- **Direct APK download**: Pushes to the `Android` branch automatically build `Keeper.apk` via GitHub Actions (`.github/workflows/android-apk.yml`) and publish it to GitHub Releases — linked directly from the **Download for Android** button on the web landing page.
+- **Detached from the web landing page**: Opens into a 3-slide native onboarding flow matching Keeper's warm-stone, obsidian, and brass design, with native status bar styling, custom obsidian-and-brass Keeper launcher icon, deep-link support (`app.keeper.household://`), and Android hardware Back button handling.
+- **Same live data & features**: Connects to the same Supabase backend and real-time sync as the web app on `main`, with Demo Mode always accessible for quick previews.
+- **Signed Release APK & Automatic Updates**: Pushes to the `Android` branch automatically build a signed Release `Keeper.apk` via GitHub Actions (`.github/workflows/android-apk.yml`) with auto-incremented `versionCode` and publish it to GitHub Releases — linked from both the web landing page's **Download for Android** button and the in-app **Check updates** button.
+- **Remote Minimum Version Gate (`app_config`)**: Raising `min_app_version` in Supabase's `app_config` table automatically prompts older APKs with an **Update required** screen and 1-tap download link.
+- **Required GitHub Actions Secrets (for Signed Release APKs)**:
+  - `VITE_SUPABASE_URL` & `VITE_SUPABASE_ANON_KEY`
+  - `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`
 - **Local build & USB phone install** (on the `Android` branch):
   ```bash
   git checkout Android
@@ -82,7 +86,7 @@ VITE_SUPABASE_ANON_KEY=your-public-anon-key
 
 ## Architecture & Security Overview
 
-- **Strict Multi-Tenant Row-Level Security (RLS)**: Every table (`profiles`, `households`, `household_members`, `transactions`, `household_needs`, `recurring_bills`, `invite_join_attempts`) has RLS enabled. Helper functions `is_household_member()` and `is_user_in_household()` enforce complete isolation so a user can only read or write data belonging to their own household.
+- **Strict Multi-Tenant Row-Level Security (RLS)**: Every table (`profiles`, `households`, `household_members`, `transactions`, `household_needs`, `recurring_bills`, `invite_join_attempts`, `app_feedback`, `app_config`) has RLS enabled. Helper functions `is_household_member()` and `is_user_in_household()` enforce complete isolation so a user can only read or write data belonging to their own household.
 - **Brute-Force & Write Rate Limiting**:
   - `join_household_by_code()` logs failed invite code guesses in `invite_join_attempts` and blocks brute-force guessing after **5 failed attempts within 15 minutes** (using an 8-character unambiguous alphabet with $32^8 \approx 1.1\times 10^{12}$ combinations).
   - `guard_transaction_insert()` enforces a database-level write limit of **30 transactions per 10 minutes per user** and verifies that any `paid_by` user is a member of the same household.
