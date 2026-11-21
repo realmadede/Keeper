@@ -814,7 +814,7 @@ export function useKeeperStore(): KeeperStore {
       return;
     }
     if (supabase) {
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: "local" });
     }
   }, [isDemoMode]);
 
