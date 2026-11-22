@@ -1,5 +1,6 @@
 import { useRef, useState, type FormEvent, type TouchEvent } from "react";
 import { ArrowRight, CalendarClock, Key, ShieldCheck, Wallet } from "lucide-react";
+import { APP_VERSION } from "../lib/appUpdater";
 import { sanitizeInviteCode } from "../lib/security";
 import { KeeperLogo } from "./KeeperLogo";
 import { SoftButton, SoftInput } from "./LightControls";
@@ -86,6 +87,9 @@ export function AndroidOnboarding({
         <div className="flex items-center gap-2">
           <KeeperLogo size={30} />
           <span className="text-sm font-semibold tracking-tight text-[#1C1C1E]">Keeper</span>
+          <span className="rounded-full border border-stone-900/10 bg-white px-2 py-0.5 font-mono text-[10px] font-medium text-[#8F703F]">
+            v{APP_VERSION}
+          </span>
         </div>
         {!isLast && (
           <button

@@ -8,6 +8,7 @@ export const ANDROID_APK_URL =
   "https://github.com/realmadede/Keeper/releases/latest/download/Keeper.apk";
 
 const DISMISSED_UPDATE_KEY = "keeper_dismissed_update_v1";
+const WELCOMED_VERSION_KEY = "keeper_welcomed_version_v1";
 const DISMISS_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
 export interface UpdateReleaseInfo {
@@ -87,6 +88,22 @@ export function isUpdateDismissed(version: string, nowMs = Date.now()): boolean 
 export function dismissUpdateVersion(version: string, nowMs = Date.now()): void {
   try {
     localStorage.setItem(DISMISSED_UPDATE_KEY, JSON.stringify({ version, at: nowMs }));
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+export function getLastWelcomedVersion(): string | null {
+  try {
+    return localStorage.getItem(WELCOMED_VERSION_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function markVersionWelcomed(version: string): void {
+  try {
+    localStorage.setItem(WELCOMED_VERSION_KEY, version);
   } catch {
     // Ignore storage errors
   }

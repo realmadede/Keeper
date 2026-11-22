@@ -3,7 +3,9 @@ import {
   compareSemver,
   dismissUpdateVersion,
   formatBytesMB,
+  getLastWelcomedVersion,
   isUpdateDismissed,
+  markVersionWelcomed,
   parseReleaseChangelog,
 } from "./appUpdater";
 
@@ -61,5 +63,11 @@ describe("appUpdater", () => {
   it("formats byte sizes cleanly in MB", () => {
     expect(formatBytesMB(0)).toBe("0 MB");
     expect(formatBytesMB(6_500_000)).toBe("6.2 MB");
+  });
+
+  it("tracks last welcomed app version cleanly", () => {
+    expect(getLastWelcomedVersion()).toBeNull();
+    markVersionWelcomed("1.1.7");
+    expect(getLastWelcomedVersion()).toBe("1.1.7");
   });
 });

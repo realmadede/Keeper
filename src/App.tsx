@@ -32,6 +32,7 @@ import { LoadingSkeleton } from "./components/LoadingSkeleton";
 import { getStoredPinHash, PinLockScreen } from "./components/PinLockScreen";
 import { TransactionList } from "./components/TransactionList";
 import { UpdateAvailableScreen } from "./components/UpdateAvailableScreen";
+import { WelcomeVersionModal } from "./components/WelcomeVersionModal";
 
 // Lazy-load Recharts visualizations so Welcome/Auth screens skip downloading chart code
 const WeeklyBarChart = lazy(() =>
@@ -53,7 +54,9 @@ import {
   checkLatestRelease,
   compareSemver,
   dismissUpdateVersion,
+  getLastWelcomedVersion,
   isUpdateDismissed,
+  markVersionWelcomed,
   type UpdateReleaseInfo,
 } from "./lib/appUpdater";
 import { formatTZS } from "./lib/format";
@@ -143,6 +146,12 @@ export function App() {
     downloadUrl: string;
   } | null>(null);
   const [softUpdate, setSoftUpdate] = useState<UpdateReleaseInfo | null>(null);
+  const [welcomeVersion, setWelcomeVersion] = useState<{ previousVersion: string | null } | null>(
+    () => {
+      const last = getLastWelcomedVersion();
+      return last !== APP_VERSION ? { previousVersion: last } : null;
+    },
+  );
   const lastUpdateCheckRef = useRef<number>(0);
   const [pinHash, setPinHash] = useState<string | null>(() => getStoredPinHash());
   const [isLocked, setIsLocked] = useState<boolean>(() => Boolean(getStoredPinHash()));
@@ -667,28 +676,39 @@ export function App() {
     }
 
     return (
-      <AuthScreen
-        isSupabaseReady={store.isSupabaseReady}
-        initialMode={authView === "signup" ? "signup" : "signin"}
-        passwordRecoveryMode={store.passwordRecoveryMode}
-        pendingInviteCode={pendingJoinCode}
-        error={store.error}
-        onBack={() => {
-          setPendingJoinCode(null);
-          try {
-            sessionStorage.removeItem(PENDING_JOIN_KEY);
-          } catch {
-            // Ignore storage errors
-          }
-          setAuthView("onboarding");
-        }}
-        onSignIn={store.signIn}
-        onSignUp={store.signUp}
-        onSignInWithGoogle={store.signInWithGoogle}
-        onResetPassword={store.resetPassword}
-        onUpdatePassword={store.updatePassword}
-        onEnterDemo={store.enterDemoMode}
-      />
+      <>
+        <AuthScreen
+          isSupabaseReady={store.isSupabaseReady}
+          initialMode={authView === "signup" ? "signup" : "signin"}
+          passwordRecoveryMode={store.passwordRecoveryMode}
+          pendingInviteCode={pendingJoinCode}
+          error={store.error}
+          onBack={() => {
+            setPendingJoinCode(null);
+            try {
+              sessionStorage.removeItem(PENDING_JOIN_KEY);
+            } catch {
+              // Ignore storage errors
+            }
+            setAuthView("onboarding");
+          }}
+          onSignIn={store.signIn}
+          onSignUp={store.signUp}
+          onSignInWithGoogle={store.signInWithGoogle}
+          onResetPassword={store.resetPassword}
+          onUpdatePassword={store.updatePassword}
+          onEnterDemo={store.enterDemoMode}
+        />
+        {welcomeVersion && !store.passwordRecoveryMode && (
+          <WelcomeVersionModal
+            previousVersion={welcomeVersion.previousVersion}
+            onContinue={() => {
+              markVersionWelcomed(APP_VERSION);
+              setWelcomeVersion(null);
+            }}
+          />
+        )}
+      </>
     );
   }
 
@@ -1192,6 +1212,18 @@ export function App() {
         onSubmit={handleAddTransaction}
         onUpdate={handleUpdateTransaction}
       />
+
+      {/* First-install / post-update version welcome card */}
+      {welcomeVersion && (
+        <WelcomeVersionModal
+          userName={store.profile.full_name}
+          previousVersion={welcomeVersion.previousVersion}
+          onContinue={() => {
+            markVersionWelcomed(APP_VERSION);
+            setWelcomeVersion(null);
+          }}
+        />
+      )}
     </div>
   );
 }
