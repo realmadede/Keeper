@@ -52,6 +52,10 @@ const FAQ_ITEMS = [
     q: "How do roommates join our household?",
     a: "Share your 8-character House Key, invite link, or QR code from the top of this tab. New roommates paste it on the welcome or onboarding screen to join automatically.",
   },
+  {
+    q: "How does offline mode work?",
+    a: "Keeper caches your latest household data on your phone so it opens even without internet. Any new entries or needs you record offline are marked 'Pending sync' and upload automatically once you reconnect.",
+  },
 ] as const;
 
 function detectPlatform(): string {
