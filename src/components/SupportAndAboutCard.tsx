@@ -11,13 +11,15 @@ import {
   Share2,
   Star,
 } from "lucide-react";
+import {
+  ANDROID_APK_URL,
+  APP_VERSION,
+  checkLatestRelease,
+  type UpdateReleaseInfo,
+} from "../lib/appUpdater";
 import { SoftButton, SoftInput, SoftSegmented } from "./LightControls";
 
 const DEVELOPER_EMAIL = "bagomwaraphael@gmail.com";
-const APP_VERSION = (import.meta.env.VITE_APP_VERSION as string | undefined) || "1.1.0";
-const RELEASES_API_URL = "https://api.github.com/repos/realmadede/Keeper/releases/latest";
-const ANDROID_APK_URL =
-  "https://github.com/realmadede/Keeper/releases/latest/download/Keeper.apk";
 const SAVED_RATING_KEY = "keeper_user_rating_v1";
 
 export interface AppFeedbackInput {
@@ -30,6 +32,7 @@ export interface AppFeedbackInput {
 
 interface SupportAndAboutCardProps {
   onSubmitFeedback: (input: AppFeedbackInput) => Promise<void>;
+  onOpenUpdate?: (info: UpdateReleaseInfo) => void;
 }
 
 const FAQ_ITEMS = [
@@ -58,17 +61,10 @@ function detectPlatform(): string {
   return /Android/i.test(navigator.userAgent) ? "android-web" : "web";
 }
 
-function compareSemver(a: string, b: string): number {
-  const pa = a.replace(/^v/i, "").split(".").map((n) => Number(n) || 0);
-  const pb = b.replace(/^v/i, "").split(".").map((n) => Number(n) || 0);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
-    if (diff !== 0) return diff;
-  }
-  return 0;
-}
-
-export function SupportAndAboutCard({ onSubmitFeedback }: SupportAndAboutCardProps) {
+export function SupportAndAboutCard({
+  onSubmitFeedback,
+  onOpenUpdate,
+}: SupportAndAboutCardProps) {
   const platform = detectPlatform();
   const isNativeApp = platform === "android" || platform === "ios";
 
@@ -97,7 +93,7 @@ export function SupportAndAboutCard({ onSubmitFeedback }: SupportAndAboutCardPro
   const [updateStatus, setUpdateStatus] = useState<
     | { state: "idle" }
     | { state: "up_to_date"; latest: string }
-    | { state: "available"; latest: string }
+    | { state: "available"; latest: string; info: UpdateReleaseInfo }
     | { state: "error" }
   >({ state: "idle" });
 
@@ -164,17 +160,14 @@ export function SupportAndAboutCard({ onSubmitFeedback }: SupportAndAboutCardPro
   const handleCheckUpdate = async () => {
     setCheckingUpdate(true);
     try {
-      const res = await fetch(RELEASES_API_URL, {
-        headers: { Accept: "application/vnd.github+json" },
-      });
-      if (!res.ok) throw new Error("Release lookup failed");
-      const data = (await res.json()) as { name?: string; tag_name?: string };
-      const match = (data.name ?? data.tag_name ?? "").match(/v?(\d+\.\d+\.\d+)/i);
-      const latestVersion = match ? match[1] : null;
-      if (latestVersion && compareSemver(latestVersion, APP_VERSION) > 0) {
-        setUpdateStatus({ state: "available", latest: latestVersion });
+      const info = await checkLatestRelease();
+      if (info.hasUpdate) {
+        setUpdateStatus({ state: "available", latest: info.latestVersion, info });
+        if (onOpenUpdate) {
+          onOpenUpdate(info);
+        }
       } else {
-        setUpdateStatus({ state: "up_to_date", latest: latestVersion ?? APP_VERSION });
+        setUpdateStatus({ state: "up_to_date", latest: info.latestVersion });
       }
     } catch {
       setUpdateStatus({ state: "error" });
@@ -388,15 +381,26 @@ export function SupportAndAboutCard({ onSubmitFeedback }: SupportAndAboutCardPro
             </div>
             <div className="text-[11px] text-[#52525B]">Installs right over your current app</div>
           </div>
-          <a
-            href={ANDROID_APK_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-[#1C1C1E] px-2.5 py-1.5 text-xs font-medium text-white hover:bg-[#2C2C30]"
-          >
-            <Download className="h-3 w-3 text-[#E4CCA0]" />
-            <span>Download</span>
-          </a>
+          {onOpenUpdate ? (
+            <button
+              type="button"
+              onClick={() => onOpenUpdate(updateStatus.info)}
+              className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-[#1C1C1E] px-2.5 py-1.5 text-xs font-medium text-white hover:bg-[#2C2C30] cursor-pointer"
+            >
+              <Download className="h-3 w-3 text-[#E4CCA0]" />
+              <span>Update now</span>
+            </button>
+          ) : (
+            <a
+              href={ANDROID_APK_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-[#1C1C1E] px-2.5 py-1.5 text-xs font-medium text-white hover:bg-[#2C2C30]"
+            >
+              <Download className="h-3 w-3 text-[#E4CCA0]" />
+              <span>Download</span>
+            </a>
+          )}
         </div>
       )}
       {updateStatus.state === "up_to_date" && (

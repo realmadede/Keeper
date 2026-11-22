@@ -32,6 +32,7 @@ import {
   scheduleBillReminders,
   setNotificationsEnabled,
 } from "../lib/notifications";
+import type { UpdateReleaseInfo } from "../lib/appUpdater";
 import { clearHouseholdSnapshot } from "../lib/offlineQueue";
 import type { Profile, RecurringBill } from "../types";
 import { LegalModal, type LegalDocType } from "./LegalModal";
@@ -66,6 +67,7 @@ interface AccountViewProps {
   onSignOut: () => Promise<void>;
   onSubmitFeedback: (input: AppFeedbackInput) => Promise<void>;
   onPinHashChange: (hash: string | null) => void;
+  onOpenUpdate?: (info: UpdateReleaseInfo) => void;
 }
 
 export function AccountView({
@@ -83,6 +85,7 @@ export function AccountView({
   onSignOut,
   onSubmitFeedback,
   onPinHashChange,
+  onOpenUpdate,
 }: AccountViewProps) {
   const [editingProfile, setEditingProfile] = useState(false);
   const [displayName, setDisplayName] = useState(profile.full_name);
@@ -671,7 +674,7 @@ export function AccountView({
         )}
       </section>
 
-      <SupportAndAboutCard onSubmitFeedback={onSubmitFeedback} />
+      <SupportAndAboutCard onSubmitFeedback={onSubmitFeedback} onOpenUpdate={onOpenUpdate} />
 
       {/* Standalone Sign Out Section */}
       <section className="rounded-2xl border border-stone-900/[0.08] bg-white p-4 space-y-3">

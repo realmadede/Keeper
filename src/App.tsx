@@ -8,7 +8,6 @@ import {
   CheckCircle2,
   ChevronLeft,
   Copy,
-  Download,
   Plus,
   RotateCw,
   WifiOff,
@@ -32,6 +31,7 @@ import { SoftButton } from "./components/LightControls";
 import { LoadingSkeleton } from "./components/LoadingSkeleton";
 import { getStoredPinHash, PinLockScreen } from "./components/PinLockScreen";
 import { TransactionList } from "./components/TransactionList";
+import { UpdateAvailableScreen } from "./components/UpdateAvailableScreen";
 
 // Lazy-load Recharts visualizations so Welcome/Auth screens skip downloading chart code
 const WeeklyBarChart = lazy(() =>
@@ -48,28 +48,26 @@ import {
   JS_DAY_SHORT,
   resolveWeekStartDay,
 } from "./lib/analytics";
+import {
+  APP_VERSION,
+  checkLatestRelease,
+  compareSemver,
+  dismissUpdateVersion,
+  isUpdateDismissed,
+  type UpdateReleaseInfo,
+} from "./lib/appUpdater";
 import { formatTZS } from "./lib/format";
 import { scheduleBillReminders } from "./lib/notifications";
 import { sanitizeInviteCode } from "./lib/security";
 import { supabase } from "./lib/supabase";
 import type { ActiveTab, BudgetSubTab, PeriodKey, Transaction, TransactionType } from "./types";
 
-const APP_VERSION = (import.meta.env.VITE_APP_VERSION as string | undefined) || "1.1.0";
 const TAB_ORDER: ActiveTab[] = ["overview", "ledger", "budget", "household", "account"];
 const PENDING_JOIN_KEY = "keeper_pending_join_code";
 const LAST_SEEN_PREFIX = "keeper_last_seen_v1:";
 const WEEK_START_PREFIX = "keeper_week_start_v1:";
 const ANDROID_ONBOARDED_KEY = "keeper_android_onboarded_v1";
-
-function compareSemver(a: string, b: string): number {
-  const pa = a.replace(/^v/i, "").split(".").map((n) => Number(n) || 0);
-  const pb = b.replace(/^v/i, "").split(".").map((n) => Number(n) || 0);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
-    if (diff !== 0) return diff;
-  }
-  return 0;
-}
+const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 function hasCompletedOnboarding(): boolean {
   try {
@@ -144,6 +142,8 @@ export function App() {
     message: string;
     downloadUrl: string;
   } | null>(null);
+  const [softUpdate, setSoftUpdate] = useState<UpdateReleaseInfo | null>(null);
+  const lastUpdateCheckRef = useRef<number>(0);
   const [pinHash, setPinHash] = useState<string | null>(() => getStoredPinHash());
   const [isLocked, setIsLocked] = useState<boolean>(() => Boolean(getStoredPinHash()));
 
@@ -154,9 +154,39 @@ export function App() {
       if (!isActive && getStoredPinHash()) {
         setIsLocked(true);
       }
+      if (isActive && Date.now() - lastUpdateCheckRef.current > UPDATE_CHECK_INTERVAL_MS) {
+        lastUpdateCheckRef.current = Date.now();
+        void checkLatestRelease()
+          .then((info) => {
+            if (info.hasUpdate && !isUpdateDismissed(info.latestVersion)) {
+              setSoftUpdate(info);
+            }
+          })
+          .catch(() => {});
+      }
     });
     return () => {
       void listener.then((handle) => handle.remove());
+    };
+  }, []);
+
+  // Automatic launch update check on native Android (SnapTube-style in-app updater)
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    let active = true;
+    lastUpdateCheckRef.current = Date.now();
+    void checkLatestRelease()
+      .then((info) => {
+        if (!active) return;
+        if (info.hasUpdate && !isUpdateDismissed(info.latestVersion)) {
+          setSoftUpdate(info);
+        }
+      })
+      .catch(() => {
+        // Offline or rate-limited — fail silently
+      });
+    return () => {
+      active = false;
     };
   }, []);
 
@@ -584,27 +614,27 @@ export function App() {
 
   if (forceUpdate) {
     return (
-      <div className="min-h-dvh flex items-center justify-center px-5 py-8">
-        <div className="w-full max-w-[380px] rounded-[24px] border border-stone-900/[0.08] bg-white p-6 text-center shadow-[0_8px_28px_rgba(28,28,30,0.06)] space-y-4">
-          <KeeperLogo size={54} className="mx-auto" />
-          <div className="space-y-1.5">
-            <h1 className="text-lg font-semibold text-[#1C1C1E]">Update required</h1>
-            <p className="text-xs leading-relaxed text-[#52525B]">{forceUpdate.message}</p>
-            <p className="font-mono text-[11px] text-[#8E8E93]">
-              Installed v{APP_VERSION} · Required v{forceUpdate.minVersion}+
-            </p>
-          </div>
-          <a
-            href={forceUpdate.downloadUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#1C1C1E] px-4 text-sm font-medium text-white hover:bg-[#2C2C30] transition-colors"
-          >
-            <Download className="h-4 w-4 text-[#E4CCA0]" />
-            <span>Download latest Keeper</span>
-          </a>
-        </div>
-      </div>
+      <UpdateAvailableScreen
+        latestVersion={forceUpdate.minVersion}
+        changelog={[forceUpdate.message]}
+        downloadUrl={forceUpdate.downloadUrl}
+        isForced
+        forcedMessage={`Installed v${APP_VERSION} · Required v${forceUpdate.minVersion}+`}
+      />
+    );
+  }
+
+  if (softUpdate) {
+    return (
+      <UpdateAvailableScreen
+        latestVersion={softUpdate.latestVersion}
+        changelog={softUpdate.changelog}
+        downloadUrl={softUpdate.downloadUrl}
+        onDismiss={() => {
+          dismissUpdateVersion(softUpdate.latestVersion);
+          setSoftUpdate(null);
+        }}
+      />
     );
   }
 
@@ -1120,6 +1150,7 @@ export function App() {
                   onSignOut={store.signOut}
                   onSubmitFeedback={store.submitAppFeedback}
                   onPinHashChange={setPinHash}
+                  onOpenUpdate={(info) => setSoftUpdate(info)}
                 />
               )}
             </div>

@@ -15,6 +15,8 @@ jobs:
     steps:
       - name: Checkout Android branch
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 10
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
@@ -79,7 +81,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TITLE="Keeper Android App (v${APP_VERSION})"
-          NOTES="Latest Keeper Android APK built from the Android branch. Build type: $BUILD_TYPE"
+          CHANGELOG=$(git log -n 5 --no-merges --pretty=format:"- %s")
+          NOTES="$(printf '### What'\''s new\n%s\n\nBuild type: %s\n' "$CHANGELOG" "$BUILD_TYPE")"
           if gh release view android-latest >/dev/null 2>&1; then
             gh release upload android-latest Keeper.apk --clobber
             gh release edit android-latest --title "$TITLE" --notes "$NOTES" --latest
