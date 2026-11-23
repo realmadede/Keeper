@@ -1,11 +1,16 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   addDaysISO,
+  dismissWeeklyCongrats,
   evaluateOverspendPlan,
+  evaluateWeeklyBudgetSuccess,
+  isWeeklyCongratsDismissed,
   loadLocalOverspendPlan,
   markOverspendNotified,
+  markWeeklyCongratsNotified,
   saveLocalOverspendPlan,
   shouldNotifyOverspend,
+  shouldNotifyWeeklyCongrats,
 } from "./overspendPlan";
 import type { OverspendRecoveryPlan } from "../types";
 
@@ -97,5 +102,25 @@ describe("overspendPlan", () => {
     markOverspendNotified("h1", "2026-11-23", 10000);
     expect(shouldNotifyOverspend("h1", "2026-11-23", 10000)).toBe(false);
     expect(shouldNotifyOverspend("h1", "2026-11-23", 15000)).toBe(true);
+  });
+
+  it("qualifies completed on-budget weeks with real activity and skips empty or overspent weeks", () => {
+    const ok = evaluateWeeklyBudgetSuccess(82000, 100000, "2026-11-16");
+    expect(ok.qualified).toBe(true);
+    expect(ok.savedAmount).toBe(18000);
+
+    const empty = evaluateWeeklyBudgetSuccess(0, 100000, "2026-11-16");
+    expect(empty.qualified).toBe(false);
+
+    const over = evaluateWeeklyBudgetSuccess(105000, 100000, "2026-11-16");
+    expect(over.qualified).toBe(false);
+
+    expect(isWeeklyCongratsDismissed("h1", "2026-11-16")).toBe(false);
+    dismissWeeklyCongrats("h1", "2026-11-16");
+    expect(isWeeklyCongratsDismissed("h1", "2026-11-16")).toBe(true);
+
+    expect(shouldNotifyWeeklyCongrats("h1", "2026-11-16")).toBe(true);
+    markWeeklyCongratsNotified("h1", "2026-11-16");
+    expect(shouldNotifyWeeklyCongrats("h1", "2026-11-16")).toBe(false);
   });
 });

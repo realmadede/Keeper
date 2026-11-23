@@ -2,6 +2,16 @@ import type { OverspendRecoveryPlan } from "../types";
 
 const PLAN_KEY_PREFIX = "keeper_overspend_plan_v1:";
 const NOTIF_KEY_PREFIX = "keeper_overspend_notified_v1:";
+const CONGRATS_DISMISSED_PREFIX = "keeper_budget_congrats_dismissed_v1:";
+const CONGRATS_NOTIFIED_PREFIX = "keeper_budget_congrats_notified_v1:";
+
+export interface WeeklyBudgetSuccess {
+  qualified: boolean;
+  weekStartISO: string;
+  spentAmount: number;
+  targetAmount: number;
+  savedAmount: number;
+}
 
 export interface OverspendEvaluation {
   status: "none" | "scheduled" | "active" | "completed";
@@ -145,6 +155,55 @@ export function markOverspendNotified(
       `${NOTIF_KEY_PREFIX}${householdId}:${weekStartISO}`,
       String(Math.round(overspendAmount)),
     );
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+export function evaluateWeeklyBudgetSuccess(
+  spentAmount: number,
+  targetAmount: number,
+  weekStartISO: string,
+): WeeklyBudgetSuccess {
+  const safeSpent = Math.max(0, Math.round(spentAmount));
+  const safeTarget = Math.max(0, Math.round(targetAmount));
+  const qualified = safeTarget > 0 && safeSpent > 0 && safeSpent <= safeTarget;
+  return {
+    qualified,
+    weekStartISO,
+    spentAmount: safeSpent,
+    targetAmount: safeTarget,
+    savedAmount: qualified ? safeTarget - safeSpent : 0,
+  };
+}
+
+export function isWeeklyCongratsDismissed(householdId: string, weekStartISO: string): boolean {
+  try {
+    return localStorage.getItem(`${CONGRATS_DISMISSED_PREFIX}${householdId}:${weekStartISO}`) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function dismissWeeklyCongrats(householdId: string, weekStartISO: string): void {
+  try {
+    localStorage.setItem(`${CONGRATS_DISMISSED_PREFIX}${householdId}:${weekStartISO}`, "1");
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+export function shouldNotifyWeeklyCongrats(householdId: string, weekStartISO: string): boolean {
+  try {
+    return localStorage.getItem(`${CONGRATS_NOTIFIED_PREFIX}${householdId}:${weekStartISO}`) !== "1";
+  } catch {
+    return false;
+  }
+}
+
+export function markWeeklyCongratsNotified(householdId: string, weekStartISO: string): void {
+  try {
+    localStorage.setItem(`${CONGRATS_NOTIFIED_PREFIX}${householdId}:${weekStartISO}`, "1");
   } catch {
     // Ignore storage errors
   }

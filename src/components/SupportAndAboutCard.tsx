@@ -14,7 +14,7 @@ import {
 import { SoftButton, SoftInput, SoftSegmented } from "./LightControls";
 
 const DEVELOPER_EMAIL = "bagomwaraphael@gmail.com";
-const APP_VERSION = (import.meta.env.VITE_APP_VERSION as string | undefined) || "1.1.0";
+const APP_VERSION = (import.meta.env.VITE_APP_VERSION as string | undefined) || "1.2.0";
 const RELEASES_API_URL = "https://api.github.com/repos/realmadede/Keeper/releases/latest";
 const ANDROID_APK_URL =
   "https://github.com/realmadede/Keeper/releases/latest/download/Keeper.apk";

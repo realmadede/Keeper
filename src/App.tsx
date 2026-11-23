@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type
 import { Glass, Menu, type MenuEntry } from "glisse";
 import {
   AlertTriangle,
+  Award,
   Bell,
   Calendar,
   CalendarClock,
@@ -12,6 +13,7 @@ import {
   Plus,
   RotateCw,
   WifiOff,
+  X,
 } from "lucide-react";
 import { AccountView } from "./components/AccountView";
 import { AddTransactionModal, type TransactionPrefill } from "./components/AddTransactionModal";
@@ -47,9 +49,14 @@ import {
 import { formatTZS } from "./lib/format";
 import { notifyHouseholdChange } from "./lib/notifications";
 import {
+  dismissWeeklyCongrats,
   evaluateOverspendPlan,
+  evaluateWeeklyBudgetSuccess,
+  isWeeklyCongratsDismissed,
   markOverspendNotified,
+  markWeeklyCongratsNotified,
   shouldNotifyOverspend,
+  shouldNotifyWeeklyCongrats,
 } from "./lib/overspendPlan";
 import { sanitizeInviteCode } from "./lib/security";
 import type { ActiveTab, BudgetSubTab, PeriodKey, Transaction, TransactionType } from "./types";
@@ -364,6 +371,61 @@ export function App() {
     showToast(`Overspent weekly budget by ${formatTZS(weeklyOverspend.amount)}`);
     void notifyHouseholdChange(title, body);
   }, [showToast, store.household, store.isDemoMode, weeklyOverspend]);
+
+  // Completed previous-week on-budget celebration check (requires real spending <= target)
+  const lastWeekCongrats = useMemo(() => {
+    if (!store.household || store.household.weekly_budget_target <= 0) {
+      return {
+        qualified: false,
+        weekStartISO: "",
+        rangeLabel: "",
+        spentAmount: 0,
+        targetAmount: 0,
+        savedAmount: 0,
+      };
+    }
+    const lastWeekWin = getPeriodWindow("last_week", new Date(), weekStartInfo.startDay);
+    const lastWeekSum = computePeriodSummary(
+      store.transactions,
+      store.members,
+      store.household.member_weekly_share,
+      "last_week",
+      new Date(),
+      weekStartInfo.startDay,
+    );
+    const evalPlan = evaluateOverspendPlan(
+      store.household.overspend_plan,
+      lastWeekWin.startISO,
+      Math.max(1, store.members.length),
+    );
+    const deduction = evalPlan.status === "active" ? evalPlan.budgetDeduction : 0;
+    const effectiveTarget = Math.max(0, store.household.weekly_budget_target - deduction);
+    const res = evaluateWeeklyBudgetSuccess(
+      lastWeekSum.totalSpent,
+      effectiveTarget,
+      lastWeekWin.startISO,
+    );
+    return { ...res, rangeLabel: lastWeekWin.monthLabel };
+  }, [store.household, store.members, store.transactions, weekStartInfo.startDay]);
+
+  const [dismissedCongratsWeek, setDismissedCongratsWeek] = useState<string | null>(null);
+  const showWeeklyCongratsCard = Boolean(
+    store.household &&
+      lastWeekCongrats.qualified &&
+      dismissedCongratsWeek !== lastWeekCongrats.weekStartISO &&
+      !isWeeklyCongratsDismissed(store.household.id, lastWeekCongrats.weekStartISO),
+  );
+
+  // Fire once-per-week congratulations notification when last week finished on budget
+  useEffect(() => {
+    if (!store.household || store.isDemoMode || !lastWeekCongrats.qualified) return;
+    if (!shouldNotifyWeeklyCongrats(store.household.id, lastWeekCongrats.weekStartISO)) return;
+    markWeeklyCongratsNotified(store.household.id, lastWeekCongrats.weekStartISO);
+    void notifyHouseholdChange(
+      "Weekly budget goal achieved",
+      `Well done! ${store.household.name} stayed within budget last week (${formatTZS(lastWeekCongrats.spentAmount)} of ${formatTZS(lastWeekCongrats.targetAmount)}, saved ${formatTZS(lastWeekCongrats.savedAmount)}).`,
+    );
+  }, [lastWeekCongrats, store.household, store.isDemoMode]);
 
   const handleSelectTab = (tab: ActiveTab) => {
     setActiveTab(tab);
@@ -706,6 +768,41 @@ export function App() {
                     className="shrink-0 rounded-lg bg-[#1C1C1E] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#2C2C30] transition-colors cursor-pointer"
                   >
                     Mark seen
+                  </button>
+                </div>
+              )}
+
+              {/* Weekly On-Budget Congratulations Banner (once per completed on-budget week) */}
+              {showWeeklyCongratsCard && (
+                <div className="flex items-start justify-between gap-3 rounded-2xl border border-emerald-700/20 bg-emerald-50/85 px-3.5 py-3">
+                  <div className="flex items-start gap-2.5 min-w-0">
+                    <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-emerald-700 text-white">
+                      <Award className="h-4 w-4 text-[#E4CCA0]" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold text-emerald-900">
+                        Well done · On budget last week
+                      </div>
+                      <p className="mt-0.5 text-[11px] leading-snug text-emerald-900/85 tabular-nums">
+                        {store.household.name} spent {formatTZS(lastWeekCongrats.spentAmount)} of{" "}
+                        {formatTZS(lastWeekCongrats.targetAmount)} ({lastWeekCongrats.rangeLabel})
+                        {lastWeekCongrats.savedAmount > 0
+                          ? ` — saved ${formatTZS(lastWeekCongrats.savedAmount)}`
+                          : " — right on target"}
+                        .
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Dismiss weekly congratulations"
+                    onClick={() => {
+                      dismissWeeklyCongrats(store.household!.id, lastWeekCongrats.weekStartISO);
+                      setDismissedCongratsWeek(lastWeekCongrats.weekStartISO);
+                    }}
+                    className="rounded-lg p-1 text-emerald-800/70 hover:bg-emerald-100 hover:text-emerald-900 cursor-pointer"
+                  >
+                    <X className="h-3.5 w-3.5" />
                   </button>
                 </div>
               )}
