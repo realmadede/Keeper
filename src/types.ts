@@ -29,6 +29,12 @@ export interface OverspendRecoveryPlan {
   createdAt: string;
 }
 
+export interface WeeklySurplusPlan {
+  weekStartISO: string;
+  appliedAmount: number;
+  createdAt: string;
+}
+
 export interface Household {
   id: string;
   name: string;
@@ -39,6 +45,7 @@ export interface Household {
   created_by: string;
   created_at: string;
   overspend_plan?: OverspendRecoveryPlan | null;
+  surplus_plan?: WeeklySurplusPlan | null;
 }
 
 export interface HouseholdMember {

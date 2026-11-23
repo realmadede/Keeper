@@ -17,7 +17,12 @@ import {
   type OfflineHouseholdSnapshot,
   type OfflineQueueItem,
 } from "../lib/offlineQueue";
-import { loadLocalOverspendPlan, saveLocalOverspendPlan } from "../lib/overspendPlan";
+import {
+  loadLocalOverspendPlan,
+  loadLocalSurplusPlan,
+  saveLocalOverspendPlan,
+  saveLocalSurplusPlan,
+} from "../lib/overspendPlan";
 import {
   createRateLimiter,
   generateClientInviteCode,
@@ -36,6 +41,7 @@ import type {
   Transaction,
   TransactionCategory,
   TransactionType,
+  WeeklySurplusPlan,
 } from "../types";
 
 const authRateLimiter = createRateLimiter(5, 5 * 60 * 1000);
@@ -133,6 +139,7 @@ export interface KeeperStore {
   deleteBill: (id: string) => Promise<void>;
   updateBudget: (weeklyBudget: number, memberShare: number) => Promise<void>;
   updateOverspendPlan: (plan: OverspendRecoveryPlan | null) => Promise<void>;
+  updateSurplusPlan: (plan: WeeklySurplusPlan | null) => Promise<void>;
   submitAppFeedback: (input: {
     kind: "rating" | "bug" | "feature";
     rating?: number | null;
@@ -399,12 +406,16 @@ export function useKeeperStore(): KeeperStore {
         const resolvedOverspendPlan =
           (h.overspend_plan as OverspendRecoveryPlan | null | undefined) ??
           loadLocalOverspendPlan(String(h.id));
+        const resolvedSurplusPlan =
+          (h.surplus_plan as WeeklySurplusPlan | null | undefined) ??
+          loadLocalSurplusPlan(String(h.id));
         setHousehold({
           ...h,
           currency: "TZS",
           weekly_budget_target: Number(h.weekly_budget_target),
           member_weekly_share: Number(h.member_weekly_share),
           overspend_plan: resolvedOverspendPlan,
+          surplus_plan: resolvedSurplusPlan,
         });
 
         const profileMap = new Map<string, Profile>();
@@ -707,6 +718,7 @@ export function useKeeperStore(): KeeperStore {
             weekly_budget_target: Number(h.weekly_budget_target),
             member_weekly_share: Number(h.member_weekly_share),
             overspend_plan: resolvedOverspendPlan,
+            surplus_plan: resolvedSurplusPlan,
           },
           members: Array.from(profileMap.values()).map((p) => {
             const rawMember = (membersRes.data ?? []).find(
@@ -2382,6 +2394,27 @@ export function useKeeperStore(): KeeperStore {
     [household, isDemoMode],
   );
 
+  const updateSurplusPlan = useCallback(
+    async (plan: WeeklySurplusPlan | null) => {
+      setError(null);
+      if (!household) return;
+
+      saveLocalSurplusPlan(household.id, plan);
+      setHousehold((prev) => (prev ? { ...prev, surplus_plan: plan } : prev));
+
+      if (isDemoMode || !supabase) return;
+      try {
+        await supabase
+          .from("households")
+          .update({ surplus_plan: plan })
+          .eq("id", household.id);
+      } catch {
+        // Optional DB column may not exist yet; localStorage persistence already succeeded
+      }
+    },
+    [household, isDemoMode],
+  );
+
   const submitAppFeedback = useCallback(
     async (input: {
       kind: "rating" | "bug" | "feature";
@@ -2559,6 +2592,7 @@ export function useKeeperStore(): KeeperStore {
     deleteBill,
     updateBudget,
     updateOverspendPlan,
+    updateSurplusPlan,
     submitAppFeedback,
     leaveHousehold,
   };
