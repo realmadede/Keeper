@@ -15,6 +15,7 @@ import {
   type OfflineHouseholdSnapshot,
   type OfflineQueueItem,
 } from "../lib/offlineQueue";
+import { loadLocalOverspendPlan, saveLocalOverspendPlan } from "../lib/overspendPlan";
 import {
   createRateLimiter,
   generateClientInviteCode,
@@ -27,6 +28,7 @@ import type {
   Household,
   HouseholdMember,
   HouseholdNeed,
+  OverspendRecoveryPlan,
   Profile,
   RecurringBill,
   Transaction,
@@ -129,6 +131,7 @@ export interface KeeperStore {
   ) => Promise<void>;
   deleteBill: (id: string) => Promise<void>;
   updateBudget: (weeklyBudget: number, memberShare: number) => Promise<void>;
+  updateOverspendPlan: (plan: OverspendRecoveryPlan | null) => Promise<void>;
   submitAppFeedback: (input: {
     kind: "rating" | "bug" | "feature";
     rating?: number | null;
@@ -392,11 +395,15 @@ export function useKeeperStore(): KeeperStore {
         }
 
         const h = householdRes.data;
+        const resolvedOverspendPlan =
+          (h.overspend_plan as OverspendRecoveryPlan | null | undefined) ??
+          loadLocalOverspendPlan(String(h.id));
         setHousehold({
           ...h,
           currency: "TZS",
           weekly_budget_target: Number(h.weekly_budget_target),
           member_weekly_share: Number(h.member_weekly_share),
+          overspend_plan: resolvedOverspendPlan,
         });
 
         const profileMap = new Map<string, Profile>();
@@ -698,6 +705,7 @@ export function useKeeperStore(): KeeperStore {
             currency: "TZS",
             weekly_budget_target: Number(h.weekly_budget_target),
             member_weekly_share: Number(h.member_weekly_share),
+            overspend_plan: resolvedOverspendPlan,
           },
           members: Array.from(profileMap.values()).map((p) => {
             const rawMember = (membersRes.data ?? []).find(
@@ -2359,6 +2367,27 @@ export function useKeeperStore(): KeeperStore {
     [fetchHouseholdBundle, household, isDemoMode, profile],
   );
 
+  const updateOverspendPlan = useCallback(
+    async (plan: OverspendRecoveryPlan | null) => {
+      setError(null);
+      if (!household) return;
+
+      saveLocalOverspendPlan(household.id, plan);
+      setHousehold((prev) => (prev ? { ...prev, overspend_plan: plan } : prev));
+
+      if (isDemoMode || !supabase) return;
+      try {
+        await supabase
+          .from("households")
+          .update({ overspend_plan: plan })
+          .eq("id", household.id);
+      } catch {
+        // Optional DB column may not exist yet; localStorage persistence already succeeded
+      }
+    },
+    [household, isDemoMode],
+  );
+
   const submitAppFeedback = useCallback(
     async (input: {
       kind: "rating" | "bug" | "feature";
@@ -2536,6 +2565,7 @@ export function useKeeperStore(): KeeperStore {
     settlePairwiseDebts,
     deleteBill,
     updateBudget,
+    updateOverspendPlan,
     submitAppFeedback,
     leaveHousehold,
   };

@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import {
+  AlertTriangle,
   Calendar,
   CalendarClock,
   Check,
@@ -8,6 +9,7 @@ import {
   Share2,
   ShoppingBasket,
   Trash2,
+  X,
 } from "lucide-react";
 import {
   getBillDueStatus,
@@ -17,6 +19,7 @@ import {
 } from "../lib/analytics";
 import { buildWeeklyWhatsAppSummary } from "../lib/export";
 import { formatTZS, getInitials, toISODate } from "../lib/format";
+import { addDaysISO, evaluateOverspendPlan } from "../lib/overspendPlan";
 import {
   EXPENSE_CATEGORIES,
   type BillPaymentRecord,
@@ -25,6 +28,8 @@ import {
   type Household,
   type HouseholdMember,
   type HouseholdNeed,
+  type OverspendRecoveryMode,
+  type OverspendRecoveryPlan,
   type RecurringBill,
 } from "../types";
 import { CategoryIcon } from "./CategoryIcon";
@@ -46,6 +51,7 @@ interface BudgetViewProps {
   bills: RecurringBill[];
   billPayments: BillPaymentRecord[];
   onUpdateBudget: (weeklyBudget: number, memberShare: number) => Promise<void>;
+  onUpdateOverspendPlan?: (plan: OverspendRecoveryPlan | null) => Promise<void>;
   onAddNeed: (
     title: string,
     category: ExpenseCategoryId,
@@ -103,6 +109,7 @@ export function BudgetView({
   bills,
   billPayments,
   onUpdateBudget,
+  onUpdateOverspendPlan,
   onAddNeed,
   onMarkNeedBought,
   onToggleNeedMemberSettled,
@@ -160,6 +167,12 @@ export function BudgetView({
   const [editingPoolAmount, setEditingPoolAmount] = useState("");
   const [savingPaidBillId, setSavingPaidBillId] = useState<string | null>(null);
 
+  // Optional weekly overspend recovery chooser (off by default)
+  const [showOverspendChooser, setShowOverspendChooser] = useState(false);
+  const [recoveryMode, setRecoveryMode] = useState<OverspendRecoveryMode>("reduce_budget");
+  const [recoveryWeeks, setRecoveryWeeks] = useState<1 | 2 | 4>(2);
+  const [savingRecoveryPlan, setSavingRecoveryPlan] = useState(false);
+
   const memberCount = Math.max(1, members.length);
   const availablePoolCash = Math.max(0, summary.allTimeBalance);
 
@@ -168,11 +181,56 @@ export function BudgetView({
       ? household.weekly_budget_target * 4
       : household.weekly_budget_target;
 
+  const overspendEval =
+    weekWindow.kind === "week"
+      ? evaluateOverspendPlan(household.overspend_plan, weekWindow.startISO, memberCount)
+      : null;
+  const activeBudgetDeduction =
+    overspendEval?.status === "active" ? overspendEval.budgetDeduction : 0;
+  const activeMemberTopUp =
+    overspendEval?.status === "active" ? overspendEval.memberTopUp : 0;
+  const effectiveTarget = Math.max(0, periodTarget - activeBudgetDeduction);
+
   const poolPct =
     periodTarget > 0 ? Math.min(100, Math.round((summary.totalContributed / periodTarget) * 100)) : 0;
 
-  const spentPct =
-    periodTarget > 0 ? Math.min(100, Math.round((summary.totalSpent / periodTarget) * 100)) : 0;
+  const rawSpentPct =
+    effectiveTarget > 0 ? Math.round((summary.totalSpent / effectiveTarget) * 100) : 0;
+  const spentPct = Math.min(100, rawSpentPct);
+  const overspendAmount =
+    effectiveTarget > 0 ? Math.max(0, summary.totalSpent - effectiveTarget) : 0;
+  const previewPerWeek = overspendAmount > 0 ? Math.ceil(overspendAmount / recoveryWeeks) : 0;
+  const previewPerMember =
+    previewPerWeek > 0 ? Math.ceil(previewPerWeek / memberCount) : 0;
+
+  const handleSaveOverspendPlan = async () => {
+    if (!onUpdateOverspendPlan || overspendAmount <= 0) return;
+    setSavingRecoveryPlan(true);
+    try {
+      await onUpdateOverspendPlan({
+        sourceWeekStartISO: weekWindow.startISO,
+        startWeekISO: addDaysISO(weekWindow.startISO, 7),
+        totalAmount: Math.round(overspendAmount),
+        weeks: recoveryWeeks,
+        mode: recoveryMode,
+        createdAt: new Date().toISOString(),
+      });
+      setShowOverspendChooser(false);
+    } finally {
+      setSavingRecoveryPlan(false);
+    }
+  };
+
+  const handleCancelOverspendPlan = async () => {
+    if (!onUpdateOverspendPlan) return;
+    setSavingRecoveryPlan(true);
+    try {
+      await onUpdateOverspendPlan(null);
+      setShowOverspendChooser(false);
+    } finally {
+      setSavingRecoveryPlan(false);
+    }
+  };
 
   const pendingNeeds = needs.filter((n) => !n.is_bought);
   const boughtNeeds = needs.filter((n) => n.is_bought);
@@ -407,20 +465,223 @@ export function BudgetView({
               <div>
                 <div className="flex justify-between text-xs mb-1">
                   <span className="inline-flex items-center gap-1.5 text-[#52525B]">
-                    <span className="h-1.5 w-1.5 rounded-full bg-[#1C1C1E]" />
-                    <span>Spent vs. target</span>
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full ${
+                        overspendAmount > 0 ? "bg-rose-600" : "bg-[#1C1C1E]"
+                      }`}
+                    />
+                    <span>
+                      {activeBudgetDeduction > 0
+                        ? `Spent vs. adjusted target (${formatTZS(effectiveTarget)})`
+                        : "Spent vs. target"}
+                    </span>
                   </span>
-                  <span className="font-semibold text-[#1C1C1E] tabular-nums">
-                    {formatTZS(summary.totalSpent)} ({spentPct}%)
+                  <span
+                    className={`font-semibold tabular-nums ${
+                      overspendAmount > 0 ? "text-rose-700" : "text-[#1C1C1E]"
+                    }`}
+                  >
+                    {formatTZS(summary.totalSpent)} ({rawSpentPct}%)
                   </span>
                 </div>
                 <div className="h-1.5 w-full rounded-full bg-stone-100 overflow-hidden">
                   <div
-                    className="h-full rounded-full bg-[#1C1C1E] transition-[width] duration-300"
+                    className={`h-full rounded-full transition-[width] duration-300 ${
+                      overspendAmount > 0 ? "bg-rose-600" : "bg-[#1C1C1E]"
+                    }`}
                     style={{ width: `${spentPct}%` }}
                   />
                 </div>
               </div>
+
+              {/* Active or Scheduled Optional Overspend Recovery Banner */}
+              {overspendEval &&
+                (overspendEval.status === "active" || overspendEval.status === "scheduled") &&
+                overspendEval.plan && (
+                  <div className="rounded-xl border border-amber-700/20 bg-amber-50/75 px-3 py-2.5 text-xs space-y-1.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="font-semibold text-amber-900">
+                          {overspendEval.status === "active"
+                            ? `Overspend recovery · Week ${overspendEval.currentWeekNumber} of ${overspendEval.totalWeeks}`
+                            : `Overspend recovery scheduled (${overspendEval.totalWeeks} ${
+                                overspendEval.totalWeeks === 1 ? "wk" : "wks"
+                              })`}
+                        </div>
+                        <div className="text-[11px] text-amber-900/80 mt-0.5 tabular-nums">
+                          {overspendEval.plan.mode === "reduce_budget"
+                            ? `Trimming weekly spending limit by ${formatTZS(
+                                overspendEval.perWeekAmount,
+                              )}/wk`
+                            : `Adding +${formatTZS(
+                                Math.ceil(overspendEval.perWeekAmount / memberCount),
+                              )}/member top-up per week`}
+                        </div>
+                      </div>
+                      {onUpdateOverspendPlan && (
+                        <button
+                          type="button"
+                          disabled={savingRecoveryPlan}
+                          onClick={() => void handleCancelOverspendPlan()}
+                          className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-amber-800/20 bg-white px-2 py-1 text-[11px] font-medium text-amber-900 hover:bg-amber-100/60 cursor-pointer"
+                        >
+                          <X className="h-3 w-3" />
+                          <span>Cancel</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+              {/* Weekly Overspend Alert + Optional Coming-Weeks Recovery Chooser */}
+              {overspendAmount > 0 && weekWindow.kind === "week" && (
+                <div className="rounded-xl border border-rose-700/20 bg-rose-50/80 p-3 space-y-2.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start gap-2 min-w-0">
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-700" />
+                      <div className="min-w-0">
+                        <div className="text-xs font-semibold text-rose-800 tabular-nums">
+                          Overspent by {formatTZS(overspendAmount)}
+                        </div>
+                        <p className="text-[11px] leading-snug text-rose-800/85 mt-0.5">
+                          Expenses exceeded your {formatTZS(effectiveTarget)} weekly budget. Next
+                          week resets to normal unless you opt in to recover it.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {onUpdateOverspendPlan && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setShowOverspendChooser((v) => !v)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-rose-700/25 bg-white px-2.5 py-1.5 text-[11px] font-medium text-rose-800 hover:bg-rose-50 cursor-pointer"
+                      >
+                        {showOverspendChooser
+                          ? "Hide recovery options"
+                          : "Cover in coming weeks (optional)"}
+                      </button>
+
+                      {showOverspendChooser && (
+                        <div className="rounded-xl border border-stone-900/[0.08] bg-white p-3 space-y-3">
+                          <div className="space-y-1.5">
+                            <div className="text-[11px] font-semibold text-[#1C1C1E]">
+                              1. Choose how to cover {formatTZS(overspendAmount)}
+                            </div>
+                            <div className="grid grid-cols-1 gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setRecoveryMode("reduce_budget")}
+                                className={`rounded-xl border p-2.5 text-left transition-colors cursor-pointer ${
+                                  recoveryMode === "reduce_budget"
+                                    ? "border-[#1C1C1E] bg-[#F6F5F2]"
+                                    : "border-stone-900/10 bg-white hover:bg-stone-50"
+                                }`}
+                              >
+                                <div className="text-xs font-semibold text-[#1C1C1E]">
+                                  Trim upcoming spending limit
+                                </div>
+                                <div className="text-[11px] text-[#52525B] mt-0.5">
+                                  Lower future weekly budget targets so the house spends less to
+                                  balance out
+                                </div>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setRecoveryMode("topup_share")}
+                                className={`rounded-xl border p-2.5 text-left transition-colors cursor-pointer ${
+                                  recoveryMode === "topup_share"
+                                    ? "border-[#1C1C1E] bg-[#F6F5F2]"
+                                    : "border-stone-900/10 bg-white hover:bg-stone-50"
+                                }`}
+                              >
+                                <div className="text-xs font-semibold text-[#1C1C1E]">
+                                  Add roommate contribution top-up
+                                </div>
+                                <div className="text-[11px] text-[#52525B] mt-0.5">
+                                  Spread the overspend equally as a small extra share across{" "}
+                                  {memberCount} {memberCount === 1 ? "member" : "members"}
+                                </div>
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <div className="text-[11px] font-semibold text-[#1C1C1E]">
+                              2. Spread across coming weeks
+                            </div>
+                            <div className="grid grid-cols-3 gap-1.5">
+                              {([1, 2, 4] as const).map((wk) => (
+                                <button
+                                  key={wk}
+                                  type="button"
+                                  onClick={() => setRecoveryWeeks(wk)}
+                                  className={`rounded-lg border py-1.5 text-xs font-medium transition-colors cursor-pointer ${
+                                    recoveryWeeks === wk
+                                      ? "border-[#1C1C1E] bg-[#1C1C1E] text-white"
+                                      : "border-stone-900/10 bg-[#F6F5F2] text-[#1C1C1E]"
+                                  }`}
+                                >
+                                  {wk} {wk === 1 ? "week" : "weeks"}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="rounded-lg bg-[#F6F5F2] px-2.5 py-2 text-[11px] text-[#52525B] tabular-nums">
+                            {recoveryMode === "reduce_budget" ? (
+                              <>
+                                Starting next week for{" "}
+                                <strong className="text-[#1C1C1E]">
+                                  {recoveryWeeks} {recoveryWeeks === 1 ? "week" : "weeks"}
+                                </strong>
+                                : weekly budget drops to{" "}
+                                <strong className="text-[#1C1C1E]">
+                                  {formatTZS(
+                                    Math.max(0, household.weekly_budget_target - previewPerWeek),
+                                  )}
+                                </strong>{" "}
+                                (-{formatTZS(previewPerWeek)}/wk).
+                              </>
+                            ) : (
+                              <>
+                                Starting next week for{" "}
+                                <strong className="text-[#1C1C1E]">
+                                  {recoveryWeeks} {recoveryWeeks === 1 ? "week" : "weeks"}
+                                </strong>
+                                : each roommate adds{" "}
+                                <strong className="text-[#1C1C1E]">
+                                  +{formatTZS(previewPerMember)}/wk
+                                </strong>{" "}
+                                ({formatTZS(previewPerWeek)}/wk total).
+                              </>
+                            )}
+                          </div>
+
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setShowOverspendChooser(false)}
+                              className="rounded-lg border border-stone-900/10 bg-white px-3 py-1.5 text-xs font-medium text-[#52525B] cursor-pointer"
+                            >
+                              Not now
+                            </button>
+                            <button
+                              type="button"
+                              disabled={savingRecoveryPlan}
+                              onClick={() => void handleSaveOverspendPlan()}
+                              className="rounded-lg bg-[#1C1C1E] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#2C2C30] disabled:opacity-50 cursor-pointer"
+                            >
+                              {savingRecoveryPlan ? "Saving..." : "Apply recovery plan"}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
 
               <div className="flex items-center justify-between rounded-xl bg-[#F6F5F2] px-3 py-2.5 text-xs">
                 <span className="text-[#52525B]">Cash on hand (carry-over)</span>
@@ -453,12 +714,13 @@ export function BudgetView({
 
           {/* Member Accountability Breakdown */}
           <section className="rounded-2xl border border-stone-900/[0.08] bg-white p-4">
-            <div className="flex items-baseline justify-between mb-2">
-              <h2 className="text-base font-semibold text-[#1C1C1E]">Member contributions</h2>
-              <span className="font-mono text-xs text-[#8E8E93] tabular-nums">
-                Share: {formatTZS(household.member_weekly_share)}/wk
-              </span>
-            </div>
+              <div className="flex items-baseline justify-between mb-2">
+                <h2 className="text-base font-semibold text-[#1C1C1E]">Member contributions</h2>
+                <span className="font-mono text-xs text-[#8E8E93] tabular-nums">
+                  Share: {formatTZS(household.member_weekly_share)}/wk
+                  {activeMemberTopUp > 0 ? ` (+${formatTZS(activeMemberTopUp)})` : ""}
+                </span>
+              </div>
 
             <div className="divide-y divide-stone-900/[0.06]">
               {summary.memberStatuses.map((status) => {
@@ -483,7 +745,12 @@ export function BudgetView({
                           </div>
                           <div className="text-xs text-[#8E8E93] tabular-nums">
                             {formatTZS(status.contributedThisWeek)} /{" "}
-                            {formatTZS(status.expectedShare)}
+                            {formatTZS(status.expectedShare + activeMemberTopUp)}
+                            {activeMemberTopUp > 0 && (
+                              <span className="ml-1.5 text-amber-800">
+                                (+{formatTZS(activeMemberTopUp)} recovery)
+                              </span>
+                            )}
                             {status.carryOverCredit > 0 && (
                               <span className="ml-1.5 text-[#8F703F]">
                                 (+{formatTZS(status.carryOverCredit)} carry-over)
