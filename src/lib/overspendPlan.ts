@@ -1,9 +1,19 @@
-import type { OverspendRecoveryPlan } from "../types";
+import type { OverspendRecoveryPlan, WeeklySurplusPlan } from "../types";
 
 const PLAN_KEY_PREFIX = "keeper_overspend_plan_v1:";
+const SURPLUS_PLAN_KEY_PREFIX = "keeper_surplus_plan_v1:";
 const NOTIF_KEY_PREFIX = "keeper_overspend_notified_v1:";
 const CONGRATS_DISMISSED_PREFIX = "keeper_budget_congrats_dismissed_v1:";
 const CONGRATS_NOTIFIED_PREFIX = "keeper_budget_congrats_notified_v1:";
+
+export interface WeeklySurplusEvaluation {
+  active: boolean;
+  plan: WeeklySurplusPlan | null;
+  appliedAmount: number;
+  remainingPoolNeeded: number;
+  adjustedMemberShare: number;
+  savedPerMember: number;
+}
 
 export interface WeeklyBudgetSuccess {
   qualified: boolean;
@@ -204,6 +214,81 @@ export function shouldNotifyWeeklyCongrats(householdId: string, weekStartISO: st
 export function markWeeklyCongratsNotified(householdId: string, weekStartISO: string): void {
   try {
     localStorage.setItem(`${CONGRATS_NOTIFIED_PREFIX}${householdId}:${weekStartISO}`, "1");
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+export function evaluateSurplusPlan(
+  plan: WeeklySurplusPlan | null | undefined,
+  currentWeekStartISO: string,
+  weeklyBudgetTarget: number,
+  memberWeeklyShare: number,
+  memberCount: number,
+): WeeklySurplusEvaluation {
+  const safeTarget = Math.max(0, Math.round(weeklyBudgetTarget));
+  const safeShare = Math.max(0, Math.round(memberWeeklyShare));
+  const safeMembers = Math.max(1, memberCount);
+
+  if (
+    !plan ||
+    plan.weekStartISO !== currentWeekStartISO ||
+    !Number.isFinite(plan.appliedAmount) ||
+    plan.appliedAmount <= 0
+  ) {
+    return {
+      active: false,
+      plan: null,
+      appliedAmount: 0,
+      remainingPoolNeeded: safeTarget,
+      adjustedMemberShare: safeShare,
+      savedPerMember: 0,
+    };
+  }
+
+  const appliedAmount = Math.min(Math.round(plan.appliedAmount), safeTarget);
+  const remainingPoolNeeded = Math.max(0, safeTarget - appliedAmount);
+  const adjustedMemberShare =
+    remainingPoolNeeded > 0 ? Math.ceil(remainingPoolNeeded / safeMembers) : 0;
+  const savedPerMember = Math.max(0, safeShare - adjustedMemberShare);
+
+  return {
+    active: true,
+    plan,
+    appliedAmount,
+    remainingPoolNeeded,
+    adjustedMemberShare,
+    savedPerMember,
+  };
+}
+
+export function loadLocalSurplusPlan(householdId: string): WeeklySurplusPlan | null {
+  try {
+    const raw = localStorage.getItem(`${SURPLUS_PLAN_KEY_PREFIX}${householdId}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<WeeklySurplusPlan>;
+    if (
+      !parsed ||
+      typeof parsed.weekStartISO !== "string" ||
+      typeof parsed.appliedAmount !== "number" ||
+      parsed.appliedAmount <= 0
+    ) {
+      return null;
+    }
+    return parsed as WeeklySurplusPlan;
+  } catch {
+    return null;
+  }
+}
+
+export function saveLocalSurplusPlan(
+  householdId: string,
+  plan: WeeklySurplusPlan | null,
+): void {
+  try {
+    const key = `${SURPLUS_PLAN_KEY_PREFIX}${householdId}`;
+    if (!plan) localStorage.removeItem(key);
+    else localStorage.setItem(key, JSON.stringify(plan));
   } catch {
     // Ignore storage errors
   }

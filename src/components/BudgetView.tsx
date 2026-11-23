@@ -19,7 +19,7 @@ import {
 } from "../lib/analytics";
 import { buildWeeklyWhatsAppSummary } from "../lib/export";
 import { formatTZS, getInitials, toISODate } from "../lib/format";
-import { addDaysISO, evaluateOverspendPlan } from "../lib/overspendPlan";
+import { addDaysISO, evaluateOverspendPlan, evaluateSurplusPlan } from "../lib/overspendPlan";
 import {
   EXPENSE_CATEGORIES,
   type BillPaymentRecord,
@@ -31,6 +31,7 @@ import {
   type OverspendRecoveryMode,
   type OverspendRecoveryPlan,
   type RecurringBill,
+  type WeeklySurplusPlan,
 } from "../types";
 import { CategoryIcon } from "./CategoryIcon";
 import { IosDatePicker } from "./IosDatePicker";
@@ -52,6 +53,7 @@ interface BudgetViewProps {
   billPayments: BillPaymentRecord[];
   onUpdateBudget: (weeklyBudget: number, memberShare: number) => Promise<void>;
   onUpdateOverspendPlan?: (plan: OverspendRecoveryPlan | null) => Promise<void>;
+  onUpdateSurplusPlan?: (plan: WeeklySurplusPlan | null) => Promise<void>;
   onAddNeed: (
     title: string,
     category: ExpenseCategoryId,
@@ -110,6 +112,7 @@ export function BudgetView({
   billPayments,
   onUpdateBudget,
   onUpdateOverspendPlan,
+  onUpdateSurplusPlan,
   onAddNeed,
   onMarkNeedBought,
   onToggleNeedMemberSettled,
@@ -173,6 +176,11 @@ export function BudgetView({
   const [recoveryWeeks, setRecoveryWeeks] = useState<1 | 2 | 4>(2);
   const [savingRecoveryPlan, setSavingRecoveryPlan] = useState(false);
 
+  // Optional leftover surplus chooser (keep in buffer by default; opt-in to lower shares)
+  const [showSurplusChooser, setShowSurplusChooser] = useState(false);
+  const [surplusAmountInput, setSurplusAmountInput] = useState("");
+  const [savingSurplusPlan, setSavingSurplusPlan] = useState(false);
+
   const memberCount = Math.max(1, members.length);
   const availablePoolCash = Math.max(0, summary.allTimeBalance);
 
@@ -191,8 +199,70 @@ export function BudgetView({
     overspendEval?.status === "active" ? overspendEval.memberTopUp : 0;
   const effectiveTarget = Math.max(0, periodTarget - activeBudgetDeduction);
 
+  const surplusEval =
+    weekWindow.kind === "week"
+      ? evaluateSurplusPlan(
+          household.surplus_plan,
+          weekWindow.startISO,
+          household.weekly_budget_target,
+          household.member_weekly_share,
+          memberCount,
+        )
+      : null;
+  const maxSurplusApplicable = Math.min(availablePoolCash, household.weekly_budget_target);
+  const parsedSurplusInput = Number(surplusAmountInput.replace(/,/g, "").trim());
+  const previewSurplusApplied = Math.max(
+    0,
+    Math.min(
+      maxSurplusApplicable,
+      Number.isFinite(parsedSurplusInput) && parsedSurplusInput > 0
+        ? Math.round(parsedSurplusInput)
+        : maxSurplusApplicable,
+    ),
+  );
+  const previewSurplusRemaining = Math.max(0, household.weekly_budget_target - previewSurplusApplied);
+  const previewSurplusMemberShare =
+    previewSurplusRemaining > 0 ? Math.ceil(previewSurplusRemaining / memberCount) : 0;
+
+  const fundingTarget =
+    surplusEval?.active ? surplusEval.remainingPoolNeeded : periodTarget;
   const poolPct =
-    periodTarget > 0 ? Math.min(100, Math.round((summary.totalContributed / periodTarget) * 100)) : 0;
+    fundingTarget > 0
+      ? Math.min(100, Math.round((summary.totalContributed / fundingTarget) * 100))
+      : surplusEval?.active
+        ? 100
+        : 0;
+
+  const handleOpenSurplusChooser = () => {
+    setSurplusAmountInput(String(maxSurplusApplicable));
+    setShowSurplusChooser((v) => !v);
+  };
+
+  const handleSaveSurplusPlan = async () => {
+    if (!onUpdateSurplusPlan || previewSurplusApplied <= 0) return;
+    setSavingSurplusPlan(true);
+    try {
+      await onUpdateSurplusPlan({
+        weekStartISO: weekWindow.startISO,
+        appliedAmount: previewSurplusApplied,
+        createdAt: new Date().toISOString(),
+      });
+      setShowSurplusChooser(false);
+    } finally {
+      setSavingSurplusPlan(false);
+    }
+  };
+
+  const handleCancelSurplusPlan = async () => {
+    if (!onUpdateSurplusPlan) return;
+    setSavingSurplusPlan(true);
+    try {
+      await onUpdateSurplusPlan(null);
+      setShowSurplusChooser(false);
+    } finally {
+      setSavingSurplusPlan(false);
+    }
+  };
 
   const rawSpentPct =
     effectiveTarget > 0 ? Math.round((summary.totalSpent / effectiveTarget) * 100) : 0;
@@ -683,15 +753,155 @@ export function BudgetView({
                 </div>
               )}
 
-              <div className="flex items-center justify-between rounded-xl bg-[#F6F5F2] px-3 py-2.5 text-xs">
-                <span className="text-[#52525B]">Cash on hand (carry-over)</span>
-                <span
-                  className={`font-semibold tabular-nums ${
-                    summary.allTimeBalance >= 0 ? "text-[#1C1C1E]" : "text-rose-700"
-                  }`}
-                >
-                  {formatTZS(summary.allTimeBalance)}
-                </span>
+              <div className="rounded-xl bg-[#F6F5F2] px-3 py-2.5 space-y-2.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-[#52525B]">Cash on hand (carry-over)</span>
+                  <span
+                    className={`font-semibold tabular-nums ${
+                      summary.allTimeBalance >= 0 ? "text-[#1C1C1E]" : "text-rose-700"
+                    }`}
+                  >
+                    {formatTZS(summary.allTimeBalance)}
+                  </span>
+                </div>
+
+                {/* Active Leftover Surplus Reduction Banner */}
+                {weekWindow.kind === "week" && surplusEval?.active && (
+                  <div className="rounded-xl border border-emerald-700/20 bg-emerald-50/80 p-2.5 text-xs space-y-1.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="font-semibold text-emerald-900 tabular-nums">
+                          {formatTZS(surplusEval.appliedAmount)} leftover applied to this week
+                        </div>
+                        <div className="text-[11px] text-emerald-900/85 mt-0.5 tabular-nums">
+                          Remaining needed: {formatTZS(surplusEval.remainingPoolNeeded)} &rarr;{" "}
+                          <strong>{formatTZS(surplusEval.adjustedMemberShare)}/member</strong>
+                          {surplusEval.savedPerMember > 0
+                            ? ` (saves ${formatTZS(surplusEval.savedPerMember)} each)`
+                            : ""}
+                        </div>
+                      </div>
+                      {onUpdateSurplusPlan && (
+                        <button
+                          type="button"
+                          disabled={savingSurplusPlan}
+                          onClick={() => void handleCancelSurplusPlan()}
+                          className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-emerald-800/20 bg-white px-2 py-1 text-[11px] font-medium text-emerald-900 hover:bg-emerald-100/60 cursor-pointer"
+                        >
+                          <X className="h-3 w-3" />
+                          <span>Keep in buffer</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Opt-in Leftover Chooser (keep in buffer by default) */}
+                {weekWindow.kind === "week" &&
+                  !surplusEval?.active &&
+                  maxSurplusApplicable > 0 &&
+                  onUpdateSurplusPlan && (
+                    <div className="space-y-2">
+                      <button
+                        type="button"
+                        onClick={handleOpenSurplusChooser}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-stone-900/10 bg-white px-2.5 py-1.5 text-[11px] font-medium text-[#1C1C1E] hover:bg-stone-50 cursor-pointer"
+                      >
+                        {showSurplusChooser
+                          ? "Keep leftover in buffer"
+                          : "Use leftover to lower this week's shares (optional)"}
+                      </button>
+
+                      {showSurplusChooser && (
+                        <div className="rounded-xl border border-stone-900/[0.08] bg-white p-3 space-y-2.5">
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between">
+                              <label className="text-[11px] font-semibold text-[#1C1C1E]">
+                                Leftover amount to apply (TZS)
+                              </label>
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setSurplusAmountInput(String(Math.round(maxSurplusApplicable / 2)))
+                                  }
+                                  className="rounded-md bg-[#F6F5F2] px-2 py-0.5 text-[10px] font-medium text-[#52525B] hover:text-[#1C1C1E] cursor-pointer"
+                                >
+                                  Half
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setSurplusAmountInput(String(maxSurplusApplicable))}
+                                  className="rounded-md bg-[#F6F5F2] px-2 py-0.5 text-[10px] font-medium text-[#52525B] hover:text-[#1C1C1E] cursor-pointer"
+                                >
+                                  Full ({formatTZS(maxSurplusApplicable)})
+                                </button>
+                              </div>
+                            </div>
+                            <input
+                              type="number"
+                              inputMode="numeric"
+                              min={0}
+                              max={maxSurplusApplicable}
+                              value={surplusAmountInput}
+                              onChange={(e) => setSurplusAmountInput(e.target.value)}
+                              className="w-full rounded-lg border border-stone-900/15 bg-[#F6F5F2] px-3 py-1.5 text-xs font-medium text-[#1C1C1E] tabular-nums focus:outline-none focus:ring-2 focus:ring-[#1C1C1E]/20"
+                            />
+                          </div>
+
+                          <div className="rounded-lg bg-[#F6F5F2] px-2.5 py-2 text-[11px] text-[#52525B] space-y-1 tabular-nums">
+                            <div className="flex justify-between">
+                              <span>Weekly budget target</span>
+                              <span className="font-medium text-[#1C1C1E]">
+                                {formatTZS(household.weekly_budget_target)}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Leftover cash applied</span>
+                              <span className="font-medium text-emerald-700">
+                                -{formatTZS(previewSurplusApplied)}
+                              </span>
+                            </div>
+                            <div className="flex justify-between border-t border-stone-900/[0.08] pt-1">
+                              <span>Remaining needed</span>
+                              <span className="font-semibold text-[#1C1C1E]">
+                                {formatTZS(previewSurplusRemaining)}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>
+                                Split across {memberCount}{" "}
+                                {memberCount === 1 ? "member" : "members"}
+                              </span>
+                              <span className="font-semibold text-emerald-800">
+                                {previewSurplusMemberShare === 0
+                                  ? "TZS 0 (fully covered)"
+                                  : `${formatTZS(previewSurplusMemberShare)} each`}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setShowSurplusChooser(false)}
+                              className="rounded-lg border border-stone-900/10 bg-white px-3 py-1.5 text-xs font-medium text-[#52525B] cursor-pointer"
+                            >
+                              Keep in buffer
+                            </button>
+                            <button
+                              type="button"
+                              disabled={savingSurplusPlan || previewSurplusApplied <= 0}
+                              onClick={() => void handleSaveSurplusPlan()}
+                              className="rounded-lg bg-[#1C1C1E] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#2C2C30] disabled:opacity-50 cursor-pointer"
+                            >
+                              {savingSurplusPlan ? "Applying..." : "Apply to this week"}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
               </div>
             </div>
 
@@ -717,15 +927,31 @@ export function BudgetView({
               <div className="flex items-baseline justify-between mb-2">
                 <h2 className="text-base font-semibold text-[#1C1C1E]">Member contributions</h2>
                 <span className="font-mono text-xs text-[#8E8E93] tabular-nums">
-                  Share: {formatTZS(household.member_weekly_share)}/wk
+                  {surplusEval?.active
+                    ? `Adjusted: ${formatTZS(surplusEval.adjustedMemberShare)}/wk`
+                    : `Share: ${formatTZS(household.member_weekly_share)}/wk`}
                   {activeMemberTopUp > 0 ? ` (+${formatTZS(activeMemberTopUp)})` : ""}
                 </span>
               </div>
 
             <div className="divide-y divide-stone-900/[0.06]">
               {summary.memberStatuses.map((status) => {
+                const baseExpected = surplusEval?.active
+                  ? surplusEval.adjustedMemberShare
+                  : status.expectedShare;
+                const effectiveExpected = baseExpected + activeMemberTopUp;
+                const effectiveRemainingDue = Math.max(
+                  0,
+                  effectiveExpected - status.effectiveContributed,
+                );
+                const effectivePct =
+                  effectiveExpected > 0
+                    ? Math.min(100, Math.round((status.effectiveContributed / effectiveExpected) * 100))
+                    : 100;
                 const done =
-                  status.effectiveContributed >= status.expectedShare && status.expectedShare > 0;
+                  effectiveExpected === 0
+                    ? Boolean(surplusEval?.active)
+                    : status.effectiveContributed >= effectiveExpected;
                 const partial =
                   !done && (status.effectiveContributed > 0 || status.contributedThisWeek > 0);
                 const reminded = remindedUserId === status.member.user_id;
@@ -745,7 +971,12 @@ export function BudgetView({
                           </div>
                           <div className="text-xs text-[#8E8E93] tabular-nums">
                             {formatTZS(status.contributedThisWeek)} /{" "}
-                            {formatTZS(status.expectedShare + activeMemberTopUp)}
+                            {formatTZS(effectiveExpected)}
+                            {surplusEval?.active && surplusEval.savedPerMember > 0 && (
+                              <span className="ml-1.5 text-emerald-700">
+                                (-{formatTZS(surplusEval.savedPerMember)} leftover)
+                              </span>
+                            )}
                             {activeMemberTopUp > 0 && (
                               <span className="ml-1.5 text-amber-800">
                                 (+{formatTZS(activeMemberTopUp)} recovery)
@@ -762,9 +993,9 @@ export function BudgetView({
                               -{formatTZS(status.priorShortfall)} prior week shortfall deducted
                             </div>
                           )}
-                          {!done && status.remainingDue > 0 && (
+                          {!done && effectiveRemainingDue > 0 && (
                             <div className="mt-0.5 text-[11px] font-medium text-[#8F703F] tabular-nums">
-                              {formatTZS(status.remainingDue)} remaining
+                              {formatTZS(effectiveRemainingDue)} remaining
                             </div>
                           )}
                           {status.advanceBalance > 0 && (
@@ -798,22 +1029,24 @@ export function BudgetView({
                                   : "bg-stone-400"
                             }`}
                           />
-                          {status.coveredByAdvance
+                          {effectiveExpected === 0 && surplusEval?.active
                             ? "Covered"
-                            : done
-                              ? "Paid"
-                              : partial
-                                ? "Partial"
-                                : "Pending"}
+                            : status.coveredByAdvance
+                              ? "Covered"
+                              : done
+                                ? "Paid"
+                                : partial
+                                  ? "Partial"
+                                  : "Pending"}
                         </span>
-                        {!done && status.remainingDue > 0 && (
+                        {!done && effectiveRemainingDue > 0 && (
                           <button
                             type="button"
                             onClick={() =>
                               void handleRemindMember(
                                 status.member.user_id,
                                 status.member.profile.full_name,
-                                status.remainingDue,
+                                effectiveRemainingDue,
                                 status.priorShortfall,
                               )
                             }
@@ -828,7 +1061,7 @@ export function BudgetView({
                       <div
                         className="h-full rounded-full transition-[width] duration-300"
                         style={{
-                          width: `${status.percentOfShare}%`,
+                          width: `${effectivePct}%`,
                           backgroundColor: done ? "#15803D" : partial ? "#C6A87C" : "#D6D3D1",
                         }}
                       />

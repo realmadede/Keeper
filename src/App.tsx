@@ -791,6 +791,19 @@ export function App() {
                           : " — right on target"}
                         .
                       </p>
+                      {summary.allTimeBalance > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPeriodKey("this_week");
+                            setBudgetSubTab("pool");
+                            handleSelectTab("budget");
+                          }}
+                          className="mt-1.5 inline-flex items-center rounded-lg border border-emerald-800/20 bg-white px-2.5 py-1 text-[11px] font-medium text-emerald-900 hover:bg-emerald-100/60 cursor-pointer"
+                        >
+                          Use leftover to lower this week&apos;s shares
+                        </button>
+                      )}
                     </div>
                   </div>
                   <button
@@ -991,6 +1004,14 @@ export function App() {
                   onUpdateOverspendPlan={async (plan) => {
                     await store.updateOverspendPlan(plan);
                     showToast(plan ? "Overspend recovery plan saved" : "Recovery plan cancelled");
+                  }}
+                  onUpdateSurplusPlan={async (plan) => {
+                    await store.updateSurplusPlan(plan);
+                    showToast(
+                      plan
+                        ? "Leftover applied to lower this week's shares"
+                        : "Leftover kept in Cash on hand buffer",
+                    );
                   }}
                   onAddNeed={async (title, category, options) => {
                     await store.addNeed(title, category, options);

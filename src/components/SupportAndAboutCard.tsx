@@ -57,6 +57,10 @@ const FAQ_ITEMS = [
     q: "What happens if we overspend our weekly budget?",
     a: "Keeper shows a red Overspent alert (and pops up a notification if alerts are enabled). By default, next week resets to your normal budget. Optionally, you can tap 'Cover in coming weeks' and choose either: (1) Trim spending limit — lowers your weekly spending target across the next 1, 2, or 4 weeks so the house spends less to recover; or (2) Add roommate top-up — spreads the overage equally as a small extra share per roommate. You can cancel a recovery plan at any time.",
   },
+  {
+    q: "Where does leftover weekly budget money go?",
+    a: "Leftover money automatically rolls into Cash on hand (carry-over). You have two choices each week: (1) Keep it in buffer (default) as house savings or to pay recurring bills and needs; or (2) Tap 'Use leftover to lower this week's shares' in Budget -> Pool to subtract your leftover cash from the weekly budget and divide only the remaining amount equally across roommates (for example, TZS 45,000 budget minus TZS 20,000 leftover = TZS 25,000 split across 3 members = TZS 8,334 each). Next week returns to your normal share automatically.",
+  },
 ] as const;
 
 function detectPlatform(): string {

@@ -3,16 +3,19 @@ import {
   addDaysISO,
   dismissWeeklyCongrats,
   evaluateOverspendPlan,
+  evaluateSurplusPlan,
   evaluateWeeklyBudgetSuccess,
   isWeeklyCongratsDismissed,
   loadLocalOverspendPlan,
+  loadLocalSurplusPlan,
   markOverspendNotified,
   markWeeklyCongratsNotified,
   saveLocalOverspendPlan,
+  saveLocalSurplusPlan,
   shouldNotifyOverspend,
   shouldNotifyWeeklyCongrats,
 } from "./overspendPlan";
-import type { OverspendRecoveryPlan } from "../types";
+import type { OverspendRecoveryPlan, WeeklySurplusPlan } from "../types";
 
 const memoryStorage = new Map<string, string>();
 Object.defineProperty(globalThis, "localStorage", {
@@ -122,5 +125,41 @@ describe("overspendPlan", () => {
     expect(shouldNotifyWeeklyCongrats("h1", "2026-11-16")).toBe(true);
     markWeeklyCongratsNotified("h1", "2026-11-16");
     expect(shouldNotifyWeeklyCongrats("h1", "2026-11-16")).toBe(false);
+  });
+
+  it("splits remaining weekly pool needed across members when leftover surplus is applied", () => {
+    const plan: WeeklySurplusPlan = {
+      weekStartISO: "2026-11-23",
+      appliedAmount: 20000,
+      createdAt: "2026-11-23T08:00:00Z",
+    };
+
+    const active = evaluateSurplusPlan(plan, "2026-11-23", 45000, 15000, 3);
+    expect(active.active).toBe(true);
+    expect(active.appliedAmount).toBe(20000);
+    expect(active.remainingPoolNeeded).toBe(25000);
+    expect(active.adjustedMemberShare).toBe(8334);
+    expect(active.savedPerMember).toBe(6666);
+
+    // Automatically resets on the next week
+    const nextWeek = evaluateSurplusPlan(plan, "2026-11-30", 45000, 15000, 3);
+    expect(nextWeek.active).toBe(false);
+    expect(nextWeek.adjustedMemberShare).toBe(15000);
+
+    // If leftover covers full budget, everyone contributes 0
+    const full = evaluateSurplusPlan(
+      { ...plan, appliedAmount: 60000 },
+      "2026-11-23",
+      45000,
+      15000,
+      3,
+    );
+    expect(full.remainingPoolNeeded).toBe(0);
+    expect(full.adjustedMemberShare).toBe(0);
+
+    saveLocalSurplusPlan("h1", plan);
+    expect(loadLocalSurplusPlan("h1")?.appliedAmount).toBe(20000);
+    saveLocalSurplusPlan("h1", null);
+    expect(loadLocalSurplusPlan("h1")).toBeNull();
   });
 });
