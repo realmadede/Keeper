@@ -86,6 +86,40 @@ export async function scheduleBillReminders(bills: RecurringBill[]): Promise<voi
   }
 }
 
+export async function scheduleWeeklyBudgetCongrats(params: {
+  householdName: string;
+  weekEndNextDayISO: string;
+  spentAmount: number;
+  targetAmount: number;
+}): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return;
+  const CONGRATS_NOTIF_ID = 3001;
+  try {
+    await LocalNotifications.cancel({ notifications: [{ id: CONGRATS_NOTIF_ID }] });
+    if (!isNotificationsEnabled()) return;
+    const { householdName, weekEndNextDayISO, spentAmount, targetAmount } = params;
+    if (targetAmount <= 0 || spentAmount <= 0 || spentAmount > targetAmount) return;
+
+    const [y, m, d] = weekEndNextDayISO.split("-").map(Number);
+    const at = new Date(y, (m || 1) - 1, d || 1, 9, 0, 0);
+    if (at.getTime() <= Date.now()) return;
+
+    const saved = Math.max(0, targetAmount - spentAmount);
+    await LocalNotifications.schedule({
+      notifications: [
+        {
+          id: CONGRATS_NOTIF_ID,
+          title: "Weekly budget goal achieved",
+          body: `Well done! ${householdName} stayed within budget (${formatTZS(spentAmount)} of ${formatTZS(targetAmount)}, saved ${formatTZS(saved)}).`,
+          schedule: { at },
+        },
+      ],
+    });
+  } catch {
+    // Ignore schedule errors
+  }
+}
+
 export async function notifyHouseholdChange(title: string, body: string): Promise<void> {
   if (!isNotificationsEnabled()) return;
   if (Capacitor.isNativePlatform()) {

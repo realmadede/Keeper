@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type
 import { Glass, Menu, type MenuEntry } from "glisse";
 import {
   AlertTriangle,
+  Award,
   Bell,
   Calendar,
   CalendarClock,
@@ -12,6 +13,7 @@ import {
   Plus,
   RotateCw,
   WifiOff,
+  X,
 } from "lucide-react";
 import { App as CapApp } from "@capacitor/app";
 import { Browser } from "@capacitor/browser";
@@ -61,11 +63,21 @@ import {
   type UpdateReleaseInfo,
 } from "./lib/appUpdater";
 import { formatTZS } from "./lib/format";
-import { notifyHouseholdChange, scheduleBillReminders } from "./lib/notifications";
 import {
+  notifyHouseholdChange,
+  scheduleBillReminders,
+  scheduleWeeklyBudgetCongrats,
+} from "./lib/notifications";
+import {
+  addDaysISO,
+  dismissWeeklyCongrats,
   evaluateOverspendPlan,
+  evaluateWeeklyBudgetSuccess,
+  isWeeklyCongratsDismissed,
   markOverspendNotified,
+  markWeeklyCongratsNotified,
   shouldNotifyOverspend,
+  shouldNotifyWeeklyCongrats,
 } from "./lib/overspendPlan";
 import { sanitizeInviteCode } from "./lib/security";
 import { supabase } from "./lib/supabase";
@@ -511,7 +523,7 @@ export function App() {
   // Weekly budget overspend detection (evaluated on current week regardless of active filter)
   const weeklyOverspend = useMemo(() => {
     if (!store.household || store.household.weekly_budget_target <= 0) {
-      return { amount: 0, target: 0, weekStartISO: "" };
+      return { amount: 0, target: 0, spent: 0, weekStartISO: "" };
     }
     const thisWeekWin = getPeriodWindow("this_week", new Date(), weekStartInfo.startDay);
     const thisWeekSum = computePeriodSummary(
@@ -530,8 +542,79 @@ export function App() {
     const deduction = evalPlan.status === "active" ? evalPlan.budgetDeduction : 0;
     const effectiveTarget = Math.max(0, store.household.weekly_budget_target - deduction);
     const over = Math.max(0, thisWeekSum.totalSpent - effectiveTarget);
-    return { amount: over, target: effectiveTarget, weekStartISO: thisWeekWin.startISO };
+    return {
+      amount: over,
+      target: effectiveTarget,
+      spent: thisWeekSum.totalSpent,
+      weekStartISO: thisWeekWin.startISO,
+    };
   }, [store.household, store.members, store.transactions, weekStartInfo.startDay]);
+
+  // Completed previous-week on-budget celebration check (requires real spending <= target)
+  const lastWeekCongrats = useMemo(() => {
+    if (!store.household || store.household.weekly_budget_target <= 0) {
+      return {
+        qualified: false,
+        weekStartISO: "",
+        rangeLabel: "",
+        spentAmount: 0,
+        targetAmount: 0,
+        savedAmount: 0,
+      };
+    }
+    const lastWeekWin = getPeriodWindow("last_week", new Date(), weekStartInfo.startDay);
+    const lastWeekSum = computePeriodSummary(
+      store.transactions,
+      store.members,
+      store.household.member_weekly_share,
+      "last_week",
+      new Date(),
+      weekStartInfo.startDay,
+    );
+    const evalPlan = evaluateOverspendPlan(
+      store.household.overspend_plan,
+      lastWeekWin.startISO,
+      Math.max(1, store.members.length),
+    );
+    const deduction = evalPlan.status === "active" ? evalPlan.budgetDeduction : 0;
+    const effectiveTarget = Math.max(0, store.household.weekly_budget_target - deduction);
+    const res = evaluateWeeklyBudgetSuccess(
+      lastWeekSum.totalSpent,
+      effectiveTarget,
+      lastWeekWin.startISO,
+    );
+    return { ...res, rangeLabel: lastWeekWin.monthLabel };
+  }, [store.household, store.members, store.transactions, weekStartInfo.startDay]);
+
+  const [dismissedCongratsWeek, setDismissedCongratsWeek] = useState<string | null>(null);
+  const showWeeklyCongratsCard = Boolean(
+    store.household &&
+      lastWeekCongrats.qualified &&
+      dismissedCongratsWeek !== lastWeekCongrats.weekStartISO &&
+      !isWeeklyCongratsDismissed(store.household.id, lastWeekCongrats.weekStartISO),
+  );
+
+  // Schedule (or cancel if overspent) end-of-week Android local notification for this week
+  useEffect(() => {
+    if (!store.household || store.isDemoMode || !weeklyOverspend.weekStartISO) return;
+    void scheduleWeeklyBudgetCongrats({
+      householdName: store.household.name,
+      weekEndNextDayISO: addDaysISO(weeklyOverspend.weekStartISO, 7),
+      spentAmount: weeklyOverspend.spent,
+      targetAmount: weeklyOverspend.target,
+    });
+  }, [store.household, store.isDemoMode, weeklyOverspend]);
+
+  // Fire once-per-week congratulations notification when last week finished on budget
+  useEffect(() => {
+    if (!store.household || store.isDemoMode || !lastWeekCongrats.qualified) return;
+    if (!shouldNotifyWeeklyCongrats(store.household.id, lastWeekCongrats.weekStartISO)) return;
+    markWeeklyCongratsNotified(store.household.id, lastWeekCongrats.weekStartISO);
+    void notifyHouseholdChange(
+      "Weekly budget goal achieved",
+      `Well done! ${store.household.name} stayed within budget last week (${formatTZS(lastWeekCongrats.spentAmount)} of ${formatTZS(lastWeekCongrats.targetAmount)}, saved ${formatTZS(lastWeekCongrats.savedAmount)}).`,
+    );
+  }, [lastWeekCongrats, store.household, store.isDemoMode]);
 
   // Pop up notification + toast when weekly spending exceeds budget (deduplicated per week/overage)
   useEffect(() => {
@@ -944,6 +1027,41 @@ export function App() {
                     className="shrink-0 rounded-lg bg-[#1C1C1E] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#2C2C30] transition-colors cursor-pointer"
                   >
                     Mark seen
+                  </button>
+                </div>
+              )}
+
+              {/* Weekly On-Budget Congratulations Banner (once per completed on-budget week) */}
+              {showWeeklyCongratsCard && (
+                <div className="flex items-start justify-between gap-3 rounded-2xl border border-emerald-700/20 bg-emerald-50/85 px-3.5 py-3">
+                  <div className="flex items-start gap-2.5 min-w-0">
+                    <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-emerald-700 text-white">
+                      <Award className="h-4 w-4 text-[#E4CCA0]" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold text-emerald-900">
+                        Well done · On budget last week
+                      </div>
+                      <p className="mt-0.5 text-[11px] leading-snug text-emerald-900/85 tabular-nums">
+                        {store.household.name} spent {formatTZS(lastWeekCongrats.spentAmount)} of{" "}
+                        {formatTZS(lastWeekCongrats.targetAmount)} ({lastWeekCongrats.rangeLabel})
+                        {lastWeekCongrats.savedAmount > 0
+                          ? ` — saved ${formatTZS(lastWeekCongrats.savedAmount)}`
+                          : " — right on target"}
+                        .
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Dismiss weekly congratulations"
+                    onClick={() => {
+                      dismissWeeklyCongrats(store.household!.id, lastWeekCongrats.weekStartISO);
+                      setDismissedCongratsWeek(lastWeekCongrats.weekStartISO);
+                    }}
+                    className="rounded-lg p-1 text-emerald-800/70 hover:bg-emerald-100 hover:text-emerald-900 cursor-pointer"
+                  >
+                    <X className="h-3.5 w-3.5" />
                   </button>
                 </div>
               )}
