@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type TouchEvent } from "react";
 import { Glass, Menu, type MenuEntry } from "glisse";
 import {
+  AlertTriangle,
   Bell,
   Calendar,
   CalendarClock,
@@ -60,7 +61,12 @@ import {
   type UpdateReleaseInfo,
 } from "./lib/appUpdater";
 import { formatTZS } from "./lib/format";
-import { scheduleBillReminders } from "./lib/notifications";
+import { notifyHouseholdChange, scheduleBillReminders } from "./lib/notifications";
+import {
+  evaluateOverspendPlan,
+  markOverspendNotified,
+  shouldNotifyOverspend,
+} from "./lib/overspendPlan";
 import { sanitizeInviteCode } from "./lib/security";
 import { supabase } from "./lib/supabase";
 import type { ActiveTab, BudgetSubTab, PeriodKey, Transaction, TransactionType } from "./types";
@@ -502,6 +508,54 @@ export function App() {
     [store.needs],
   );
 
+  // Weekly budget overspend detection (evaluated on current week regardless of active filter)
+  const weeklyOverspend = useMemo(() => {
+    if (!store.household || store.household.weekly_budget_target <= 0) {
+      return { amount: 0, target: 0, weekStartISO: "" };
+    }
+    const thisWeekWin = getPeriodWindow("this_week", new Date(), weekStartInfo.startDay);
+    const thisWeekSum = computePeriodSummary(
+      store.transactions,
+      store.members,
+      store.household.member_weekly_share,
+      "this_week",
+      new Date(),
+      weekStartInfo.startDay,
+    );
+    const evalPlan = evaluateOverspendPlan(
+      store.household.overspend_plan,
+      thisWeekWin.startISO,
+      Math.max(1, store.members.length),
+    );
+    const deduction = evalPlan.status === "active" ? evalPlan.budgetDeduction : 0;
+    const effectiveTarget = Math.max(0, store.household.weekly_budget_target - deduction);
+    const over = Math.max(0, thisWeekSum.totalSpent - effectiveTarget);
+    return { amount: over, target: effectiveTarget, weekStartISO: thisWeekWin.startISO };
+  }, [store.household, store.members, store.transactions, weekStartInfo.startDay]);
+
+  // Pop up notification + toast when weekly spending exceeds budget (deduplicated per week/overage)
+  useEffect(() => {
+    if (!store.household || store.isDemoMode || weeklyOverspend.amount <= 0) return;
+    if (
+      !shouldNotifyOverspend(
+        store.household.id,
+        weeklyOverspend.weekStartISO,
+        weeklyOverspend.amount,
+      )
+    ) {
+      return;
+    }
+    markOverspendNotified(
+      store.household.id,
+      weeklyOverspend.weekStartISO,
+      weeklyOverspend.amount,
+    );
+    const title = "Weekly budget exceeded";
+    const body = `Overspent by ${formatTZS(weeklyOverspend.amount)} over your ${formatTZS(weeklyOverspend.target)} weekly budget. Tap Budget to review recovery options.`;
+    showToast(`Overspent weekly budget by ${formatTZS(weeklyOverspend.amount)}`);
+    void notifyHouseholdChange(title, body);
+  }, [showToast, store.household, store.isDemoMode, weeklyOverspend]);
+
   const handleSelectTab = (tab: ActiveTab) => {
     setActiveTab(tab);
     setVisitedTabs((prev) => {
@@ -894,9 +948,23 @@ export function App() {
                 </div>
               )}
 
-              {/* Quick Bills Due / House Needs Reminder Strip */}
-              {(dueSoonBillsCount > 0 || pendingNeedsCount > 0) && (
+              {/* Quick Overspend / Bills Due / House Needs Reminder Strip */}
+              {(weeklyOverspend.amount > 0 || dueSoonBillsCount > 0 || pendingNeedsCount > 0) && (
                 <div className="flex flex-wrap items-center gap-2">
+                  {weeklyOverspend.amount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPeriodKey("this_week");
+                        setBudgetSubTab("pool");
+                        handleSelectTab("budget");
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-rose-700/25 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-800 hover:bg-rose-100/70 transition-colors cursor-pointer"
+                    >
+                      <AlertTriangle className="h-3.5 w-3.5 text-rose-700" />
+                      <span>Overspent by {formatTZS(weeklyOverspend.amount)}</span>
+                    </button>
+                  )}
                   {dueSoonBillsCount > 0 && (
                     <button
                       type="button"
@@ -1061,6 +1129,10 @@ export function App() {
                   bills={store.bills}
                   billPayments={store.billPayments}
                   onUpdateBudget={store.updateBudget}
+                  onUpdateOverspendPlan={async (plan) => {
+                    await store.updateOverspendPlan(plan);
+                    showToast(plan ? "Overspend recovery plan saved" : "Recovery plan cancelled");
+                  }}
                   onAddNeed={async (title, category, options) => {
                     await store.addNeed(title, category, options);
                     showToast("Added to house needs");

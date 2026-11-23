@@ -18,6 +18,17 @@ export interface Profile {
   avatar_color: string;
 }
 
+export type OverspendRecoveryMode = "reduce_budget" | "topup_share";
+
+export interface OverspendRecoveryPlan {
+  sourceWeekStartISO: string;
+  startWeekISO: string;
+  totalAmount: number;
+  weeks: number;
+  mode: OverspendRecoveryMode;
+  createdAt: string;
+}
+
 export interface Household {
   id: string;
   name: string;
@@ -27,6 +38,7 @@ export interface Household {
   invite_code: string;
   created_by: string;
   created_at: string;
+  overspend_plan?: OverspendRecoveryPlan | null;
 }
 
 export interface HouseholdMember {
