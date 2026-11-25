@@ -508,6 +508,7 @@ export function App() {
       periodKey,
       new Date(),
       weekStartInfo.startDay,
+      store.household.weekly_budget_target,
     );
   }, [periodKey, store.household, store.members, store.transactions, weekStartInfo.startDay]);
 
@@ -1163,7 +1164,8 @@ export function App() {
 
               <KpiCards
                 totalSpent={summary.totalSpent}
-                totalContributed={summary.totalContributed}
+                totalContributed={summary.effectiveTotalContributed}
+                appliedAdvanceCredit={summary.appliedAdvanceCredit}
                 remainingBalance={summary.remainingBalance}
                 allTimeBalance={summary.allTimeBalance}
                 periodBudgetTarget={periodBudgetTarget}
@@ -1185,6 +1187,7 @@ export function App() {
                   periodKind={periodWindow.kind}
                   comparisonLabel={periodWindow.comparisonLabel}
                   spentDeltaPct={summary.spentDeltaPct}
+                  appliedAdvanceCredit={summary.appliedAdvanceCredit}
                 />
               </Suspense>
 
