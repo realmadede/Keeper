@@ -64,6 +64,10 @@ const FAQ_ITEMS = [
     q: "Where does leftover weekly budget money go?",
     a: "Leftover money automatically rolls into Cash on hand (carry-over). You have two choices each week: (1) Keep it in buffer (default) as house savings or to pay recurring bills and needs; or (2) Tap 'Use leftover to lower this week's shares' in Budget -> Pool to subtract your leftover cash from the weekly budget and divide only the remaining amount equally across roommates (for example, TZS 45,000 budget minus TZS 20,000 leftover = TZS 25,000 split across 3 members = TZS 8,334 each). Next week returns to your normal share automatically.",
   },
+  {
+    q: "Can we add extra money for just one week without raising our weekly budget?",
+    a: "Yes. In Budget -> Pool, tap 'Add one-time boost for this week (optional)' and enter the extra TZS per member (plus an optional reason like guests or extra groceries). It raises only that specific week's budget and member shares without changing your normal weekly budget or creating false advance credit for next week.",
+  },
 ] as const;
 
 function detectPlatform(): string {

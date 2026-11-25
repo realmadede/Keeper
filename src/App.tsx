@@ -73,6 +73,7 @@ import {
   dismissWeeklyCongrats,
   evaluateOverspendPlan,
   evaluateWeeklyBudgetSuccess,
+  getBoostForWeek,
   isWeeklyCongratsDismissed,
   markOverspendNotified,
   markWeeklyCongratsNotified,
@@ -509,6 +510,7 @@ export function App() {
       new Date(),
       weekStartInfo.startDay,
       store.household.weekly_budget_target,
+      store.household.weekly_boosts,
     );
   }, [periodKey, store.household, store.members, store.transactions, weekStartInfo.startDay]);
 
@@ -534,14 +536,20 @@ export function App() {
       "this_week",
       new Date(),
       weekStartInfo.startDay,
+      store.household.weekly_budget_target,
+      store.household.weekly_boosts,
     );
     const evalPlan = evaluateOverspendPlan(
       store.household.overspend_plan,
       thisWeekWin.startISO,
       Math.max(1, store.members.length),
     );
+    const thisWeekBoost = getBoostForWeek(store.household.weekly_boosts, thisWeekWin.startISO);
     const deduction = evalPlan.status === "active" ? evalPlan.budgetDeduction : 0;
-    const effectiveTarget = Math.max(0, store.household.weekly_budget_target - deduction);
+    const effectiveTarget = Math.max(
+      0,
+      store.household.weekly_budget_target + (thisWeekBoost?.extraTotal ?? 0) - deduction,
+    );
     const over = Math.max(0, thisWeekSum.totalSpent - effectiveTarget);
     return {
       amount: over,
@@ -571,14 +579,20 @@ export function App() {
       "last_week",
       new Date(),
       weekStartInfo.startDay,
+      store.household.weekly_budget_target,
+      store.household.weekly_boosts,
     );
     const evalPlan = evaluateOverspendPlan(
       store.household.overspend_plan,
       lastWeekWin.startISO,
       Math.max(1, store.members.length),
     );
+    const lastWeekBoost = getBoostForWeek(store.household.weekly_boosts, lastWeekWin.startISO);
     const deduction = evalPlan.status === "active" ? evalPlan.budgetDeduction : 0;
-    const effectiveTarget = Math.max(0, store.household.weekly_budget_target - deduction);
+    const effectiveTarget = Math.max(
+      0,
+      store.household.weekly_budget_target + (lastWeekBoost?.extraTotal ?? 0) - deduction,
+    );
     const res = evaluateWeeklyBudgetSuccess(
       lastWeekSum.totalSpent,
       effectiveTarget,
@@ -887,10 +901,14 @@ export function App() {
   ];
 
   const isBrandNewHouse = store.transactions.length === 0;
+  const activePeriodBoost =
+    periodWindow.kind === "week"
+      ? getBoostForWeek(store.household.weekly_boosts, periodWindow.startISO)
+      : null;
   const periodBudgetTarget =
     periodWindow.kind === "month"
       ? store.household.weekly_budget_target * 4
-      : store.household.weekly_budget_target;
+      : store.household.weekly_budget_target + (activePeriodBoost?.extraTotal ?? 0);
 
   return (
     <div className="h-dvh overflow-hidden flex flex-col">
@@ -1273,6 +1291,14 @@ export function App() {
                       plan
                         ? "Leftover applied to lower this week's shares"
                         : "Leftover kept in Cash on hand buffer",
+                    );
+                  }}
+                  onSetWeeklyBoost={async (entry, weekStartISO) => {
+                    await store.setWeeklyBoost(entry, weekStartISO);
+                    showToast(
+                      entry
+                        ? `One-time boost (+${formatTZS(entry.extraPerMember)}/member) applied`
+                        : "One-time boost cancelled",
                     );
                   }}
                   onAddNeed={async (title, category, options) => {

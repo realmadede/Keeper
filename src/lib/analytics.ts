@@ -6,8 +6,10 @@ import {
   type PeriodKey,
   type RecurringBill,
   type Transaction,
+  type WeeklyBoostEntry,
 } from "../types";
 import { toISODate } from "./format";
+import { getBoostForWeek, sumPriorWeeklyBoostPerMember } from "./overspendPlan";
 
 export interface WeekWindow {
   kind: "week" | "month";
@@ -364,6 +366,7 @@ export function computePeriodSummary(
   referenceDate = new Date(),
   startDayOfWeek = 1,
   weeklyBudgetTarget?: number,
+  weeklyBoosts?: WeeklyBoostEntry[] | null,
 ): WeeklySummary {
   const normalizedStart = ((startDayOfWeek % 7) + 7) % 7;
   const currentPeriod = getPeriodWindow(periodKey, referenceDate, normalizedStart);
@@ -460,8 +463,11 @@ export function computePeriodSummary(
     .filter((c) => c.amount > 0)
     .sort((a, b) => b.amount - a.amount);
 
+  const activeWeekBoost =
+    currentPeriod.kind === "week" ? getBoostForWeek(weeklyBoosts, currentPeriod.startISO) : null;
   const shareMultiplier = currentPeriod.kind === "month" ? 4 : 1;
-  const expectedShare = memberWeeklyShare * shareMultiplier;
+  const expectedShare =
+    memberWeeklyShare * shareMultiplier + (activeWeekBoost?.extraPerMember ?? 0);
 
   const toCycleStartMs = (iso: string): number => {
     const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
@@ -470,6 +476,14 @@ export function computePeriodSummary(
     const diff = -((day - normalizedStart + 7) % 7);
     dt.setUTCDate(dt.getUTCDate() + diff);
     return dt.getTime();
+  };
+
+  const toCycleStartISO = (iso: string): string => {
+    const dt = new Date(toCycleStartMs(iso));
+    const y = dt.getUTCFullYear();
+    const m = String(dt.getUTCMonth() + 1).padStart(2, "0");
+    const d = String(dt.getUTCDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
   };
 
   const priorTransactions = transactions.filter(
@@ -525,7 +539,12 @@ export function computePeriodSummary(
           1,
           Math.round((currentStartMondayMs - toCycleStartMs(anchorISO)) / WEEK_MS),
         );
-        const priorExpected = elapsedWeeks * memberWeeklyShare;
+        const priorBoostPerMember = sumPriorWeeklyBoostPerMember(
+          weeklyBoosts,
+          toCycleStartISO(anchorISO),
+          currentPeriod.startISO,
+        );
+        const priorExpected = elapsedWeeks * memberWeeklyShare + priorBoostPerMember;
         carryOverCredit = Math.max(0, priorContributed - priorExpected);
         priorShortfall = Math.max(0, priorExpected - priorContributed);
       }
@@ -569,7 +588,8 @@ export function computePeriodSummary(
   const allTimeBalance = computeAllTimeBalance(transactions);
   const priorPoolBalance = Math.max(0, allTimeBalance - (totalContributed - totalSpent));
   const totalMemberCarryOver = memberStatuses.reduce((sum, s) => sum + s.carryOverCredit, 0);
-  const houseExpectedPool = Math.max(weeklyBudgetTarget ?? 0, expectedShare * members.length);
+  const boostedWeeklyTarget = (weeklyBudgetTarget ?? 0) + (activeWeekBoost?.extraTotal ?? 0);
+  const houseExpectedPool = Math.max(boostedWeeklyTarget, expectedShare * members.length);
   const appliedAdvanceCredit =
     currentPeriod.kind === "week" && houseExpectedPool > 0
       ? Math.min(
@@ -605,6 +625,7 @@ export function computeWeeklySummary(
   referenceDate = new Date(),
   startDayOfWeek = 1,
   weeklyBudgetTarget?: number,
+  weeklyBoosts?: WeeklyBoostEntry[] | null,
 ): WeeklySummary {
   const key: PeriodKey =
     weekOffset === 0 ? "this_week" : weekOffset === -1 ? "last_week" : "two_weeks_ago";
@@ -616,6 +637,7 @@ export function computeWeeklySummary(
     referenceDate,
     startDayOfWeek,
     weeklyBudgetTarget,
+    weeklyBoosts,
   );
 }
 

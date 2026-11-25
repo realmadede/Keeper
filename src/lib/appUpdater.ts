@@ -1,7 +1,7 @@
 import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
 
 export const APP_VERSION =
-  (import.meta.env.VITE_APP_VERSION as string | undefined) || "1.2.0";
+  (import.meta.env.VITE_APP_VERSION as string | undefined) || "1.3.0";
 export const RELEASES_API_URL =
   "https://api.github.com/repos/realmadede/Keeper/releases/latest";
 export const ANDROID_APK_URL =

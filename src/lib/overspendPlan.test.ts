@@ -5,17 +5,23 @@ import {
   evaluateOverspendPlan,
   evaluateSurplusPlan,
   evaluateWeeklyBudgetSuccess,
+  getBoostForWeek,
   isWeeklyCongratsDismissed,
   loadLocalOverspendPlan,
   loadLocalSurplusPlan,
+  loadLocalWeeklyBoosts,
   markOverspendNotified,
   markWeeklyCongratsNotified,
+  removeWeeklyBoost,
   saveLocalOverspendPlan,
   saveLocalSurplusPlan,
+  saveLocalWeeklyBoosts,
   shouldNotifyOverspend,
   shouldNotifyWeeklyCongrats,
+  sumPriorWeeklyBoostPerMember,
+  upsertWeeklyBoost,
 } from "./overspendPlan";
-import type { OverspendRecoveryPlan, WeeklySurplusPlan } from "../types";
+import type { OverspendRecoveryPlan, WeeklyBoostEntry, WeeklySurplusPlan } from "../types";
 
 const memoryStorage = new Map<string, string>();
 Object.defineProperty(globalThis, "localStorage", {
@@ -161,5 +167,28 @@ describe("overspendPlan", () => {
     expect(loadLocalSurplusPlan("h1")?.appliedAmount).toBe(20000);
     saveLocalSurplusPlan("h1", null);
     expect(loadLocalSurplusPlan("h1")).toBeNull();
+  });
+
+  it("manages one-time weekly boosts per week and sums prior boosts for carry-over math", () => {
+    const boost: WeeklyBoostEntry = {
+      weekStartISO: "2026-11-25",
+      extraPerMember: 5000,
+      extraTotal: 15000,
+      reason: "Guests",
+      createdAt: "2026-11-25T10:00:00Z",
+    };
+
+    const list = upsertWeeklyBoost([], boost);
+    expect(getBoostForWeek(list, "2026-11-25")?.extraPerMember).toBe(5000);
+    expect(getBoostForWeek(list, "2026-12-02")).toBeNull();
+    expect(sumPriorWeeklyBoostPerMember(list, "2026-11-18", "2026-12-02")).toBe(5000);
+    expect(sumPriorWeeklyBoostPerMember(list, "2026-11-18", "2026-11-25")).toBe(0);
+
+    saveLocalWeeklyBoosts("h1", list);
+    expect(loadLocalWeeklyBoosts("h1")).toHaveLength(1);
+
+    const cleared = removeWeeklyBoost(list, "2026-11-25");
+    saveLocalWeeklyBoosts("h1", cleared);
+    expect(loadLocalWeeklyBoosts("h1")).toEqual([]);
   });
 });

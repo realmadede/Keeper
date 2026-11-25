@@ -324,6 +324,59 @@ describe("computeWeeklySummary", () => {
     expect(summary.remainingBalance).toBe(15000);
     expect(summary.allTimeBalance).toBe(16500);
   });
+
+  it("applies a one-time weekly boost only to that week without creating false advance credit next week", () => {
+    const boosts = [
+      {
+        weekStartISO: "2026-11-16",
+        extraPerMember: 5000,
+        extraTotal: 10000,
+        reason: "Guests",
+        createdAt: "2026-11-16T08:00:00Z",
+      },
+    ];
+    const boostedTxns: Transaction[] = [
+      {
+        id: "b-c1",
+        household_id: "h1",
+        recorded_by: "u1",
+        paid_by: "u1",
+        type: "contribution",
+        amount: 20000, // 15k normal + 5k one-time boost
+        category: "contribution",
+        description: "Boosted week pool",
+        transaction_date: "2026-11-17",
+        created_at: "2026-11-17T08:00:00Z",
+      },
+      {
+        id: "b-c2",
+        household_id: "h1",
+        recorded_by: "u2",
+        paid_by: "u2",
+        type: "contribution",
+        amount: 20000,
+        category: "contribution",
+        description: "Boosted week pool",
+        transaction_date: "2026-11-17",
+        created_at: "2026-11-17T08:01:00Z",
+      },
+    ];
+
+    // During boosted week (Nov 16 - Nov 22)
+    const duringBoost = computeWeeklySummary(boostedTxns, MEMBERS, 15000, 0, REF_DATE, 1, 30000, boosts);
+    const u1During = duringBoost.memberStatuses.find((m) => m.member.user_id === "u1")!;
+    expect(u1During.expectedShare).toBe(20000);
+    expect(u1During.advanceBalance).toBe(0);
+    expect(u1During.percentOfShare).toBe(100);
+
+    // Next week (Nov 23 - Nov 29): resets to normal 15,000 share with ZERO false carry-over credit
+    const nextWeekRef = new Date(2026, 10, 25);
+    const afterBoost = computeWeeklySummary(boostedTxns, MEMBERS, 15000, 0, nextWeekRef, 1, 30000, boosts);
+    const u1After = afterBoost.memberStatuses.find((m) => m.member.user_id === "u1")!;
+    expect(u1After.expectedShare).toBe(15000);
+    expect(u1After.carryOverCredit).toBe(0);
+    expect(u1After.remainingDue).toBe(15000);
+  });
 });
 
 describe("getBillDueStatus", () => {
