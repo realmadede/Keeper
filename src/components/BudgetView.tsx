@@ -1158,6 +1158,14 @@ export function BudgetView({
                     : status.effectiveContributed >= effectiveExpected;
                 const partial =
                   !done && (status.effectiveContributed > 0 || status.contributedThisWeek > 0);
+                const appliedCarryOver =
+                  status.carryOverCredit > 0 && effectiveExpected > 0
+                    ? Math.min(
+                        status.carryOverCredit,
+                        Math.max(0, effectiveExpected - status.contributedThisWeek),
+                      )
+                    : 0;
+                const displayedContributed = status.contributedThisWeek + appliedCarryOver;
                 const reminded = remindedUserId === status.member.user_id;
                 return (
                   <div key={status.member.user_id} className="py-3 first:pt-1 last:pb-0">
@@ -1174,7 +1182,7 @@ export function BudgetView({
                             {status.member.profile.full_name}
                           </div>
                           <div className="text-xs text-[#8E8E93] tabular-nums">
-                            {formatTZS(status.contributedThisWeek)} /{" "}
+                            {formatTZS(displayedContributed)} /{" "}
                             {formatTZS(effectiveExpected)}
                             {surplusEval?.active && surplusEval.savedPerMember > 0 && (
                               <span className="ml-1.5 text-emerald-700">
@@ -1186,9 +1194,11 @@ export function BudgetView({
                                 (+{formatTZS(activeMemberTopUp)} recovery)
                               </span>
                             )}
-                            {status.carryOverCredit > 0 && (
+                            {appliedCarryOver > 0 && (
                               <span className="ml-1.5 text-[#8F703F]">
-                                (+{formatTZS(status.carryOverCredit)} carry-over)
+                                {status.contributedThisWeek === 0
+                                  ? "· Paid early"
+                                  : `(incl. ${formatTZS(appliedCarryOver)} paid early)`}
                               </span>
                             )}
                           </div>
