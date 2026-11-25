@@ -29,10 +29,14 @@ import {
 } from "../lib/overspendPlan";
 import {
   clearLastAuthMethod,
+  clearPendingAuthMethod,
+  consumePendingAuthMethod,
   createRateLimiter,
   generateClientInviteCode,
+  getLastAuthMethod,
   sanitizeInviteCode,
   setLastAuthMethod,
+  setPendingAuthMethod,
 } from "../lib/security";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
 import type {
@@ -799,9 +803,14 @@ export function useKeeperStore(): KeeperStore {
         setPasswordRecoveryMode(true);
       }
       if (session?.user) {
-        const provider = session.user.app_metadata?.provider;
-        if (provider === "google") setLastAuthMethod("google");
-        else if (provider === "email") setLastAuthMethod("email");
+        const pendingMethod = consumePendingAuthMethod();
+        if (pendingMethod) {
+          setLastAuthMethod(pendingMethod);
+        } else if (!getLastAuthMethod()) {
+          const provider = session.user.app_metadata?.provider;
+          if (provider === "google") setLastAuthMethod("google");
+          else if (provider === "email") setLastAuthMethod("email");
+        }
         setIsDemoMode(false);
         await fetchHouseholdBundle(session.user.id, session.user);
       } else {
@@ -959,15 +968,18 @@ export function useKeeperStore(): KeeperStore {
       return;
     }
     authRateLimiter.record();
+    setPendingAuthMethod("email");
     const { data, error: err } = await supabase.auth.signInWithPassword({
       email: email.trim(),
       password,
     });
     if (err) {
+      clearPendingAuthMethod();
       setError(err.message);
       throw err;
     }
     authRateLimiter.reset();
+    clearPendingAuthMethod();
     setLastAuthMethod("email");
     if (data.session?.user) {
       setIsDemoMode(false);
@@ -989,6 +1001,7 @@ export function useKeeperStore(): KeeperStore {
     }
     authRateLimiter.record();
     const cleanEmail = email.trim();
+    setPendingAuthMethod("email");
     const { data, error: err } = await supabase.auth.signUp({
       email: cleanEmail,
       password,
@@ -1000,12 +1013,15 @@ export function useKeeperStore(): KeeperStore {
       },
     });
     if (err) {
+      clearPendingAuthMethod();
       setError(err.message);
       throw err;
     }
 
     if (data.session?.user) {
       authRateLimiter.reset();
+      clearPendingAuthMethod();
+      setLastAuthMethod("email");
       setIsDemoMode(false);
       await fetchHouseholdBundle(data.session.user.id, data.session.user);
       return;
@@ -1018,10 +1034,14 @@ export function useKeeperStore(): KeeperStore {
     });
     if (signInData.session?.user) {
       authRateLimiter.reset();
+      clearPendingAuthMethod();
+      setLastAuthMethod("email");
       setIsDemoMode(false);
       await fetchHouseholdBundle(signInData.session.user.id, signInData.session.user);
       return;
     }
+
+    clearPendingAuthMethod();
 
     if (signInErr?.message.toLowerCase().includes("confirm")) {
       setError(
@@ -1039,6 +1059,7 @@ export function useKeeperStore(): KeeperStore {
       setError("Supabase is not configured yet. Add your project URL and key in .env.");
       return;
     }
+    setPendingAuthMethod("google");
     if (Capacitor.isNativePlatform()) {
       const { data, error: err } = await supabase.auth.signInWithOAuth({
         provider: "google",
@@ -1048,6 +1069,7 @@ export function useKeeperStore(): KeeperStore {
         },
       });
       if (err) {
+        clearPendingAuthMethod();
         setError(err.message);
         throw err;
       }
@@ -1063,6 +1085,7 @@ export function useKeeperStore(): KeeperStore {
       },
     });
     if (err) {
+      clearPendingAuthMethod();
       setError(err.message);
       throw err;
     }
@@ -1170,6 +1193,7 @@ export function useKeeperStore(): KeeperStore {
       throw err;
     }
     clearLastUserId();
+    clearPendingAuthMethod();
     clearLastAuthMethod();
     await supabase.auth.signOut({ scope: "local" });
   }, [isDemoMode]);
@@ -1178,6 +1202,7 @@ export function useKeeperStore(): KeeperStore {
     setError(null);
     setPasswordRecoveryMode(false);
     clearLastUserId();
+    clearPendingAuthMethod();
     if (isDemoMode) {
       setIsDemoMode(false);
       setProfile(null);

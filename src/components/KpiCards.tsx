@@ -6,8 +6,7 @@ interface KpiCardsProps {
   appliedAdvanceCredit?: number;
   remainingBalance: number;
   allTimeBalance: number;
-  periodBudgetTarget: number;
-  periodGoalLabel: string;
+  periodLabel: string;
   comparisonLabel: string;
   spentDeltaPct: number | null;
   contributedDeltaPct: number | null;
@@ -45,17 +44,11 @@ export function KpiCards({
   appliedAdvanceCredit = 0,
   remainingBalance,
   allTimeBalance,
-  periodBudgetTarget,
-  periodGoalLabel,
+  periodLabel,
   comparisonLabel,
   spentDeltaPct,
   contributedDeltaPct,
 }: KpiCardsProps) {
-  const budgetProgress =
-    periodBudgetTarget > 0
-      ? Math.min(100, Math.round((totalContributed / periodBudgetTarget) * 100))
-      : 0;
-
   return (
     <div className="grid grid-cols-2 gap-3">
       {/* Cash on Hand — All-time carry-over pool */}
@@ -84,10 +77,8 @@ export function KpiCards({
         >
           {formatTZS(remainingBalance)}
         </div>
-        <div className="mt-1 text-[11px] text-[#8E8E93] tabular-nums">
-          {periodBudgetTarget > 0
-            ? `${budgetProgress}% of ${periodGoalLabel}`
-            : "No target set"}
+        <div className="mt-1 text-[11px] text-[#8E8E93]">
+          Left from {periodLabel.toLowerCase()}
         </div>
       </div>
 
