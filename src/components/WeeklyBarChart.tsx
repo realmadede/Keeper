@@ -8,6 +8,7 @@ interface WeeklyBarChartProps {
   periodKind: "week" | "month";
   comparisonLabel: string;
   spentDeltaPct: number | null;
+  appliedAdvanceCredit?: number;
 }
 
 export function WeeklyBarChart({
@@ -15,6 +16,7 @@ export function WeeklyBarChart({
   periodKind,
   comparisonLabel,
   spentDeltaPct,
+  appliedAdvanceCredit = 0,
 }: WeeklyBarChartProps) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const seriesKey = dailySeries.map((d) => d.iso).join(",");
@@ -26,9 +28,11 @@ export function WeeklyBarChart({
   const activeDay = selectedIndex !== null ? (dailySeries[selectedIndex] ?? null) : null;
   const periodContributed = dailySeries.reduce((sum, d) => sum + d.contributed, 0);
   const periodSpent = dailySeries.reduce((sum, d) => sum + d.spent, 0);
-  const displayContributed = activeDay ? activeDay.contributed : periodContributed;
+  const displayContributed = activeDay
+    ? activeDay.contributed
+    : periodContributed + appliedAdvanceCredit;
   const displaySpent = activeDay ? activeDay.spent : periodSpent;
-  const hasActivity = periodContributed > 0 || periodSpent > 0;
+  const hasActivity = periodContributed > 0 || appliedAdvanceCredit > 0 || periodSpent > 0;
   const activeSubtitle = activeDay
     ? periodKind === "month"
       ? `${activeDay.dayShort} · ${activeDay.detailLabel}`

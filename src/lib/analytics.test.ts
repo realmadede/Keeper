@@ -227,6 +227,103 @@ describe("computeWeeklySummary", () => {
     expect(amani.remainingDue).toBe(20000);
     expect(amani.percentOfShare).toBe(33);
   });
+
+  it("applies early/advance weekly contributions paid before a Wed-Tue cycle starts to this week's KPI totals", () => {
+    const threeMembers: HouseholdMember[] = [
+      ...MEMBERS,
+      {
+        household_id: "h1",
+        user_id: "u3",
+        role: "member",
+        joined_at: "2026-11-01T00:00:00Z",
+        profile: { id: "u3", full_name: "Juma Ali", email: "juma@example.com", avatar_color: "#10B981" },
+      },
+    ];
+    const earlyCycleTxns: Transaction[] = [
+      // Week 1 (Wed Nov 18 - Tue Nov 24): 45,000 contributed, 43,500 spent -> 1,500 saved
+      {
+        id: "w1-c1",
+        household_id: "h1",
+        recorded_by: "u1",
+        paid_by: "u1",
+        type: "contribution",
+        amount: 15000,
+        category: "contribution",
+        description: "Week 1",
+        transaction_date: "2026-11-18",
+        created_at: "2026-11-18T08:00:00Z",
+      },
+      {
+        id: "w1-c2",
+        household_id: "h1",
+        recorded_by: "u2",
+        paid_by: "u2",
+        type: "contribution",
+        amount: 15000,
+        category: "contribution",
+        description: "Week 1",
+        transaction_date: "2026-11-18",
+        created_at: "2026-11-18T08:01:00Z",
+      },
+      {
+        id: "w1-c3",
+        household_id: "h1",
+        recorded_by: "u3",
+        paid_by: "u3",
+        type: "contribution",
+        amount: 15000,
+        category: "contribution",
+        description: "Week 1",
+        transaction_date: "2026-11-18",
+        created_at: "2026-11-18T08:02:00Z",
+      },
+      {
+        id: "w1-exp",
+        household_id: "h1",
+        recorded_by: "u1",
+        type: "expense",
+        amount: 43500,
+        category: "food",
+        description: "Week 1 food",
+        transaction_date: "2026-11-20",
+        created_at: "2026-11-20T12:00:00Z",
+      },
+      // Week 2's 45,000 paid 1 day early on Tue Nov 24
+      {
+        id: "w2-early",
+        household_id: "h1",
+        recorded_by: "u1",
+        paid_by: "u1",
+        type: "contribution",
+        amount: 45000,
+        category: "contribution",
+        description: "Week 2 pool paid early",
+        transaction_date: "2026-11-24",
+        created_at: "2026-11-24T18:00:00Z",
+      },
+      // Day 1 of Week 2 (Wed Nov 25): 30,000 spent
+      {
+        id: "w2-exp",
+        household_id: "h1",
+        recorded_by: "u1",
+        type: "expense",
+        amount: 30000,
+        category: "food",
+        description: "Wed groceries",
+        transaction_date: "2026-11-25",
+        created_at: "2026-11-25T10:00:00Z",
+      },
+    ];
+
+    const wedRef = new Date(2026, 10, 25); // Wed Nov 25, 2026
+    const summary = computeWeeklySummary(earlyCycleTxns, threeMembers, 15000, 0, wedRef, 3, 45000);
+    expect(summary.totalContributed).toBe(0);
+    expect(summary.appliedAdvanceCredit).toBe(45000);
+    expect(summary.effectiveTotalContributed).toBe(45000);
+    expect(summary.totalSpent).toBe(30000);
+    expect(summary.remainingBalance).toBe(15000);
+    expect(summary.allTimeBalance).toBe(16500);
+  });
 });
 
 describe("getBillDueStatus", () => {

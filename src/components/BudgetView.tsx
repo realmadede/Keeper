@@ -226,9 +226,10 @@ export function BudgetView({
 
   const fundingTarget =
     surplusEval?.active ? surplusEval.remainingPoolNeeded : periodTarget;
+  const effectivePoolContributed = summary.effectiveTotalContributed;
   const poolPct =
     fundingTarget > 0
-      ? Math.min(100, Math.round((summary.totalContributed / fundingTarget) * 100))
+      ? Math.min(100, Math.round((effectivePoolContributed / fundingTarget) * 100))
       : surplusEval?.active
         ? 100
         : 0;
@@ -521,7 +522,12 @@ export function BudgetView({
                     <span>Contributed ({weekWindow.label.toLowerCase()})</span>
                   </span>
                   <span className="font-semibold text-[#1C1C1E] tabular-nums">
-                    {formatTZS(summary.totalContributed)} ({poolPct}%)
+                    {formatTZS(effectivePoolContributed)} ({poolPct}%)
+                    {summary.appliedAdvanceCredit > 0 && (
+                      <span className="ml-1 font-normal text-[#8F703F]">
+                        · incl. {formatTZS(summary.appliedAdvanceCredit)} early
+                      </span>
+                    )}
                   </span>
                 </div>
                 <div className="h-1.5 w-full rounded-full bg-stone-100 overflow-hidden">

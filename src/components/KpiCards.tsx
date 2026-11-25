@@ -3,6 +3,7 @@ import { formatTZS } from "../lib/format";
 interface KpiCardsProps {
   totalSpent: number;
   totalContributed: number;
+  appliedAdvanceCredit?: number;
   remainingBalance: number;
   allTimeBalance: number;
   periodBudgetTarget: number;
@@ -41,6 +42,7 @@ function DeltaLabel({
 export function KpiCards({
   totalSpent,
   totalContributed,
+  appliedAdvanceCredit = 0,
   remainingBalance,
   allTimeBalance,
   periodBudgetTarget,
@@ -96,7 +98,13 @@ export function KpiCards({
           {formatTZS(totalContributed)}
         </div>
         <div className="mt-1">
-          <DeltaLabel pct={contributedDeltaPct} comparisonLabel={comparisonLabel} />
+          {appliedAdvanceCredit > 0 ? (
+            <span className="text-[11px] font-medium text-[#8F703F] tabular-nums">
+              Includes {formatTZS(appliedAdvanceCredit)} paid early
+            </span>
+          ) : (
+            <DeltaLabel pct={contributedDeltaPct} comparisonLabel={comparisonLabel} />
+          )}
         </div>
       </div>
 

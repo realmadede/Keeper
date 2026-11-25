@@ -54,6 +54,8 @@ export interface MemberContributionStatus {
 
 export interface WeeklySummary {
   totalContributed: number;
+  appliedAdvanceCredit: number;
+  effectiveTotalContributed: number;
   totalSpent: number;
   remainingBalance: number;
   allTimeBalance: number;
@@ -361,6 +363,7 @@ export function computePeriodSummary(
   periodKey: PeriodKey = "this_week",
   referenceDate = new Date(),
   startDayOfWeek = 1,
+  weeklyBudgetTarget?: number,
 ): WeeklySummary {
   const normalizedStart = ((startDayOfWeek % 7) + 7) % 7;
   const currentPeriod = getPeriodWindow(periodKey, referenceDate, normalizedStart);
@@ -563,13 +566,29 @@ export function computePeriodSummary(
     };
   });
 
+  const allTimeBalance = computeAllTimeBalance(transactions);
+  const priorPoolBalance = Math.max(0, allTimeBalance - (totalContributed - totalSpent));
+  const totalMemberCarryOver = memberStatuses.reduce((sum, s) => sum + s.carryOverCredit, 0);
+  const houseExpectedPool = Math.max(weeklyBudgetTarget ?? 0, expectedShare * members.length);
+  const appliedAdvanceCredit =
+    currentPeriod.kind === "week" && houseExpectedPool > 0
+      ? Math.min(
+          totalMemberCarryOver,
+          Math.max(0, houseExpectedPool - totalContributed),
+          priorPoolBalance,
+        )
+      : 0;
+  const effectiveTotalContributed = totalContributed + appliedAdvanceCredit;
+
   return {
     totalContributed,
+    appliedAdvanceCredit,
+    effectiveTotalContributed,
     totalSpent,
-    remainingBalance: totalContributed - totalSpent,
-    allTimeBalance: computeAllTimeBalance(transactions),
+    remainingBalance: effectiveTotalContributed - totalSpent,
+    allTimeBalance,
     spentDeltaPct: pctChange(totalSpent, prevSpent),
-    contributedDeltaPct: pctChange(totalContributed, prevContributed),
+    contributedDeltaPct: pctChange(effectiveTotalContributed, prevContributed),
     dailySeries,
     categories,
     memberStatuses,
@@ -585,6 +604,7 @@ export function computeWeeklySummary(
   weekOffset = 0,
   referenceDate = new Date(),
   startDayOfWeek = 1,
+  weeklyBudgetTarget?: number,
 ): WeeklySummary {
   const key: PeriodKey =
     weekOffset === 0 ? "this_week" : weekOffset === -1 ? "last_week" : "two_weeks_ago";
@@ -595,6 +615,7 @@ export function computeWeeklySummary(
     key,
     referenceDate,
     startDayOfWeek,
+    weeklyBudgetTarget,
   );
 }
 
