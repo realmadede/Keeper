@@ -18,8 +18,12 @@ import {
 import {
   loadLocalOverspendPlan,
   loadLocalSurplusPlan,
+  loadLocalWeeklyBoosts,
+  removeWeeklyBoost,
   saveLocalOverspendPlan,
   saveLocalSurplusPlan,
+  saveLocalWeeklyBoosts,
+  upsertWeeklyBoost,
 } from "../lib/overspendPlan";
 import {
   clearLastAuthMethod,
@@ -41,6 +45,7 @@ import type {
   Transaction,
   TransactionCategory,
   TransactionType,
+  WeeklyBoostEntry,
   WeeklySurplusPlan,
 } from "../types";
 
@@ -141,6 +146,7 @@ export interface KeeperStore {
   updateBudget: (weeklyBudget: number, memberShare: number) => Promise<void>;
   updateOverspendPlan: (plan: OverspendRecoveryPlan | null) => Promise<void>;
   updateSurplusPlan: (plan: WeeklySurplusPlan | null) => Promise<void>;
+  setWeeklyBoost: (entry: WeeklyBoostEntry | null, weekStartISO: string) => Promise<void>;
   submitAppFeedback: (input: {
     kind: "rating" | "bug" | "feature";
     rating?: number | null;
@@ -410,6 +416,9 @@ export function useKeeperStore(): KeeperStore {
         const resolvedSurplusPlan =
           (h.surplus_plan as WeeklySurplusPlan | null | undefined) ??
           loadLocalSurplusPlan(String(h.id));
+        const resolvedWeeklyBoosts = Array.isArray(h.weekly_boosts)
+          ? (h.weekly_boosts as WeeklyBoostEntry[])
+          : loadLocalWeeklyBoosts(String(h.id));
         setHousehold({
           ...h,
           currency: "TZS",
@@ -417,6 +426,7 @@ export function useKeeperStore(): KeeperStore {
           member_weekly_share: Number(h.member_weekly_share),
           overspend_plan: resolvedOverspendPlan,
           surplus_plan: resolvedSurplusPlan,
+          weekly_boosts: resolvedWeeklyBoosts,
         });
 
         const profileMap = new Map<string, Profile>();
@@ -720,6 +730,7 @@ export function useKeeperStore(): KeeperStore {
             member_weekly_share: Number(h.member_weekly_share),
             overspend_plan: resolvedOverspendPlan,
             surplus_plan: resolvedSurplusPlan,
+            weekly_boosts: resolvedWeeklyBoosts,
           },
           members: Array.from(profileMap.values()).map((p) => {
             const rawMember = (membersRes.data ?? []).find(
@@ -2429,6 +2440,32 @@ export function useKeeperStore(): KeeperStore {
     [household, isDemoMode],
   );
 
+  const setWeeklyBoost = useCallback(
+    async (entry: WeeklyBoostEntry | null, weekStartISO: string) => {
+      setError(null);
+      if (!household) return;
+
+      const currentBoosts = household.weekly_boosts ?? loadLocalWeeklyBoosts(household.id);
+      const nextBoosts = entry
+        ? upsertWeeklyBoost(currentBoosts, entry)
+        : removeWeeklyBoost(currentBoosts, weekStartISO);
+
+      saveLocalWeeklyBoosts(household.id, nextBoosts);
+      setHousehold((prev) => (prev ? { ...prev, weekly_boosts: nextBoosts } : prev));
+
+      if (isDemoMode || !supabase) return;
+      try {
+        await supabase
+          .from("households")
+          .update({ weekly_boosts: nextBoosts })
+          .eq("id", household.id);
+      } catch {
+        // Optional DB column may not exist yet; localStorage persistence already succeeded
+      }
+    },
+    [household, isDemoMode],
+  );
+
   const submitAppFeedback = useCallback(
     async (input: {
       kind: "rating" | "bug" | "feature";
@@ -2608,6 +2645,7 @@ export function useKeeperStore(): KeeperStore {
     updateBudget,
     updateOverspendPlan,
     updateSurplusPlan,
+    setWeeklyBoost,
     submitAppFeedback,
     leaveHousehold,
   };

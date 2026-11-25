@@ -1,7 +1,8 @@
-import type { OverspendRecoveryPlan, WeeklySurplusPlan } from "../types";
+import type { OverspendRecoveryPlan, WeeklyBoostEntry, WeeklySurplusPlan } from "../types";
 
 const PLAN_KEY_PREFIX = "keeper_overspend_plan_v1:";
 const SURPLUS_PLAN_KEY_PREFIX = "keeper_surplus_plan_v1:";
+const BOOSTS_KEY_PREFIX = "keeper_weekly_boosts_v1:";
 const NOTIF_KEY_PREFIX = "keeper_overspend_notified_v1:";
 const CONGRATS_DISMISSED_PREFIX = "keeper_budget_congrats_dismissed_v1:";
 const CONGRATS_NOTIFIED_PREFIX = "keeper_budget_congrats_notified_v1:";
@@ -292,4 +293,74 @@ export function saveLocalSurplusPlan(
   } catch {
     // Ignore storage errors
   }
+}
+
+export function loadLocalWeeklyBoosts(householdId: string): WeeklyBoostEntry[] {
+  try {
+    const raw = localStorage.getItem(`${BOOSTS_KEY_PREFIX}${householdId}`);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (item): item is WeeklyBoostEntry =>
+        Boolean(item) &&
+        typeof item.weekStartISO === "string" &&
+        typeof item.extraPerMember === "number" &&
+        item.extraPerMember > 0 &&
+        typeof item.extraTotal === "number" &&
+        item.extraTotal > 0,
+    );
+  } catch {
+    return [];
+  }
+}
+
+export function saveLocalWeeklyBoosts(householdId: string, boosts: WeeklyBoostEntry[]): void {
+  try {
+    const key = `${BOOSTS_KEY_PREFIX}${householdId}`;
+    if (boosts.length === 0) localStorage.removeItem(key);
+    else localStorage.setItem(key, JSON.stringify(boosts.slice(0, 24)));
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+export function getBoostForWeek(
+  boosts: WeeklyBoostEntry[] | null | undefined,
+  weekStartISO: string,
+): WeeklyBoostEntry | null {
+  if (!boosts || boosts.length === 0) return null;
+  return boosts.find((b) => b.weekStartISO === weekStartISO) ?? null;
+}
+
+export function upsertWeeklyBoost(
+  boosts: WeeklyBoostEntry[] | null | undefined,
+  entry: WeeklyBoostEntry,
+): WeeklyBoostEntry[] {
+  const existing = (boosts ?? []).filter((b) => b.weekStartISO !== entry.weekStartISO);
+  return [entry, ...existing]
+    .sort((a, b) => b.weekStartISO.localeCompare(a.weekStartISO))
+    .slice(0, 24);
+}
+
+export function removeWeeklyBoost(
+  boosts: WeeklyBoostEntry[] | null | undefined,
+  weekStartISO: string,
+): WeeklyBoostEntry[] {
+  return (boosts ?? []).filter((b) => b.weekStartISO !== weekStartISO);
+}
+
+export function sumPriorWeeklyBoostPerMember(
+  boosts: WeeklyBoostEntry[] | null | undefined,
+  anchorCycleStartISO: string,
+  currentWeekStartISO: string,
+): number {
+  if (!boosts || boosts.length === 0) return 0;
+  let total = 0;
+  for (const b of boosts) {
+    if (b.weekStartISO >= anchorCycleStartISO && b.weekStartISO < currentWeekStartISO) {
+      total += Math.max(0, Math.round(b.extraPerMember));
+    }
+  }
+  return total;
 }

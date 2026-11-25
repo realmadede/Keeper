@@ -19,7 +19,12 @@ import {
 } from "../lib/analytics";
 import { buildWeeklyWhatsAppSummary } from "../lib/export";
 import { formatTZS, getInitials, toISODate } from "../lib/format";
-import { addDaysISO, evaluateOverspendPlan, evaluateSurplusPlan } from "../lib/overspendPlan";
+import {
+  addDaysISO,
+  evaluateOverspendPlan,
+  evaluateSurplusPlan,
+  getBoostForWeek,
+} from "../lib/overspendPlan";
 import {
   EXPENSE_CATEGORIES,
   type BillPaymentRecord,
@@ -31,6 +36,7 @@ import {
   type OverspendRecoveryMode,
   type OverspendRecoveryPlan,
   type RecurringBill,
+  type WeeklyBoostEntry,
   type WeeklySurplusPlan,
 } from "../types";
 import { CategoryIcon } from "./CategoryIcon";
@@ -54,6 +60,7 @@ interface BudgetViewProps {
   onUpdateBudget: (weeklyBudget: number, memberShare: number) => Promise<void>;
   onUpdateOverspendPlan?: (plan: OverspendRecoveryPlan | null) => Promise<void>;
   onUpdateSurplusPlan?: (plan: WeeklySurplusPlan | null) => Promise<void>;
+  onSetWeeklyBoost?: (entry: WeeklyBoostEntry | null, weekStartISO: string) => Promise<void>;
   onAddNeed: (
     title: string,
     category: ExpenseCategoryId,
@@ -113,6 +120,7 @@ export function BudgetView({
   onUpdateBudget,
   onUpdateOverspendPlan,
   onUpdateSurplusPlan,
+  onSetWeeklyBoost,
   onAddNeed,
   onMarkNeedBought,
   onToggleNeedMemberSettled,
@@ -181,13 +189,65 @@ export function BudgetView({
   const [surplusAmountInput, setSurplusAmountInput] = useState("");
   const [savingSurplusPlan, setSavingSurplusPlan] = useState(false);
 
+  // Optional one-time weekly boost (adds extra for THIS week only without changing base budget)
+  const [showBoostForm, setShowBoostForm] = useState(false);
+  const [boostPerMemberInput, setBoostPerMemberInput] = useState("5000");
+  const [boostReasonInput, setBoostReasonInput] = useState("");
+  const [savingBoost, setSavingBoost] = useState(false);
+
   const memberCount = Math.max(1, members.length);
   const availablePoolCash = Math.max(0, summary.allTimeBalance);
+
+  const activeBoost =
+    weekWindow.kind === "week"
+      ? getBoostForWeek(household.weekly_boosts, weekWindow.startISO)
+      : null;
+  const activeBoostTotal = activeBoost?.extraTotal ?? 0;
+  const activeBoostPerMember = activeBoost?.extraPerMember ?? 0;
 
   const periodTarget =
     weekWindow.kind === "month"
       ? household.weekly_budget_target * 4
-      : household.weekly_budget_target;
+      : household.weekly_budget_target + activeBoostTotal;
+
+  const parsedBoostPerMember = Number(boostPerMemberInput.replace(/,/g, "").trim());
+  const previewBoostPerMember =
+    Number.isFinite(parsedBoostPerMember) && parsedBoostPerMember > 0
+      ? Math.round(parsedBoostPerMember)
+      : 0;
+  const previewBoostTotal = previewBoostPerMember * memberCount;
+
+  const handleSaveWeeklyBoost = async () => {
+    if (!onSetWeeklyBoost || previewBoostPerMember <= 0) return;
+    setSavingBoost(true);
+    try {
+      await onSetWeeklyBoost(
+        {
+          weekStartISO: weekWindow.startISO,
+          extraPerMember: previewBoostPerMember,
+          extraTotal: previewBoostTotal,
+          reason: boostReasonInput.trim() || null,
+          createdAt: new Date().toISOString(),
+        },
+        weekWindow.startISO,
+      );
+      setShowBoostForm(false);
+      setBoostReasonInput("");
+    } finally {
+      setSavingBoost(false);
+    }
+  };
+
+  const handleCancelWeeklyBoost = async () => {
+    if (!onSetWeeklyBoost) return;
+    setSavingBoost(true);
+    try {
+      await onSetWeeklyBoost(null, weekWindow.startISO);
+      setShowBoostForm(false);
+    } finally {
+      setSavingBoost(false);
+    }
+  };
 
   const overspendEval =
     weekWindow.kind === "week"
@@ -909,6 +969,141 @@ export function BudgetView({
                     </div>
                   )}
               </div>
+              {/* One-Time Weekly Boost (adds extra for THIS week only without changing base budget) */}
+              {weekWindow.kind === "week" && onSetWeeklyBoost && (
+                activeBoost ? (
+                  <div className="rounded-xl border border-[#C6A87C]/35 bg-[#C6A87C]/12 px-3 py-2.5 text-xs space-y-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="font-semibold text-[#1C1C1E] tabular-nums">
+                          One-time boost · +{formatTZS(activeBoost.extraPerMember)}/member (+
+                          {formatTZS(activeBoost.extraTotal)})
+                        </div>
+                        <div className="text-[11px] text-[#52525B] mt-0.5">
+                          {activeBoost.reason ? `${activeBoost.reason} · ` : ""}
+                          This week only — next week resets to{" "}
+                          {formatTZS(household.weekly_budget_target)}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={savingBoost}
+                        onClick={() => void handleCancelWeeklyBoost()}
+                        className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-stone-900/15 bg-white px-2 py-1 text-[11px] font-medium text-[#1C1C1E] hover:bg-stone-50 cursor-pointer"
+                      >
+                        <X className="h-3 w-3" />
+                        <span>Cancel</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowBoostForm((v) => !v)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-stone-900/10 bg-[#F6F5F2] px-2.5 py-1.5 text-[11px] font-medium text-[#1C1C1E] hover:bg-stone-200/60 cursor-pointer"
+                    >
+                      <Plus className="h-3 w-3 text-[#8F703F]" />
+                      <span>
+                        {showBoostForm
+                          ? "Hide one-time boost"
+                          : "Add one-time boost for this week (optional)"}
+                      </span>
+                    </button>
+
+                    {showBoostForm && (
+                      <div className="rounded-xl border border-stone-900/[0.08] bg-[#F6F5F2] p-3 space-y-2.5">
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <label className="text-[11px] font-semibold text-[#1C1C1E]">
+                              Extra per member (TZS)
+                            </label>
+                            <div className="flex items-center gap-1">
+                              {[2000, 5000, 10000].map((preset) => (
+                                <button
+                                  key={preset}
+                                  type="button"
+                                  onClick={() => setBoostPerMemberInput(String(preset))}
+                                  className="rounded-md bg-white px-2 py-0.5 text-[10px] font-medium text-[#52525B] border border-stone-900/10 hover:text-[#1C1C1E] cursor-pointer"
+                                >
+                                  +{(preset / 1000).toFixed(0)}K
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            min={100}
+                            value={boostPerMemberInput}
+                            onChange={(e) => setBoostPerMemberInput(e.target.value)}
+                            placeholder="e.g. 5000"
+                            className="w-full rounded-lg border border-stone-900/15 bg-white px-3 py-1.5 text-xs font-medium text-[#1C1C1E] tabular-nums focus:outline-none focus:ring-2 focus:ring-[#1C1C1E]/20"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="block text-[11px] font-medium text-[#52525B]">
+                            Note (optional)
+                          </label>
+                          <input
+                            type="text"
+                            maxLength={60}
+                            value={boostReasonInput}
+                            onChange={(e) => setBoostReasonInput(e.target.value)}
+                            placeholder="e.g. Guests, extra groceries"
+                            className="w-full rounded-lg border border-stone-900/15 bg-white px-3 py-1.5 text-xs text-[#1C1C1E] placeholder:text-[#8E8E93] focus:outline-none focus:ring-2 focus:ring-[#1C1C1E]/20"
+                          />
+                        </div>
+
+                        {previewBoostPerMember > 0 && (
+                          <div className="rounded-lg bg-white px-2.5 py-2 text-[11px] text-[#52525B] space-y-1 tabular-nums">
+                            <div className="flex justify-between">
+                              <span>This week&apos;s budget</span>
+                              <span className="font-semibold text-[#1C1C1E]">
+                                {formatTZS(household.weekly_budget_target + previewBoostTotal)} (+
+                                {formatTZS(previewBoostTotal)})
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>
+                                Each member ({memberCount}{" "}
+                                {memberCount === 1 ? "member" : "members"})
+                              </span>
+                              <span className="font-semibold text-[#8F703F]">
+                                {formatTZS(household.member_weekly_share + previewBoostPerMember)}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-[#8E8E93] pt-0.5">
+                              Applies to this week only. Next week resets to{" "}
+                              {formatTZS(household.member_weekly_share)}/member with no false
+                              advance.
+                            </p>
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setShowBoostForm(false)}
+                            className="rounded-lg border border-stone-900/10 bg-white px-3 py-1.5 text-xs font-medium text-[#52525B] cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            disabled={savingBoost || previewBoostPerMember <= 0}
+                            onClick={() => void handleSaveWeeklyBoost()}
+                            className="rounded-lg bg-[#1C1C1E] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#2C2C30] disabled:opacity-50 cursor-pointer"
+                          >
+                            {savingBoost ? "Applying..." : "Apply boost"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              )}
             </div>
 
             <div className="mt-3.5 pt-3 border-t border-stone-900/[0.06]">
@@ -935,7 +1130,10 @@ export function BudgetView({
                 <span className="font-mono text-xs text-[#8E8E93] tabular-nums">
                   {surplusEval?.active
                     ? `Adjusted: ${formatTZS(surplusEval.adjustedMemberShare)}/wk`
-                    : `Share: ${formatTZS(household.member_weekly_share)}/wk`}
+                    : `Share: ${formatTZS(household.member_weekly_share + activeBoostPerMember)}/wk`}
+                  {activeBoostPerMember > 0 && !surplusEval?.active
+                    ? ` (incl. +${formatTZS(activeBoostPerMember)} boost)`
+                    : ""}
                   {activeMemberTopUp > 0 ? ` (+${formatTZS(activeMemberTopUp)})` : ""}
                 </span>
               </div>
