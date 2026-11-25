@@ -24,9 +24,11 @@ import {
   saveLocalSurplusPlan,
 } from "../lib/overspendPlan";
 import {
+  clearLastAuthMethod,
   createRateLimiter,
   generateClientInviteCode,
   sanitizeInviteCode,
+  setLastAuthMethod,
 } from "../lib/security";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
 import type {
@@ -786,6 +788,9 @@ export function useKeeperStore(): KeeperStore {
         setPasswordRecoveryMode(true);
       }
       if (session?.user) {
+        const provider = session.user.app_metadata?.provider;
+        if (provider === "google") setLastAuthMethod("google");
+        else if (provider === "email") setLastAuthMethod("email");
         setIsDemoMode(false);
         await fetchHouseholdBundle(session.user.id, session.user);
       } else {
@@ -952,6 +957,7 @@ export function useKeeperStore(): KeeperStore {
       throw err;
     }
     authRateLimiter.reset();
+    setLastAuthMethod("email");
     if (data.session?.user) {
       setIsDemoMode(false);
       await fetchHouseholdBundle(data.session.user.id, data.session.user);
@@ -1153,6 +1159,7 @@ export function useKeeperStore(): KeeperStore {
       throw err;
     }
     clearLastUserId();
+    clearLastAuthMethod();
     await supabase.auth.signOut({ scope: "local" });
   }, [isDemoMode]);
 

@@ -3,6 +3,7 @@ import { ArrowLeft, ArrowRight, Check, Eye, EyeOff, KeyRound, Mail, User } from 
 import { KeeperLogo } from "./KeeperLogo";
 import { LegalModal, type LegalDocType } from "./LegalModal";
 import { SoftButton, SoftInput, SoftSegmented } from "./LightControls";
+import { getLastAuthMethod } from "../lib/security";
 
 interface AuthScreenProps {
   isSupabaseReady: boolean;
@@ -68,6 +69,7 @@ export function AuthScreen({
   const [resetSent, setResetSent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [googleSubmitting, setGoogleSubmitting] = useState(false);
+  const [lastAuthMethod] = useState(() => getLastAuthMethod());
 
   const handleGoogleAuth = async () => {
     setLocalError(null);
@@ -246,7 +248,14 @@ export function AuthScreen({
 
             {!passwordRecoveryMode && (
               <div>
-                <label className="block text-xs font-medium text-[#52525B] mb-1">Email</label>
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <label className="block text-xs font-medium text-[#52525B]">Email</label>
+                  {mode === "signin" && lastAuthMethod === "email" && (
+                    <span className="inline-flex items-center rounded-full border border-[#C6A87C]/40 bg-[#C6A87C]/15 px-2 py-0.5 text-[10px] font-semibold text-[#8F703F]">
+                      Last used
+                    </span>
+                  )}
+                </div>
                 <SoftInput
                   type="email"
                   placeholder="you@example.com"
@@ -435,19 +444,26 @@ export function AuthScreen({
                 <div className="h-px flex-1 bg-stone-900/[0.08]" />
               </div>
 
-              <SoftButton
-                type="button"
-                onClick={() => void handleGoogleAuth()}
-                disabled={googleSubmitting || submitting}
-                icon={<GoogleMark />}
-                className="w-full !h-10 text-xs font-medium"
-              >
-                {googleSubmitting
-                  ? "Connecting to Google..."
-                  : mode === "signup"
-                    ? "Sign up with Google"
-                    : "Sign in with Google"}
-              </SoftButton>
+              <div className="relative">
+                {mode === "signin" && lastAuthMethod === "google" && (
+                  <span className="pointer-events-none absolute -top-2.5 right-3 z-20 inline-flex items-center rounded-full border border-[#C6A87C]/45 bg-[#FFFDF9] px-2 py-0.5 text-[10px] font-semibold text-[#8F703F] shadow-xs">
+                    Last used
+                  </span>
+                )}
+                <SoftButton
+                  type="button"
+                  onClick={() => void handleGoogleAuth()}
+                  disabled={googleSubmitting || submitting}
+                  icon={<GoogleMark />}
+                  className="w-full !h-10 text-xs font-medium"
+                >
+                  {googleSubmitting
+                    ? "Connecting to Google..."
+                    : mode === "signup"
+                      ? "Sign up with Google"
+                      : "Sign in with Google"}
+                </SoftButton>
+              </div>
             </>
           )}
 
