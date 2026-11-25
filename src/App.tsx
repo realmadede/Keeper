@@ -642,14 +642,6 @@ export function App() {
   ];
 
   const isBrandNewHouse = store.transactions.length === 0;
-  const activePeriodBoost =
-    periodWindow.kind === "week"
-      ? getBoostForWeek(store.household.weekly_boosts, periodWindow.startISO)
-      : null;
-  const periodBudgetTarget =
-    periodWindow.kind === "month"
-      ? store.household.weekly_budget_target * 4
-      : store.household.weekly_budget_target + (activePeriodBoost?.extraTotal ?? 0);
 
   return (
     <div className="h-dvh overflow-hidden flex flex-col">
@@ -927,10 +919,7 @@ export function App() {
                 appliedAdvanceCredit={summary.appliedAdvanceCredit}
                 remainingBalance={summary.remainingBalance}
                 allTimeBalance={summary.allTimeBalance}
-                periodBudgetTarget={periodBudgetTarget}
-                periodGoalLabel={
-                  periodWindow.kind === "month" ? "monthly goal" : "weekly goal"
-                }
+                periodLabel={periodWindow.label}
                 comparisonLabel={periodWindow.comparisonLabel}
                 spentDeltaPct={summary.spentDeltaPct}
                 contributedDeltaPct={summary.contributedDeltaPct}

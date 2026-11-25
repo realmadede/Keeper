@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 import { generateQrMatrix } from "./qr";
 import {
   clearLastAuthMethod,
+  clearPendingAuthMethod,
+  consumePendingAuthMethod,
   createRateLimiter,
   generateClientInviteCode,
   getLastAuthMethod,
   sanitizeInviteCode,
   setLastAuthMethod,
+  setPendingAuthMethod,
 } from "./security";
 
 describe("generateQrMatrix", () => {
@@ -90,5 +93,29 @@ describe("last auth method storage", () => {
     expect(getLastAuthMethod()).toBe("email");
     clearLastAuthMethod();
     expect(getLastAuthMethod()).toBeNull();
+  });
+
+  it("records and consumes pending auth method once for OAuth redirects", () => {
+    const store = new Map<string, string>();
+    Object.defineProperty(globalThis, "localStorage", {
+      value: {
+        getItem: (k: string) => store.get(k) ?? null,
+        setItem: (k: string, v: string) => {
+          store.set(k, v);
+        },
+        removeItem: (k: string) => {
+          store.delete(k);
+        },
+      },
+      configurable: true,
+    });
+
+    setPendingAuthMethod("google");
+    expect(consumePendingAuthMethod()).toBe("google");
+    expect(consumePendingAuthMethod()).toBeNull();
+
+    setPendingAuthMethod("google");
+    clearPendingAuthMethod();
+    expect(consumePendingAuthMethod()).toBeNull();
   });
 });

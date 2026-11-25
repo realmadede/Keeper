@@ -77,6 +77,7 @@ export function createRateLimiter(maxAttempts: number, windowMs: number): RateLi
 export type AuthMethod = "email" | "google";
 
 const LAST_AUTH_METHOD_KEY = "keeper_last_auth_method_v1";
+const PENDING_AUTH_METHOD_KEY = "keeper_pending_auth_method_v1";
 
 export function getLastAuthMethod(): AuthMethod | null {
   try {
@@ -100,5 +101,31 @@ export function clearLastAuthMethod(): void {
     localStorage.removeItem(LAST_AUTH_METHOD_KEY);
   } catch {
     // Ignore storage errors
+  }
+}
+
+export function setPendingAuthMethod(method: AuthMethod): void {
+  try {
+    localStorage.setItem(PENDING_AUTH_METHOD_KEY, method);
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+export function clearPendingAuthMethod(): void {
+  try {
+    localStorage.removeItem(PENDING_AUTH_METHOD_KEY);
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+export function consumePendingAuthMethod(): AuthMethod | null {
+  try {
+    const raw = localStorage.getItem(PENDING_AUTH_METHOD_KEY);
+    localStorage.removeItem(PENDING_AUTH_METHOD_KEY);
+    return raw === "google" || raw === "email" ? raw : null;
+  } catch {
+    return null;
   }
 }
