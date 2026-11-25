@@ -8,6 +8,7 @@ import {
   GOOGLE_CLIENT_ID,
   loadGoogleIdentityScript,
 } from "../lib/googleIdentity";
+import { getLastAuthMethod } from "../lib/security";
 
 interface AuthScreenProps {
   isSupabaseReady: boolean;
@@ -76,6 +77,7 @@ export function AuthScreen({
   const [submitting, setSubmitting] = useState(false);
   const [googleSubmitting, setGoogleSubmitting] = useState(false);
   const [gisReady, setGisReady] = useState(false);
+  const [lastAuthMethod] = useState(() => getLastAuthMethod());
   const googleBtnRef = useRef<HTMLDivElement | null>(null);
   const useGis = Boolean(GOOGLE_CLIENT_ID && onSignInWithGoogleIdToken);
 
@@ -312,7 +314,14 @@ export function AuthScreen({
 
             {!passwordRecoveryMode && (
               <div>
-                <label className="block text-xs font-medium text-[#52525B] mb-1">Email</label>
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <label className="block text-xs font-medium text-[#52525B]">Email</label>
+                  {mode === "signin" && lastAuthMethod === "email" && (
+                    <span className="inline-flex items-center rounded-full border border-[#C6A87C]/40 bg-[#C6A87C]/15 px-2 py-0.5 text-[10px] font-semibold text-[#8F703F]">
+                      Last used
+                    </span>
+                  )}
+                </div>
                 <SoftInput
                   type="email"
                   placeholder="you@example.com"
@@ -501,57 +510,64 @@ export function AuthScreen({
                 <div className="h-px flex-1 bg-stone-900/[0.08]" />
               </div>
 
-              {useGis ? (
-                <div className="relative">
-                  <div
-                    ref={googleBtnRef}
-                    className={`flex w-full items-center justify-center ${
-                      gisReady ? "min-h-[40px]" : "h-0 overflow-hidden"
-                    } ${googleSubmitting || submitting ? "pointer-events-none opacity-60" : ""}`}
-                  />
-                  {mode === "signup" && !acceptedTerms && gisReady && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setLocalError(
-                          "Please agree to the Terms of Service and Privacy Policy first.",
-                        )
-                      }
-                      aria-label="Agree to terms before signing up with Google"
-                      className="absolute inset-0 z-10 cursor-pointer rounded-md bg-transparent"
+              <div className="relative">
+                {mode === "signin" && lastAuthMethod === "google" && (
+                  <span className="pointer-events-none absolute -top-2.5 right-3 z-20 inline-flex items-center rounded-full border border-[#C6A87C]/45 bg-[#FFFDF9] px-2 py-0.5 text-[10px] font-semibold text-[#8F703F] shadow-xs">
+                    Last used
+                  </span>
+                )}
+                {useGis ? (
+                  <div className="relative">
+                    <div
+                      ref={googleBtnRef}
+                      className={`flex w-full items-center justify-center ${
+                        gisReady ? "min-h-[40px]" : "h-0 overflow-hidden"
+                      } ${googleSubmitting || submitting ? "pointer-events-none opacity-60" : ""}`}
                     />
-                  )}
-                  {!gisReady && (
-                    <SoftButton
-                      type="button"
-                      onClick={() => void handleGoogleAuth()}
-                      disabled={googleSubmitting || submitting}
-                      icon={<GoogleMark />}
-                      className="w-full !h-10 text-xs font-medium"
-                    >
-                      {googleSubmitting
-                        ? "Connecting to Google..."
-                        : mode === "signup"
-                          ? "Sign up with Google"
-                          : "Sign in with Google"}
-                    </SoftButton>
-                  )}
-                </div>
-              ) : (
-                <SoftButton
-                  type="button"
-                  onClick={() => void handleGoogleAuth()}
-                  disabled={googleSubmitting || submitting}
-                  icon={<GoogleMark />}
-                  className="w-full !h-10 text-xs font-medium"
-                >
-                  {googleSubmitting
-                    ? "Connecting to Google..."
-                    : mode === "signup"
-                      ? "Sign up with Google"
-                      : "Sign in with Google"}
-                </SoftButton>
-              )}
+                    {mode === "signup" && !acceptedTerms && gisReady && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setLocalError(
+                            "Please agree to the Terms of Service and Privacy Policy first.",
+                          )
+                        }
+                        aria-label="Agree to terms before signing up with Google"
+                        className="absolute inset-0 z-10 cursor-pointer rounded-md bg-transparent"
+                      />
+                    )}
+                    {!gisReady && (
+                      <SoftButton
+                        type="button"
+                        onClick={() => void handleGoogleAuth()}
+                        disabled={googleSubmitting || submitting}
+                        icon={<GoogleMark />}
+                        className="w-full !h-10 text-xs font-medium"
+                      >
+                        {googleSubmitting
+                          ? "Connecting to Google..."
+                          : mode === "signup"
+                            ? "Sign up with Google"
+                            : "Sign in with Google"}
+                      </SoftButton>
+                    )}
+                  </div>
+                ) : (
+                  <SoftButton
+                    type="button"
+                    onClick={() => void handleGoogleAuth()}
+                    disabled={googleSubmitting || submitting}
+                    icon={<GoogleMark />}
+                    className="w-full !h-10 text-xs font-medium"
+                  >
+                    {googleSubmitting
+                      ? "Connecting to Google..."
+                      : mode === "signup"
+                        ? "Sign up with Google"
+                        : "Sign in with Google"}
+                  </SoftButton>
+                )}
+              </div>
             </>
           )}
 

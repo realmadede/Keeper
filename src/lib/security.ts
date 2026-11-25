@@ -73,3 +73,32 @@ export function createRateLimiter(maxAttempts: number, windowMs: number): RateLi
     },
   };
 }
+
+export type AuthMethod = "email" | "google";
+
+const LAST_AUTH_METHOD_KEY = "keeper_last_auth_method_v1";
+
+export function getLastAuthMethod(): AuthMethod | null {
+  try {
+    const raw = localStorage.getItem(LAST_AUTH_METHOD_KEY);
+    return raw === "google" || raw === "email" ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setLastAuthMethod(method: AuthMethod): void {
+  try {
+    localStorage.setItem(LAST_AUTH_METHOD_KEY, method);
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+export function clearLastAuthMethod(): void {
+  try {
+    localStorage.removeItem(LAST_AUTH_METHOD_KEY);
+  } catch {
+    // Ignore storage errors
+  }
+}

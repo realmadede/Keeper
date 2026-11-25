@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { generateQrMatrix } from "./qr";
-import { createRateLimiter, generateClientInviteCode, sanitizeInviteCode } from "./security";
+import {
+  clearLastAuthMethod,
+  createRateLimiter,
+  generateClientInviteCode,
+  getLastAuthMethod,
+  sanitizeInviteCode,
+  setLastAuthMethod,
+} from "./security";
 
 describe("generateQrMatrix", () => {
   it("generates a square ISO QR matrix with 7x7 finder corners for an invite URL", () => {
@@ -57,5 +64,31 @@ describe("createRateLimiter", () => {
 
     // After 60 seconds from the oldest attempt, the window opens again
     expect(limiter.check(t0 + 60_001).allowed).toBe(true);
+  });
+});
+
+describe("last auth method storage", () => {
+  it("remembers google or email auth method and clears cleanly", () => {
+    const store = new Map<string, string>();
+    Object.defineProperty(globalThis, "localStorage", {
+      value: {
+        getItem: (k: string) => store.get(k) ?? null,
+        setItem: (k: string, v: string) => {
+          store.set(k, v);
+        },
+        removeItem: (k: string) => {
+          store.delete(k);
+        },
+      },
+      configurable: true,
+    });
+
+    expect(getLastAuthMethod()).toBeNull();
+    setLastAuthMethod("google");
+    expect(getLastAuthMethod()).toBe("google");
+    setLastAuthMethod("email");
+    expect(getLastAuthMethod()).toBe("email");
+    clearLastAuthMethod();
+    expect(getLastAuthMethod()).toBeNull();
   });
 });
