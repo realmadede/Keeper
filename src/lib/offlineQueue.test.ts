@@ -77,6 +77,10 @@ describe("offlineQueue", () => {
     expect(isLikelyNetworkError({ message: "NetworkError when attempting to fetch resource." })).toBe(
       true,
     );
+    const abortErr = new Error("The user aborted a request.");
+    abortErr.name = "AbortError";
+    expect(isLikelyNetworkError(abortErr)).toBe(true);
+    expect(isLikelyNetworkError(new Error("Request timed out"))).toBe(true);
     expect(isLikelyNetworkError(new Error("new row violates check constraint"))).toBe(false);
   });
 

@@ -110,9 +110,17 @@ export function markVersionWelcomed(version: string): void {
 }
 
 export async function checkLatestRelease(): Promise<UpdateReleaseInfo> {
-  const res = await fetch(RELEASES_API_URL, {
-    headers: { Accept: "application/vnd.github+json" },
-  });
+  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timer = controller ? globalThis.setTimeout(() => controller.abort(), 6_000) : null;
+  let res: Response;
+  try {
+    res = await fetch(RELEASES_API_URL, {
+      headers: { Accept: "application/vnd.github+json" },
+      signal: controller?.signal,
+    });
+  } finally {
+    if (timer !== null) globalThis.clearTimeout(timer);
+  }
   if (!res.ok) throw new Error(`Release lookup failed (${res.status})`);
   const data = (await res.json()) as {
     name?: string;

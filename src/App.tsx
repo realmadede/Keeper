@@ -199,23 +199,27 @@ export function App() {
     };
   }, []);
 
-  // Automatic launch update check on native Android (SnapTube-style in-app updater)
+  // Automatic launch update check on native Android (deferred so it never competes with first paint)
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
     let active = true;
-    lastUpdateCheckRef.current = Date.now();
-    void checkLatestRelease()
-      .then((info) => {
-        if (!active) return;
-        if (info.hasUpdate && !isUpdateDismissed(info.latestVersion)) {
-          setSoftUpdate(info);
-        }
-      })
-      .catch(() => {
-        // Offline or rate-limited — fail silently
-      });
+    const timer = window.setTimeout(() => {
+      if (!active) return;
+      lastUpdateCheckRef.current = Date.now();
+      void checkLatestRelease()
+        .then((info) => {
+          if (!active) return;
+          if (info.hasUpdate && !isUpdateDismissed(info.latestVersion)) {
+            setSoftUpdate(info);
+          }
+        })
+        .catch(() => {
+          // Offline or rate-limited — fail silently
+        });
+    }, 2500);
     return () => {
       active = false;
+      window.clearTimeout(timer);
     };
   }, []);
 
@@ -226,31 +230,35 @@ export function App() {
     }
   }, [store.bills]);
 
-  // Remote minimum version check (fails open if offline or table not yet created)
+  // Remote minimum version check (deferred & fails open if offline or table not yet created)
   useEffect(() => {
     if (!supabase) return;
     let active = true;
-    void supabase
-      .from("app_config")
-      .select("min_app_version, update_message, download_url")
-      .eq("id", 1)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (!active || !data?.min_app_version) return;
-        if (compareSemver(String(data.min_app_version), APP_VERSION) > 0) {
-          setForceUpdate({
-            minVersion: String(data.min_app_version),
-            message:
-              String(data.update_message || "") ||
-              "A newer version of Keeper is required. Please download the latest update to continue.",
-            downloadUrl:
-              String(data.download_url || "") ||
-              "https://github.com/realmadede/Keeper/releases/latest/download/Keeper.apk",
-          });
-        }
-      });
+    const timer = window.setTimeout(() => {
+      if (!active || !supabase) return;
+      void supabase
+        .from("app_config")
+        .select("min_app_version, update_message, download_url")
+        .eq("id", 1)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (!active || !data?.min_app_version) return;
+          if (compareSemver(String(data.min_app_version), APP_VERSION) > 0) {
+            setForceUpdate({
+              minVersion: String(data.min_app_version),
+              message:
+                String(data.update_message || "") ||
+                "A newer version of Keeper is required. Please download the latest update to continue.",
+              downloadUrl:
+                String(data.download_url || "") ||
+                "https://github.com/realmadede/Keeper/releases/latest/download/Keeper.apk",
+            });
+          }
+        });
+    }, 2500);
     return () => {
       active = false;
+      window.clearTimeout(timer);
     };
   }, []);
 

@@ -56,6 +56,7 @@ export interface OfflineHouseholdSnapshot {
 
 export function isLikelyNetworkError(err: unknown): boolean {
   if (typeof navigator !== "undefined" && navigator.onLine === false) return true;
+  if (err instanceof Error && err.name === "AbortError") return true;
   const msg =
     err instanceof Error
       ? err.message
@@ -68,7 +69,10 @@ export function isLikelyNetworkError(err: unknown): boolean {
     lower.includes("networkerror") ||
     lower.includes("network request failed") ||
     lower.includes("load failed") ||
-    lower.includes("fetch failed")
+    lower.includes("fetch failed") ||
+    lower.includes("aborted") ||
+    lower.includes("timed out") ||
+    lower.includes("timeout")
   );
 }
 

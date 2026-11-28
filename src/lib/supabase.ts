@@ -10,6 +10,19 @@ export const isSupabaseConfigured = Boolean(
     !supabaseAnonKey.includes("your-supabase-anon-key"),
 );
 
+const REQUEST_TIMEOUT_MS = 10_000;
+
+function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  if (init?.signal || typeof AbortController === "undefined") {
+    return fetch(input, init);
+  }
+  const controller = new AbortController();
+  const timer = globalThis.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  return fetch(input, { ...init, signal: controller.signal }).finally(() => {
+    globalThis.clearTimeout(timer);
+  });
+}
+
 export const supabase: SupabaseClient | null = isSupabaseConfigured
   ? createClient(supabaseUrl!, supabaseAnonKey!, {
       auth: {
@@ -17,6 +30,9 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured
         detectSessionInUrl: true,
         persistSession: true,
         autoRefreshToken: true,
+      },
+      global: {
+        fetch: fetchWithTimeout,
       },
     })
   : null;
