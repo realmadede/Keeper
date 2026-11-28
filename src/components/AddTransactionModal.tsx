@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { Button, Glass } from "glisse";
 import { Check, FileText, X } from "lucide-react";
 import type { TransactionInput } from "../hooks/useKeeperStore";
 import { formatTZS, getInitials, toISODate } from "../lib/format";
@@ -150,13 +151,13 @@ export function AddTransactionModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-stone-900/35 backdrop-blur-xs p-3 sm:p-4"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-stone-900/35 p-3 sm:p-4"
       onClick={onClose}
     >
-      <div
+      <Glass
         role="dialog"
         aria-modal="true"
-        className="w-full max-w-[430px] max-h-[90dvh] overflow-y-auto no-scrollbar rounded-[20px] border border-stone-900/10 bg-white/95 p-5 shadow-2xl backdrop-blur-md"
+        className="w-full max-w-[430px] max-h-[90dvh] overflow-y-auto no-scrollbar rounded-[28px] p-5 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
@@ -170,14 +171,13 @@ export function AddTransactionModal({
                 : "Syncs immediately to all household members"}
             </p>
           </div>
-          <button
+          <Button
             type="button"
             aria-label="Close"
             onClick={onClose}
-            className="flex h-9 w-9 items-center justify-center rounded-xl border border-stone-900/10 bg-white text-[#52525B] hover:bg-stone-50 hover:text-[#1C1C1E] transition-colors cursor-pointer"
-          >
-            <X className="h-4 w-4" />
-          </button>
+            icon={<X className="h-4 w-4 text-[#52525B]" />}
+            className="!h-9 !w-9 shrink-0"
+          />
         </div>
 
         {/* Placed outside <form> with SoftSegmented so switching responds in 0ms */}
@@ -374,7 +374,7 @@ export function AddTransactionModal({
                     : "Record expense"}
           </SoftButton>
         </form>
-      </div>
+      </Glass>
     </div>
   );
 }

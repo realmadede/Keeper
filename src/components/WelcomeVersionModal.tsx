@@ -1,3 +1,4 @@
+import { Glass } from "glisse";
 import { CheckCircle2, ShieldCheck, Sparkles, Wifi } from "lucide-react";
 import { APP_VERSION } from "../lib/appUpdater";
 import { KeeperLogo } from "./KeeperLogo";
@@ -17,8 +18,12 @@ export function WelcomeVersionModal({
   const isUpgrade = Boolean(previousVersion && previousVersion !== APP_VERSION);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/40 px-5 py-8 backdrop-blur-xs">
-      <div className="w-full max-w-[380px] rounded-[24px] border border-stone-900/[0.08] bg-[#F6F5F2] p-6 shadow-[0_20px_50px_rgba(28,28,30,0.22)] space-y-5">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/40 px-5 py-8">
+      <Glass
+        role="dialog"
+        aria-modal="true"
+        className="w-full max-w-[380px] rounded-[28px] p-6 shadow-[0_20px_50px_rgba(28,28,30,0.22)] space-y-5"
+      >
         <div className="flex items-center justify-between">
           <KeeperLogo size={42} />
           <span className="inline-flex items-center gap-1 rounded-full border border-[#C6A87C]/35 bg-[#C6A87C]/15 px-2.5 py-1 font-mono text-[11px] font-semibold text-[#8F703F]">
@@ -64,7 +69,7 @@ export function WelcomeVersionModal({
         >
           {isUpgrade ? "Continue" : "Start using Keeper"}
         </button>
-      </div>
+      </Glass>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Button, Glass } from "glisse";
 import { Delete, Fingerprint, Lock } from "lucide-react";
 import {
   checkBiometricAvailable,
@@ -136,20 +137,20 @@ export function PinLockScreen({ expectedHash, onUnlock }: PinLockScreenProps) {
           <h1 className="text-lg font-semibold text-[#1C1C1E]">Enter 4-digit PIN</h1>
         </div>
 
-        {/* 4 PIN Slots (briefly shows last typed digit for 2s, then masks into obsidian dot) */}
+        {/* 4 PIN Slots (Glisse Liquid Glass) */}
         <div className="flex items-center justify-center gap-3.5">
           {[0, 1, 2, 3].map((idx) => {
             const filled = idx < digits.length;
             const showChar = filled && revealedIndex === idx;
             return (
-              <span
+              <Glass
                 key={idx}
-                className={`flex h-9 w-9 items-center justify-center rounded-xl border text-base font-semibold transition-colors ${
+                className={`flex h-10 w-10 items-center justify-center rounded-2xl text-base font-semibold transition-colors ${
                   error
-                    ? "border-rose-600 bg-rose-50 text-rose-700"
+                    ? "ring-1 ring-rose-600 text-rose-700"
                     : filled
-                      ? "border-[#1C1C1E] bg-white text-[#1C1C1E]"
-                      : "border-stone-300 bg-white/60 text-transparent"
+                      ? "ring-1 ring-[#1C1C1E]/40 text-[#1C1C1E]"
+                      : "text-transparent"
                 }`}
               >
                 {showChar ? (
@@ -161,7 +162,7 @@ export function PinLockScreen({ expectedHash, onUnlock }: PinLockScreenProps) {
                     }`}
                   />
                 ) : null}
-              </span>
+              </Glass>
             );
           })}
         </div>
@@ -176,15 +177,16 @@ export function PinLockScreen({ expectedHash, onUnlock }: PinLockScreenProps) {
           </p>
         )}
 
-        {/* Tactile Keypad */}
+        {/* Tactile Glisse Liquid Glass Keypad */}
         <div className="grid grid-cols-3 gap-3 pt-1">
           {DIGITS.map((key) =>
             key === "bio" && !canUseBiometric ? (
               <div key="empty-bio" />
             ) : (
-              <button
+              <Button
                 key={key}
                 type="button"
+                variant="glass"
                 aria-label={
                   key === "bio"
                     ? "Unlock with fingerprint or face"
@@ -193,7 +195,7 @@ export function PinLockScreen({ expectedHash, onUnlock }: PinLockScreenProps) {
                       : `Digit ${key}`
                 }
                 onClick={() => void handlePress(key)}
-                className="flex h-14 items-center justify-center rounded-2xl border border-stone-900/[0.08] bg-white text-lg font-semibold text-[#1C1C1E] shadow-[0_2px_8px_rgba(28,28,30,0.04)] active:scale-95 active:bg-stone-100 transition-[transform,background-color] cursor-pointer"
+                className="!h-14 !w-full !rounded-full !text-lg !font-semibold !text-[#1C1C1E]"
               >
                 {key === "del" ? (
                   <Delete className="h-5 w-5 text-[#52525B]" />
@@ -202,7 +204,7 @@ export function PinLockScreen({ expectedHash, onUnlock }: PinLockScreenProps) {
                 ) : (
                   key
                 )}
-              </button>
+              </Button>
             ),
           )}
         </div>

@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
+import { Button, Glass } from "glisse";
 import { X } from "lucide-react";
 import { SoftButton } from "./LightControls";
 
@@ -26,13 +27,13 @@ export function LegalModal({ doc, onClose }: LegalModalProps) {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-stone-900/40 backdrop-blur-xs p-3 sm:p-4"
+      className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-stone-900/40 p-3 sm:p-4"
       onClick={onClose}
     >
-      <div
+      <Glass
         role="dialog"
         aria-modal="true"
-        className="w-full max-w-[440px] max-h-[85dvh] flex flex-col rounded-[20px] border border-stone-900/10 bg-white/95 p-5 shadow-2xl backdrop-blur-md"
+        className="w-full max-w-[440px] max-h-[85dvh] flex flex-col rounded-[28px] p-5 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3 flex items-center justify-between gap-2 shrink-0">
@@ -42,14 +43,13 @@ export function LegalModal({ doc, onClose }: LegalModalProps) {
             </h2>
             <p className="text-[11px] text-[#8E8E93]">Keeper Household Management · Updated 2026</p>
           </div>
-          <button
+          <Button
             type="button"
             aria-label="Close"
             onClick={onClose}
-            className="flex h-9 w-9 items-center justify-center rounded-xl border border-stone-900/10 bg-white text-[#52525B] hover:bg-stone-50 hover:text-[#1C1C1E] transition-colors cursor-pointer"
-          >
-            <X className="h-4 w-4" />
-          </button>
+            icon={<X className="h-4 w-4 text-[#52525B]" />}
+            className="!h-9 !w-9 shrink-0"
+          />
         </div>
 
         <div className="overflow-y-auto no-scrollbar space-y-3.5 pr-1 text-xs leading-relaxed text-[#52525B]">
@@ -135,7 +135,7 @@ export function LegalModal({ doc, onClose }: LegalModalProps) {
             Got it
           </SoftButton>
         </div>
-      </div>
+      </Glass>
     </div>,
     document.body,
   );

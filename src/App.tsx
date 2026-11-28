@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type TouchEvent } from "react";
-import { Glass, Menu, type MenuEntry } from "glisse";
+import { Button, Glass, Menu, type MenuEntry } from "glisse";
 import {
   AlertTriangle,
   Award,
@@ -926,14 +926,13 @@ export function App() {
             {activeTab === "overview" ? (
               <KeeperLogo size={36} className="shrink-0 drop-shadow-xs" />
             ) : (
-              <button
+              <Button
                 type="button"
                 aria-label="Back to overview"
                 onClick={() => handleSelectTab("overview")}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-[#1C1C1E] border border-stone-900/[0.08] hover:bg-stone-50 transition-colors cursor-pointer"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </button>
+                icon={<ChevronLeft className="h-4 w-4 text-[#1C1C1E]" />}
+                className="!h-9 !w-9 shrink-0"
+              />
             )}
             <div className="min-w-0">
               <h1 className="truncate text-base font-semibold tracking-tight text-[#1C1C1E] leading-tight">
@@ -945,22 +944,25 @@ export function App() {
             </div>
           </div>
 
-          {/* Manual Sync + Weekly/Monthly Period Switcher */}
+          {/* Manual Sync + Weekly/Monthly Period Switcher (Glisse Liquid Glass) */}
           <div className="flex items-center gap-1.5 shrink-0">
             {!store.isDemoMode && (
-              <button
+              <Button
                 type="button"
                 aria-label="Sync household now"
                 disabled={store.refreshing}
                 onClick={() => void handleManualSync()}
-                className="flex h-8 w-8 items-center justify-center rounded-xl border border-stone-900/[0.08] bg-white text-[#52525B] hover:bg-stone-50 hover:text-[#1C1C1E] disabled:opacity-50 transition-colors cursor-pointer"
-              >
-                <RotateCw className={`h-3.5 w-3.5 ${store.refreshing ? "animate-spin" : ""}`} />
-              </button>
+                icon={
+                  <RotateCw
+                    className={`h-3.5 w-3.5 text-[#52525B] ${store.refreshing ? "animate-spin" : ""}`}
+                  />
+                }
+                className="!h-9 !w-9 shrink-0"
+              />
             )}
-            <span className="max-w-[96px] truncate rounded-xl border border-stone-900/[0.08] bg-white px-2.5 py-1 text-xs font-medium text-[#1C1C1E]">
+            <Glass className="max-w-[96px] truncate rounded-full px-3 py-1.5 text-xs font-medium text-[#1C1C1E]">
               {periodWindow.label}
-            </span>
+            </Glass>
             <Menu
               aria-label="Select period"
               align="end"
@@ -971,14 +973,14 @@ export function App() {
         </header>
 
         {isOffline && (
-          <div className="mx-4 mb-2 shrink-0 flex items-center gap-2 rounded-xl border border-stone-900/10 bg-white px-3.5 py-2 text-xs font-medium text-[#8F703F]">
+          <Glass className="mx-4 mb-2 shrink-0 flex items-center gap-2 rounded-2xl px-3.5 py-2 text-xs font-medium text-[#8F703F]">
             <WifiOff className="h-3.5 w-3.5 shrink-0" />
             <span>Offline — new entries are saved locally and sync when back online</span>
-          </div>
+          </Glass>
         )}
 
         {store.pendingSyncCount > 0 && !isOffline && (
-          <div className="mx-4 mb-2 shrink-0 flex items-center justify-between gap-2 rounded-xl border border-[#C6A87C]/40 bg-white px-3.5 py-2 text-xs font-medium text-[#8F703F]">
+          <Glass className="mx-4 mb-2 shrink-0 flex items-center justify-between gap-2 rounded-2xl px-3.5 py-2 text-xs font-medium text-[#8F703F]">
             <span>
               {store.pendingSyncCount} offline{" "}
               {store.pendingSyncCount === 1 ? "entry" : "entries"} waiting to sync
@@ -986,11 +988,11 @@ export function App() {
             <button
               type="button"
               onClick={() => void handleManualSync()}
-              className="shrink-0 rounded-lg bg-[#1C1C1E] px-2.5 py-1 text-[11px] font-medium text-white hover:bg-[#2C2C30] cursor-pointer"
+              className="shrink-0 rounded-full bg-[#1C1C1E] px-2.5 py-1 text-[11px] font-medium text-white hover:bg-[#2C2C30] cursor-pointer"
             >
               Sync now
             </button>
-          </div>
+          </Glass>
         )}
 
         {store.error && (
@@ -1035,9 +1037,9 @@ export function App() {
               aria-hidden={activeTab !== "overview"}
               className="h-full w-full shrink-0 overflow-y-auto no-scrollbar px-4 pb-28 space-y-4"
             >
-              {/* New Roommate Activity Pill */}
+              {/* New Roommate Activity Pill (Glisse Liquid Glass) */}
               {newTransactionIds.size > 0 && (
-                <div className="flex items-center justify-between gap-2 rounded-xl border border-stone-900/[0.08] bg-white px-3.5 py-2 text-xs">
+                <Glass className="flex items-center justify-between gap-2 rounded-2xl px-3.5 py-2 text-xs">
                   <span className="inline-flex items-center gap-2 font-medium text-[#1C1C1E]">
                     <span className="h-1.5 w-1.5 rounded-full bg-[#C6A87C]" />
                     <Bell className="h-3.5 w-3.5 shrink-0 text-[#52525B]" />
@@ -1050,11 +1052,11 @@ export function App() {
                   <button
                     type="button"
                     onClick={markAllSeen}
-                    className="shrink-0 rounded-lg bg-[#1C1C1E] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#2C2C30] transition-colors cursor-pointer"
+                    className="shrink-0 rounded-full bg-[#1C1C1E] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#2C2C30] transition-colors cursor-pointer"
                   >
                     Mark seen
                   </button>
-                </div>
+                </Glass>
               )}
 
               {/* Weekly On-Budget Congratulations Banner (once per completed on-budget week) */}
