@@ -2,6 +2,20 @@ import type { RecurringBill } from "../types";
 
 const NOTIF_ENABLED_KEY = "keeper_local_notifs_v1";
 
+export type AlertPopupListener = (title: string, body: string) => void;
+const alertPopupListeners = new Set<AlertPopupListener>();
+
+export function subscribeToAlertPopups(listener: AlertPopupListener): () => void {
+  alertPopupListeners.add(listener);
+  return () => {
+    alertPopupListeners.delete(listener);
+  };
+}
+
+export function isNotificationSupported(): boolean {
+  return typeof Notification !== "undefined";
+}
+
 export function isNotificationsEnabled(): boolean {
   try {
     return localStorage.getItem(NOTIF_ENABLED_KEY) === "1";
@@ -33,7 +47,20 @@ export async function scheduleBillReminders(_bills: RecurringBill[]): Promise<vo
   // Scheduled local reminders run on the native Android app
 }
 
-export async function notifyHouseholdChange(title: string, body: string): Promise<void> {
+export async function notifyHouseholdChange(
+  title: string,
+  body: string,
+  options?: { inAppToast?: boolean },
+): Promise<void> {
+  if (options?.inAppToast !== false) {
+    for (const listener of alertPopupListeners) {
+      try {
+        listener(title, body);
+      } catch {
+        // Ignore listener errors
+      }
+    }
+  }
   if (!isNotificationsEnabled()) return;
   if (typeof Notification !== "undefined" && Notification.permission === "granted") {
     try {

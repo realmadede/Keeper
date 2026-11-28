@@ -116,6 +116,7 @@ export interface KeeperStore {
       paidMode?: "all" | "single";
       paidBy?: string | null;
       poolAmountUsed?: number;
+      boughtDateISO?: string | null;
     },
   ) => Promise<void>;
   toggleNeedMemberSettled: (needId: string, memberUserId: string) => Promise<void>;
@@ -288,6 +289,26 @@ export function useKeeperStore(): KeeperStore {
 
   const inFlightFetchRef = useRef<Promise<void> | null>(null);
   const realtimeTimerRef = useRef<number | null>(null);
+  const recentLocalWriteIdsRef = useRef<Map<string, number>>(new Map());
+
+  const markLocalWrite = useCallback((id: string) => {
+    const now = Date.now();
+    recentLocalWriteIdsRef.current.set(id, now);
+    for (const [k, ts] of recentLocalWriteIdsRef.current.entries()) {
+      if (now - ts > 15_000) recentLocalWriteIdsRef.current.delete(k);
+    }
+  }, []);
+
+  const isRecentLocalWrite = useCallback((id: string | null | undefined) => {
+    if (!id) return false;
+    const ts = recentLocalWriteIdsRef.current.get(id);
+    if (!ts) return false;
+    if (Date.now() - ts > 8_000) {
+      recentLocalWriteIdsRef.current.delete(id);
+      return false;
+    }
+    return true;
+  }, []);
 
   const clearError = useCallback(() => setError(null), []);
 
@@ -861,6 +882,8 @@ export function useKeeperStore(): KeeperStore {
           const row = payload.new as Record<string, unknown> | null;
           if (!row) return;
           if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
+            const rowId = row.id ? String(row.id) : null;
+            if (isRecentLocalWrite(rowId)) return;
             const actorId = row.recorded_by ? String(row.recorded_by) : null;
             if (actorId && actorId === userId && payload.eventType === "INSERT") return;
             const amt = Number(row.amount) || 0;
@@ -893,12 +916,45 @@ export function useKeeperStore(): KeeperStore {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "household_needs", filter: `household_id=eq.${householdId}` },
-        scheduleSync,
+        (payload) => {
+          scheduleSync();
+          const row = payload.new as Record<string, unknown> | null;
+          if (!row) return;
+          const rowId = row.id ? String(row.id) : null;
+          if (isRecentLocalWrite(rowId)) return;
+          const itemTitle = String(row.title || "House item");
+          if (payload.eventType === "INSERT") {
+            const actorId = row.added_by ? String(row.added_by) : null;
+            if (actorId && actorId === userId) return;
+            const est = Number(row.estimated_amount) || 0;
+            const body = est > 0 ? `${itemTitle} · Est. ${formatTZS(est)}` : itemTitle;
+            void notifyHouseholdChange("New house need", body);
+          } else if (payload.eventType === "UPDATE" && Boolean(row.is_bought)) {
+            const amt = Number(row.actual_amount ?? row.estimated_amount) || 0;
+            const body = amt > 0 ? `${itemTitle} · ${formatTZS(amt)}` : itemTitle;
+            void notifyHouseholdChange("House need bought", body);
+          }
+        },
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "recurring_bills", filter: `household_id=eq.${householdId}` },
-        scheduleSync,
+        (payload) => {
+          scheduleSync();
+          const row = payload.new as Record<string, unknown> | null;
+          if (!row) return;
+          const rowId = row.id ? String(row.id) : null;
+          if (isRecentLocalWrite(rowId)) return;
+          const billTitle = String(row.title || "Household bill");
+          const amt = Number(row.amount) || 0;
+          if (payload.eventType === "INSERT") {
+            const actorId = row.created_by ? String(row.created_by) : null;
+            if (actorId && actorId === userId) return;
+            void notifyHouseholdChange("New recurring bill", `${formatTZS(amt)} · ${billTitle}`);
+          } else if (payload.eventType === "UPDATE") {
+            void notifyHouseholdChange("Bill updated", `${formatTZS(amt)} · ${billTitle}`);
+          }
+        },
       )
       .subscribe((status) => {
         setRealtimeConnected(status === "SUBSCRIBED");
@@ -909,7 +965,7 @@ export function useKeeperStore(): KeeperStore {
       void supabase?.removeChannel(channel);
       setRealtimeConnected(false);
     };
-  }, [fetchHouseholdBundle, household?.id, isDemoMode, profile?.id]);
+  }, [fetchHouseholdBundle, household?.id, isDemoMode, isRecentLocalWrite, profile?.id]);
 
   // Persist demo state to localStorage when in demo mode
   useEffect(() => {
@@ -1545,6 +1601,7 @@ export function useKeeperStore(): KeeperStore {
       }
 
       if (!supabase) return;
+      markLocalWrite(id);
       const { error: err } = await supabase
         .from("transactions")
         .update({
@@ -1735,6 +1792,7 @@ export function useKeeperStore(): KeeperStore {
         paidMode?: "all" | "single";
         paidBy?: string | null;
         poolAmountUsed?: number;
+        boughtDateISO?: string | null;
       },
     ) => {
       setError(null);
@@ -1753,7 +1811,15 @@ export function useKeeperStore(): KeeperStore {
       );
       const safeMode: "all" | "single" = options.paidMode === "single" ? "single" : "all";
       const safePaidBy = safeMode === "single" ? options.paidBy || profile.id : null;
-      const boughtAt = new Date().toISOString();
+      const todayISO = toISODate(new Date());
+      const safeBoughtDateISO =
+        options.boughtDateISO && /^\d{4}-\d{2}-\d{2}$/.test(options.boughtDateISO)
+          ? options.boughtDateISO
+          : todayISO;
+      const boughtAt =
+        safeBoughtDateISO === todayISO
+          ? new Date().toISOString()
+          : `${safeBoughtDateISO}T12:00:00.000Z`;
       const prevPool = existing.is_bought ? (existing.pool_amount_used ?? 0) : 0;
       const poolDelta = Math.max(0, safePool - prevPool);
       const resetSettled =
@@ -1789,13 +1855,14 @@ export function useKeeperStore(): KeeperStore {
             amount: poolDelta,
             category: existing.category,
             description: `${existing.title}${existing.quantity ? ` (${existing.quantity})` : ""} (from pool)`.slice(0, 200),
-            transaction_date: toISODate(new Date()),
+            transaction_date: safeBoughtDateISO,
           });
         }
         return;
       }
 
       if (!supabase) return;
+      markLocalWrite(id);
       let { error: err } = await supabase
         .from("household_needs")
         .update({
@@ -1845,13 +1912,13 @@ export function useKeeperStore(): KeeperStore {
           amount: poolDelta,
           category: existing.category,
           description: `${existing.title}${existing.quantity ? ` (${existing.quantity})` : ""} (from pool)`.slice(0, 200),
-          transaction_date: toISODate(new Date()),
+          transaction_date: safeBoughtDateISO,
         });
       } else {
         await fetchHouseholdBundle(profile.id);
       }
     },
-    [addTransaction, fetchHouseholdBundle, household, isDemoMode, needs, profile],
+    [addTransaction, fetchHouseholdBundle, household, isDemoMode, markLocalWrite, needs, profile],
   );
 
   const toggleNeedMemberSettled = useCallback(
@@ -1908,6 +1975,7 @@ export function useKeeperStore(): KeeperStore {
         return;
       }
       if (!supabase || !profile) return;
+      markLocalWrite(id);
       const { error: err } = await supabase
         .from("household_needs")
         .update({ is_bought: isBought, bought_at: boughtAt })
@@ -1918,7 +1986,7 @@ export function useKeeperStore(): KeeperStore {
       }
       await fetchHouseholdBundle(profile.id);
     },
-    [fetchHouseholdBundle, isDemoMode, profile],
+    [fetchHouseholdBundle, isDemoMode, markLocalWrite, profile],
   );
 
   const deleteNeed = useCallback(
@@ -2218,6 +2286,7 @@ export function useKeeperStore(): KeeperStore {
         return;
       }
       if (!supabase || !profile) return;
+      markLocalWrite(id);
       const fullPayload: Record<string, unknown> = {
         last_paid_month: monthKey,
         paid_mode: safeMode,

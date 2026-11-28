@@ -18,7 +18,7 @@ import {
   type WeekWindow,
 } from "../lib/analytics";
 import { buildWeeklyWhatsAppSummary } from "../lib/export";
-import { formatTZS, getInitials, toISODate } from "../lib/format";
+import { formatShortDate, formatTZS, getInitials, toISODate } from "../lib/format";
 import {
   addDaysISO,
   evaluateOverspendPlan,
@@ -73,6 +73,7 @@ interface BudgetViewProps {
       paidMode?: "all" | "single";
       paidBy?: string | null;
       poolAmountUsed?: number;
+      boughtDateISO?: string | null;
     },
   ) => Promise<void>;
   onToggleNeedMemberSettled: (needId: string, memberUserId: string) => Promise<void>;
@@ -102,6 +103,14 @@ interface BudgetViewProps {
 
 const WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0] as const; // Mon..Sun
 const BILL_INTERVAL_PRESETS = [1, 3, 4, 6, 12] as const;
+
+function formatTimestampDate(ts: string | null | undefined): string | null {
+  if (!ts) return null;
+  const parsed = new Date(ts);
+  const iso = Number.isNaN(parsed.getTime()) ? ts.slice(0, 10) : toISODate(parsed);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
+  return formatShortDate(iso);
+}
 
 export function BudgetView({
   household,
@@ -149,6 +158,7 @@ export function BudgetView({
   // Inline Mark Need Bought panel
   const [buyingNeedId, setBuyingNeedId] = useState<string | null>(null);
   const [buyingActualAmount, setBuyingActualAmount] = useState("");
+  const [buyingDateISO, setBuyingDateISO] = useState(() => toISODate(new Date()));
   const [buyingPaidMode, setBuyingPaidMode] = useState<"all" | "single">("all");
   const [buyingPaidBy, setBuyingPaidBy] = useState(currentUserId);
   const [buyingUsePool, setBuyingUsePool] = useState(false);
@@ -451,6 +461,7 @@ export function BudgetView({
         paidMode: buyingPaidMode,
         paidBy: buyingPaidMode === "single" ? buyingPaidBy || currentUserId : null,
         poolAmountUsed: safePool,
+        boughtDateISO: buyingDateISO,
       });
       setBuyingNeedId(null);
     } finally {
@@ -2231,6 +2242,7 @@ export function BudgetView({
                         )
                       : 0;
                     const remainder = Math.max(0, actAmt - poolUsed);
+                    const addedDateLabel = formatTimestampDate(item.created_at);
 
                     return (
                       <div key={item.id} className="py-2.5 first:pt-0 last:pb-0 space-y-2">
@@ -2244,6 +2256,7 @@ export function BudgetView({
                                 setBuyingActualAmount(
                                   item.estimated_amount ? String(item.estimated_amount) : "",
                                 );
+                                setBuyingDateISO(toISODate(new Date()));
                                 setBuyingPaidMode("all");
                                 setBuyingPaidBy(currentUserId);
                                 setBuyingUsePool(false);
@@ -2262,8 +2275,8 @@ export function BudgetView({
                               </div>
                               <div className="truncate text-xs text-[#8E8E93] tabular-nums">
                                 {item.estimated_amount
-                                  ? `Est. ${formatTZS(item.estimated_amount)} (${formatTZS(Math.round(item.estimated_amount / memberCount))}/member)`
-                                  : `Added by ${item.adder?.full_name ?? "Member"}`}
+                                  ? `Est. ${formatTZS(item.estimated_amount)} (${formatTZS(Math.round(item.estimated_amount / memberCount))}/member)${addedDateLabel ? ` · ${addedDateLabel}` : ""}`
+                                  : `Added by ${item.adder?.full_name ?? "Member"}${addedDateLabel ? ` · ${addedDateLabel}` : ""}`}
                               </div>
                             </div>
                           </div>
@@ -2275,6 +2288,7 @@ export function BudgetView({
                                 setBuyingActualAmount(
                                   item.estimated_amount ? String(item.estimated_amount) : "",
                                 );
+                                setBuyingDateISO(toISODate(new Date()));
                                 setBuyingPaidMode("all");
                                 setBuyingPaidBy(currentUserId);
                                 setBuyingUsePool(false);
@@ -2307,6 +2321,11 @@ export function BudgetView({
                                 </span>
                               )}
                             </div>
+
+                            <IosDatePicker
+                              value={buyingDateISO}
+                              onChange={setBuyingDateISO}
+                            />
 
                             <SoftInput
                               type="number"
@@ -2485,6 +2504,7 @@ export function BudgetView({
                       const allOthersSettled =
                         otherMembers.length > 0 &&
                         otherMembers.every((m) => settledSet.has(m.user_id));
+                      const boughtDateLabel = formatTimestampDate(item.bought_at || item.created_at);
 
                       return (
                         <div key={item.id} className="py-2.5 space-y-1.5">
@@ -2518,6 +2538,11 @@ export function BudgetView({
                                         : paidMode === "single" && payerMember
                                           ? `Bought by ${payerMember.profile.full_name.split(" ")[0]} · ${formatTZS(perMember)}/member`
                                           : `Split by all (${memberCount}) · ${formatTZS(perMember)}/member`}
+                                  </div>
+                                )}
+                                {boughtDateLabel && (
+                                  <div className="mt-0.5 text-[11px] text-[#8E8E93]">
+                                    Bought {boughtDateLabel}
                                   </div>
                                 )}
                               </div>
