@@ -69,14 +69,18 @@ export function PinLockScreen({ expectedHash, onUnlock }: PinLockScreenProps) {
 
   useEffect(() => {
     let active = true;
+    let bioTimer: number | null = null;
     if (!isBiometricsEnabled()) return;
     void checkBiometricAvailable().then((avail) => {
       if (!active || !avail) return;
       setCanUseBiometric(true);
-      void triggerBiometric();
+      bioTimer = window.setTimeout(() => {
+        if (active) void triggerBiometric();
+      }, 250);
     });
     return () => {
       active = false;
+      if (bioTimer) window.clearTimeout(bioTimer);
     };
   }, [triggerBiometric]);
 

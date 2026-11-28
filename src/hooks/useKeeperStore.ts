@@ -809,7 +809,7 @@ export function useKeeperStore(): KeeperStore {
     [],
   );
 
-  // Bootstrap Supabase session listener (single INITIAL_SESSION path — no duplicate startup fetch)
+  // Bootstrap Supabase session listener (defer Supabase queries outside callback to avoid navigator.locks deadlock)
   useEffect(() => {
     if (!supabase) {
       setLoading(false);
@@ -817,7 +817,8 @@ export function useKeeperStore(): KeeperStore {
     }
 
     let mounted = true;
-    const { data: authSub } = supabase.auth.onAuthStateChange(async (event, session) => {
+    let deferredFetchTimer: number | null = null;
+    const { data: authSub } = supabase.auth.onAuthStateChange((event, session) => {
       if (!mounted) return;
       if (event === "PASSWORD_RECOVERY") {
         setPasswordRecoveryMode(true);
@@ -832,8 +833,25 @@ export function useKeeperStore(): KeeperStore {
           else if (provider === "email") setLastAuthMethod("email");
         }
         setIsDemoMode(false);
-        await fetchHouseholdBundle(session.user.id, session.user);
+        const userId = session.user.id;
+        const userMeta = session.user;
+        if (deferredFetchTimer) window.clearTimeout(deferredFetchTimer);
+        deferredFetchTimer = window.setTimeout(() => {
+          deferredFetchTimer = null;
+          if (!mounted) return;
+          void fetchHouseholdBundle(userId, userMeta)
+            .catch(() => {
+              // Network or timeout errors are handled inside fetchHouseholdBundle
+            })
+            .finally(() => {
+              if (mounted) setLoading(false);
+            });
+        }, 0);
       } else {
+        if (deferredFetchTimer) {
+          window.clearTimeout(deferredFetchTimer);
+          deferredFetchTimer = null;
+        }
         // When offline, keep the cached snapshot hydrated unless the user explicitly signed out
         const isOffline = typeof navigator !== "undefined" && navigator.onLine === false;
         if (event === "SIGNED_OUT" || !isOffline || !loadLastHouseholdSnapshot()) {
@@ -845,12 +863,13 @@ export function useKeeperStore(): KeeperStore {
           setBills([]);
           setBillPayments([]);
         }
+        if (mounted) setLoading(false);
       }
-      if (mounted) setLoading(false);
     });
 
     return () => {
       mounted = false;
+      if (deferredFetchTimer) window.clearTimeout(deferredFetchTimer);
       authSub.subscription.unsubscribe();
     };
   }, [fetchHouseholdBundle]);
