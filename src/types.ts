@@ -43,6 +43,22 @@ export interface WeeklyBoostEntry {
   createdAt: string;
 }
 
+export interface StatementVerificationRecord {
+  id: string;
+  code: string;
+  household_id: string;
+  generated_by: string;
+  generated_by_name: string;
+  filter_label: string;
+  entry_count: number;
+  total_contributed: number;
+  total_spent: number;
+  net_balance: number;
+  content_hash: string;
+  transaction_ids: string[];
+  created_at: string;
+}
+
 export interface Household {
   id: string;
   name: string;
