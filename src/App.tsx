@@ -67,6 +67,7 @@ import {
   notifyHouseholdChange,
   scheduleBillReminders,
   scheduleWeeklyBudgetCongrats,
+  subscribeToAlertPopups,
 } from "./lib/notifications";
 import {
   addDaysISO,
@@ -269,6 +270,12 @@ export function App() {
       if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    return subscribeToAlertPopups((title, body) => {
+      showToast(`${title} · ${body}`);
+    });
+  }, [showToast]);
 
   // Native Android OAuth deep-link callback (Chrome Custom Tabs -> app.keeper.household://auth-callback)
   useEffect(() => {
@@ -651,7 +658,7 @@ export function App() {
     const title = "Weekly budget exceeded";
     const body = `Overspent by ${formatTZS(weeklyOverspend.amount)} over your ${formatTZS(weeklyOverspend.target)} weekly budget. Tap Budget to review recovery options.`;
     showToast(`Overspent weekly budget by ${formatTZS(weeklyOverspend.amount)}`);
-    void notifyHouseholdChange(title, body);
+    void notifyHouseholdChange(title, body, { inAppToast: false });
   }, [showToast, store.household, store.isDemoMode, weeklyOverspend]);
 
   const handleSelectTab = (tab: ActiveTab) => {
