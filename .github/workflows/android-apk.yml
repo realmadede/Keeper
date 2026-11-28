@@ -81,7 +81,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TITLE="Keeper Android App (v${APP_VERSION})"
-          CHANGELOG=$(git log -n 5 --no-merges --pretty=format:"- %s")
+          if [ -s RELEASE_NOTES.md ]; then
+            CHANGELOG=$(cat RELEASE_NOTES.md)
+          else
+            CHANGELOG=$(git log -n 5 --no-merges --pretty=format:"- %s")
+          fi
           NOTES="$(printf '### What'\''s new\n%s\n\nBuild type: %s\n' "$CHANGELOG" "$BUILD_TYPE")"
           if gh release view android-latest >/dev/null 2>&1; then
             gh release upload android-latest Keeper.apk --clobber

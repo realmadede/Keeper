@@ -42,19 +42,19 @@ export function WelcomeVersionModal({
           </h2>
           <p className="text-xs leading-relaxed text-[#52525B]">
             {isUpgrade
-              ? "Your app is up to date and your household data is synced and ready."
-              : `You are running Keeper v${APP_VERSION} for Android — built for private, transparent shared household budgets.`}
+              ? "Keeper is now updated and your house records are ready."
+              : `You are using Keeper v${APP_VERSION} — simple shared budget tracking for your house.`}
           </p>
         </div>
 
         <div className="rounded-2xl border border-stone-900/[0.08] bg-white p-3.5 space-y-2.5">
           <div className="flex items-start gap-2.5 text-xs text-[#1C1C1E]">
             <Wifi className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#8F703F]" />
-            <span>Works offline — record expenses anytime and sync automatically when online.</span>
+            <span>Works without internet — save records anytime and they sync once you are back online.</span>
           </div>
           <div className="flex items-start gap-2.5 text-xs text-[#1C1C1E]">
             <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#8F703F]" />
-            <span>Optional 4-digit PIN &amp; fingerprint unlock available in Account settings.</span>
+            <span>Lock your app with a 4-digit PIN or fingerprint in Account.</span>
           </div>
           <div className="flex items-start gap-2.5 text-xs text-[#1C1C1E]">
             <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#8F703F]" />

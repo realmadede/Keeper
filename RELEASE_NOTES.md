@@ -1,0 +1,5 @@
+- The app opens faster and no longer freezes.
+- Download your house records as a PDF with a QR code to check it is real.
+- See dates on House Needs and pick the date an item was bought.
+- Get clearer alerts when roommates add entries, needs, or bills.
+- Smoother glass look on menus, buttons, and popups.
