@@ -1,5 +1,6 @@
 - The app opens faster and no longer freezes.
-- Download your house records as a PDF with a QR code to check it is real.
+- Download your house records as a PDF with the Keeper logo and QR code.
+- Scan a PDF QR code or screenshot right inside Keeper to check it is real.
 - See dates on House Needs and pick the date an item was bought.
 - Get clearer alerts when roommates add entries, needs, or bills.
 - Smoother glass look on menus, buttons, and popups.

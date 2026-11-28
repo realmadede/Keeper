@@ -248,16 +248,75 @@ export function buildLedgerPdfBytes(input: LedgerPdfInput): Uint8Array {
   // --- Page 1 Header ---
   startPage();
 
-  // Brand icon box + Wordmark
-  setFillRgb(28, 28, 30);
-  fillRect(MARGIN, y - 34, 34, 34);
-  setFillRgb(228, 204, 160); // Warm gold K
-  drawText("K", MARGIN + 10.5, y - 24, 19, true);
+  // Actual Keeper Vector Emblem (obsidian rounded squircle + brushed-gold house & keyhole)
+  const logoSize = 38;
+  const logoX = MARGIN;
+  const logoTopY = y;
+  const s = logoSize / 512;
+  const px = (vx: number) => (logoX + vx * s).toFixed(2);
+  const py = (vy: number) => (logoTopY - vy * s).toFixed(2);
+
+  // Rounded squircle: x=16..496, y=16..496, rx=116
+  const x0 = 16;
+  const y0 = 16;
+  const x1 = 496;
+  const y1 = 496;
+  const rx = 116;
+  const k = rx * 0.55228475;
+  setFillRgb(27, 27, 31); // #1B1B1F obsidian squircle
+  setStrokeRgb(191, 163, 119); // Subtle warm-gold rim
+  ops.push(
+    [
+      "0.75 w",
+      `${px(x0 + rx)} ${py(y0)} m`,
+      `${px(x1 - rx)} ${py(y0)} l`,
+      `${px(x1 - rx + k)} ${py(y0)} ${px(x1)} ${py(y0 + rx - k)} ${px(x1)} ${py(y0 + rx)} c`,
+      `${px(x1)} ${py(y1 - rx)} l`,
+      `${px(x1)} ${py(y1 - rx + k)} ${px(x1 - rx + k)} ${py(y1)} ${px(x1 - rx)} ${py(y1)} c`,
+      `${px(x0 + rx)} ${py(y1)} l`,
+      `${px(x0 + rx - k)} ${py(y1)} ${px(x0)} ${py(y1 - rx + k)} ${px(x0)} ${py(y1 - rx)} c`,
+      `${px(x0)} ${py(y0 + rx)} l`,
+      `${px(x0)} ${py(y0 + rx - k)} ${px(x0 + rx - k)} ${py(y0)} ${px(x0 + rx)} ${py(y0)} c`,
+      "h B",
+    ].join(" "),
+  );
+
+  // Exact Keeper gold house silhouette with carved keyhole (even-odd fill rule f*)
+  setFillRgb(201, 172, 124); // #C9AC7C brushed gold
+  ops.push(
+    [
+      `${px(242.5)} ${py(113.8)} m`,
+      `${px(250.3)} ${py(107.2)} ${px(261.7)} ${py(107.2)} ${px(269.5)} ${py(113.8)} c`,
+      `${px(392.4)} ${py(217.5)} l`,
+      `${px(402.9)} ${py(226.4)} ${px(396.6)} ${py(243.5)} ${px(382.9)} ${py(243.5)} c`,
+      `${px(364)} ${py(243.5)} l`,
+      `${px(364)} ${py(362)} l`,
+      `${px(364)} ${py(380.8)} ${px(348.8)} ${py(396)} ${px(330)} ${py(396)} c`,
+      `${px(182)} ${py(396)} l`,
+      `${px(163.2)} ${py(396)} ${px(148)} ${py(380.8)} ${px(148)} ${py(362)} c`,
+      `${px(148)} ${py(243.5)} l`,
+      `${px(129.1)} ${py(243.5)} l`,
+      `${px(115.4)} ${py(243.5)} ${px(109.1)} ${py(226.4)} ${px(119.6)} ${py(217.5)} c`,
+      `${px(242.5)} ${py(113.8)} l h`,
+      // Keyhole cutout subpath
+      `${px(256)} ${py(226)} m`,
+      `${px(235.6)} ${py(226)} ${px(219)} ${py(242.6)} ${px(219)} ${py(263)} c`,
+      `${px(219)} ${py(276.6)} ${px(226.4)} ${py(288.5)} ${px(237.4)} ${py(294.9)} c`,
+      `${px(229.1)} ${py(346.6)} l`,
+      `${px(228.1)} ${py(352.9)} ${px(232.9)} ${py(358.5)} ${px(239.2)} ${py(358.5)} c`,
+      `${px(272.8)} ${py(358.5)} l`,
+      `${px(279.1)} ${py(358.5)} ${px(283.9)} ${py(352.9)} ${px(282.9)} ${py(346.6)} c`,
+      `${px(274.6)} ${py(294.9)} l`,
+      `${px(285.6)} ${py(288.5)} ${px(293)} ${py(276.6)} ${px(293)} ${py(263)} c`,
+      `${px(293)} ${py(242.6)} ${px(276.4)} ${py(226)} ${px(256)} ${py(226)} c`,
+      "h f*",
+    ].join(" "),
+  );
 
   setFillRgb(28, 28, 30);
-  drawText("KEEPER", MARGIN + 44, y - 14, 16, true);
+  drawText("KEEPER", MARGIN + 48, y - 15, 16, true);
   setFillRgb(143, 112, 63); // Warm brass
-  drawText("HOUSEHOLD LEDGER STATEMENT", MARGIN + 44, y - 28, 8.5, true);
+  drawText("HOUSEHOLD LEDGER STATEMENT", MARGIN + 48, y - 30, 8.5, true);
 
   // Right metadata block
   const rightEdge = PAGE_W - MARGIN;
