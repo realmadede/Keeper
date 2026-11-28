@@ -38,6 +38,11 @@ import {
   setLastAuthMethod,
   setPendingAuthMethod,
 } from "../lib/security";
+import {
+  computeStatementDigest,
+  generateStatementCode,
+  sanitizeStatementCode,
+} from "../lib/pdfStatement";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
 import type {
   BillPaymentRecord,
@@ -48,6 +53,7 @@ import type {
   OverspendRecoveryPlan,
   Profile,
   RecurringBill,
+  StatementVerificationRecord,
   Transaction,
   TransactionCategory,
   TransactionType,
@@ -160,6 +166,16 @@ export interface KeeperStore {
     platform: string;
     appVersion: string;
   }) => Promise<void>;
+  createStatementVerification: (
+    exportedTransactions: Transaction[],
+    filterLabel: string,
+  ) => Promise<{ verified: boolean; code: string | null; contentHash: string }>;
+  verifyStatementCode: (code: string) => Promise<{
+    found: boolean;
+    record: StatementVerificationRecord | null;
+    liveMatches: boolean;
+    reason?: string;
+  }>;
   leaveHousehold: () => Promise<void>;
 }
 
@@ -2676,6 +2692,124 @@ export function useKeeperStore(): KeeperStore {
     return synced;
   }, [fetchHouseholdBundle, isDemoMode, profile]);
 
+  const createStatementVerification = useCallback(
+    async (
+      exportedTransactions: Transaction[],
+      filterLabel: string,
+    ): Promise<{ verified: boolean; code: string | null; contentHash: string }> => {
+      const householdId = household?.id ?? "demo";
+      const contentHash = await computeStatementDigest(householdId, exportedTransactions);
+      const isOfflineNow = typeof navigator !== "undefined" && navigator.onLine === false;
+      if (isDemoMode || !supabase || !household || !profile || isOfflineNow) {
+        return { verified: false, code: null, contentHash };
+      }
+
+      let totalContributed = 0;
+      let totalSpent = 0;
+      for (const tx of exportedTransactions) {
+        if (tx.type === "contribution") totalContributed += Math.round(tx.amount);
+        else totalSpent += Math.round(tx.amount);
+      }
+      const code = generateStatementCode();
+      const { error: err } = await supabase.from("statement_verifications").insert({
+        code,
+        household_id: household.id,
+        generated_by: profile.id,
+        generated_by_name: profile.full_name,
+        filter_label: filterLabel.slice(0, 120),
+        entry_count: exportedTransactions.length,
+        total_contributed: totalContributed,
+        total_spent: totalSpent,
+        net_balance: totalContributed - totalSpent,
+        content_hash: contentHash,
+        transaction_ids: exportedTransactions.map((t) => t.id),
+      });
+
+      if (err) {
+        return { verified: false, code: null, contentHash };
+      }
+      return { verified: true, code, contentHash };
+    },
+    [household, isDemoMode, profile],
+  );
+
+  const verifyStatementCode = useCallback(
+    async (
+      rawCode: string,
+    ): Promise<{
+      found: boolean;
+      record: StatementVerificationRecord | null;
+      liveMatches: boolean;
+      reason?: string;
+    }> => {
+      const code = sanitizeStatementCode(rawCode);
+      if (!code) {
+        return { found: false, record: null, liveMatches: false, reason: "Invalid Statement ID format." };
+      }
+      if (isDemoMode || !supabase || !household) {
+        return {
+          found: false,
+          record: null,
+          liveMatches: false,
+          reason: "Sign in to a live household account to verify official PDF statements.",
+        };
+      }
+      const { data, error: err } = await supabase
+        .from("statement_verifications")
+        .select("*")
+        .eq("code", code)
+        .eq("household_id", household.id)
+        .maybeSingle();
+
+      if (err) {
+        return {
+          found: false,
+          record: null,
+          liveMatches: false,
+          reason: "Verification service is not enabled on this Supabase project yet.",
+        };
+      }
+      if (!data) {
+        return {
+          found: false,
+          record: null,
+          liveMatches: false,
+          reason:
+            "This code was not found in your household records. It may be fake or belong to another household.",
+        };
+      }
+
+      const record: StatementVerificationRecord = {
+        id: String(data.id),
+        code: String(data.code),
+        household_id: String(data.household_id),
+        generated_by: String(data.generated_by),
+        generated_by_name: String(data.generated_by_name ?? "Household member"),
+        filter_label: String(data.filter_label ?? "All entries"),
+        entry_count: Number(data.entry_count ?? 0),
+        total_contributed: Number(data.total_contributed ?? 0),
+        total_spent: Number(data.total_spent ?? 0),
+        net_balance: Number(data.net_balance ?? 0),
+        content_hash: String(data.content_hash ?? ""),
+        transaction_ids: Array.isArray(data.transaction_ids)
+          ? data.transaction_ids.map(String)
+          : [],
+        created_at: String(data.created_at ?? ""),
+      };
+
+      const idSet = new Set(record.transaction_ids);
+      const liveSubset = transactions.filter((t) => idSet.has(t.id));
+      const liveHash =
+        liveSubset.length === record.transaction_ids.length
+          ? await computeStatementDigest(household.id, liveSubset)
+          : "";
+      const liveMatches = liveHash === record.content_hash;
+
+      return { found: true, record, liveMatches };
+    },
+    [household, isDemoMode, transactions],
+  );
+
   const leaveHousehold = useCallback(async () => {
     setError(null);
     if (isDemoMode) {
@@ -2752,6 +2886,8 @@ export function useKeeperStore(): KeeperStore {
     updateSurplusPlan,
     setWeeklyBoost,
     submitAppFeedback,
+    createStatementVerification,
+    verifyStatementCode,
     leaveHousehold,
   };
 }

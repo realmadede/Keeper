@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
-import { Download, RotateCcw, Search, SearchX } from "lucide-react";
-import { buildLedgerCsv, downloadTextFile } from "../lib/export";
-import { formatTZS, getInitials, toISODate } from "../lib/format";
+import { FileText, RotateCcw, Search, SearchX, ShieldCheck } from "lucide-react";
+import { formatTZS, getInitials } from "../lib/format";
 import {
   EXPENSE_CATEGORIES,
   getCategoryMeta,
@@ -32,16 +31,20 @@ interface LedgerViewProps {
   newTransactionIds?: Set<string>;
   onEdit: (tx: Transaction) => void;
   onDelete: (id: string) => Promise<void>;
+  onExportPdf: (exportedTransactions: Transaction[], filterLabel: string) => Promise<void>;
+  onOpenVerifyPdf: () => void;
 }
 
 export function LedgerView({
-  householdName,
+  householdName: _householdName,
   transactions,
   members = [],
   currentUserId,
   newTransactionIds,
   onEdit,
   onDelete,
+  onExportPdf,
+  onOpenVerifyPdf,
 }: LedgerViewProps) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "contribution" | "expense">("all");
@@ -49,6 +52,7 @@ export function LedgerView({
   const [memberFilter, setMemberFilter] = useState<string>("all");
   const [monthFilter, setMonthFilter] = useState<string>("all");
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [exportingPdf, setExportingPdf] = useState(false);
 
   const availableMonths = useMemo(() => {
     const set = new Set<string>();
@@ -123,17 +127,28 @@ export function LedgerView({
     return { pooled, spent };
   }, [filtered]);
 
-  const handleExportCsv = () => {
-    const csv = buildLedgerCsv(filtered);
-    const slug = householdName
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "");
-    downloadTextFile(
-      `keeper-${slug || "household"}-${toISODate(new Date())}.csv`,
-      csv,
-      "text/csv;charset=utf-8;",
-    );
+  const activeFilterSummary = useMemo(() => {
+    const parts: string[] = [];
+    if (monthFilter !== "all") parts.push(formatMonthChip(monthFilter));
+    if (filter === "contribution") parts.push("Contributions");
+    else if (filter === "expense") parts.push("Expenses");
+    if (categoryFilter !== "all") parts.push(getCategoryMeta(categoryFilter).label);
+    if (memberFilter !== "all") {
+      const m = members.find((mem) => mem.user_id === memberFilter);
+      if (m) parts.push(m.profile.full_name.split(" ")[0]);
+    }
+    if (query.trim()) parts.push(`"${query.trim()}"`);
+    return parts.length > 0 ? parts.join(" · ") : "All entries";
+  }, [categoryFilter, filter, memberFilter, members, monthFilter, query]);
+
+  const handleExportPdf = async () => {
+    if (filtered.length === 0 || exportingPdf) return;
+    setExportingPdf(true);
+    try {
+      await onExportPdf(filtered, activeFilterSummary);
+    } finally {
+      setExportingPdf(false);
+    }
   };
 
   return (
@@ -341,14 +356,24 @@ export function LedgerView({
           </span>
         )}
 
-        <SoftButton
-          onClick={handleExportCsv}
-          disabled={filtered.length === 0}
-          icon={<Download className="h-4 w-4" />}
-          className="!h-9 text-xs font-medium"
-        >
-          Export CSV ({filtered.length})
-        </SoftButton>
+        <div className="flex items-center gap-1.5">
+          <SoftButton
+            onClick={onOpenVerifyPdf}
+            icon={<ShieldCheck className="h-3.5 w-3.5 text-[#8F703F]" />}
+            className="!h-9 !px-3 text-xs font-medium"
+          >
+            Verify
+          </SoftButton>
+          <SoftButton
+            variant="filled"
+            onClick={() => void handleExportPdf()}
+            disabled={filtered.length === 0 || exportingPdf}
+            icon={<FileText className="h-3.5 w-3.5" />}
+            className="!h-9 !px-3 text-xs font-medium"
+          >
+            {exportingPdf ? "Creating PDF..." : `Export PDF (${filtered.length})`}
+          </SoftButton>
+        </div>
       </div>
 
       <TransactionList

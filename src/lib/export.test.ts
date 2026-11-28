@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { computeWeeklySummary, getWeekWindow } from "./analytics";
-import { buildLedgerCsv, buildWeeklyWhatsAppSummary } from "./export";
+import { buildWeeklyWhatsAppSummary } from "./export";
 import type { Household, HouseholdMember, Transaction } from "../types";
 
 const REF_DATE = new Date(2026, 10, 19);
@@ -77,16 +77,14 @@ const TRANSACTIONS: Transaction[] = [
   },
 ];
 
-describe("paid_by crediting, rollover balance, WhatsApp summary & CSV export", () => {
+describe("paid_by crediting, rollover balance & WhatsApp summary", () => {
   it("credits contribution to paid_by roommate and computes all-time carry-over balance", () => {
     const summary = computeWeeklySummary(TRANSACTIONS, MEMBERS, 60000, 0, REF_DATE);
-    // Neema (u2) should be credited 60,000 even though Amani (u1) recorded it
     const amani = summary.memberStatuses.find((m) => m.member.user_id === "u1")!;
     const neema = summary.memberStatuses.find((m) => m.member.user_id === "u2")!;
     expect(amani.contributedThisWeek).toBe(0);
     expect(neema.contributedThisWeek).toBe(60000);
     expect(neema.percentOfShare).toBe(100);
-    // Weekly remaining = 60k - 25k = 35k; All-time rollover = (60k + 50k) - 25k = 85k
     expect(summary.remainingBalance).toBe(35000);
     expect(summary.allTimeBalance).toBe(85000);
   });
@@ -99,38 +97,5 @@ describe("paid_by crediting, rollover balance, WhatsApp summary & CSV export", (
     expect(text).toContain("Cash on Hand (All-Time Pool): TZS 85,000");
     expect(text).toContain("Neema Hassan: TZS 60,000 / TZS 60,000 (Paid)");
     expect(text).toContain("Amani Juma: TZS 0 / TZS 60,000 (Pending)");
-  });
-
-  it("escapes CSV cells properly including commas, quotes, Paid_By, and Edited", () => {
-    const csv = buildLedgerCsv(TRANSACTIONS.slice(0, 2));
-    const lines = csv.split("\n");
-    expect(lines).toHaveLength(3);
-    expect(lines[1]).toContain('"Cash pool, collected by Amani",60000,Neema Hassan,Amani Juma,No');
-    expect(lines[2]).toContain('"LUKU ""Prepaid"" Tokens",25000,Amani Juma,Amani Juma,Yes');
-  });
-
-  it("neutralizes CSV formula injection payloads (=, +, -, @, tab)", () => {
-    const dangerous: Transaction[] = [
-      {
-        ...TRANSACTIONS[1],
-        id: "t-inj-1",
-        description: '=HYPERLINK("https://evil.example","Click")',
-      },
-      {
-        ...TRANSACTIONS[1],
-        id: "t-inj-2",
-        description: "+SUM(A1:A10)",
-      },
-      {
-        ...TRANSACTIONS[1],
-        id: "t-inj-3",
-        description: "@cmd|' /C calc'!A0",
-      },
-    ];
-    const csv = buildLedgerCsv(dangerous);
-    const lines = csv.split("\n");
-    expect(lines[1]).toContain('"\'=HYPERLINK(""https://evil.example"",""Click"")"');
-    expect(lines[2]).toContain("'+SUM(A1:A10)");
-    expect(lines[3]).toContain("'@cmd|' /C calc'!A0");
   });
 });

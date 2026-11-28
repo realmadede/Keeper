@@ -33,6 +33,7 @@ import { LedgerView } from "./components/LedgerView";
 import { SoftButton } from "./components/LightControls";
 import { LoadingSkeleton } from "./components/LoadingSkeleton";
 import { getStoredPinHash, PinLockScreen } from "./components/PinLockScreen";
+import { StatementVerifyModal } from "./components/StatementVerifyModal";
 import { TransactionList } from "./components/TransactionList";
 import { UpdateAvailableScreen } from "./components/UpdateAvailableScreen";
 import { WelcomeVersionModal } from "./components/WelcomeVersionModal";
@@ -62,7 +63,12 @@ import {
   markVersionWelcomed,
   type UpdateReleaseInfo,
 } from "./lib/appUpdater";
-import { formatTZS } from "./lib/format";
+import { formatTZS, toISODate } from "./lib/format";
+import {
+  buildLedgerPdfBytes,
+  deliverPdfFile,
+  sanitizeStatementCode,
+} from "./lib/pdfStatement";
 import {
   notifyHouseholdChange,
   scheduleBillReminders,
@@ -87,6 +93,7 @@ import type { ActiveTab, BudgetSubTab, PeriodKey, Transaction, TransactionType }
 
 const TAB_ORDER: ActiveTab[] = ["overview", "ledger", "budget", "household", "account"];
 const PENDING_JOIN_KEY = "keeper_pending_join_code";
+const PENDING_VERIFY_KEY = "keeper_pending_verify_code";
 const LAST_SEEN_PREFIX = "keeper_last_seen_v1:";
 const WEEK_START_PREFIX = "keeper_week_start_v1:";
 const ANDROID_ONBOARDED_KEY = "keeper_android_onboarded_v1";
@@ -136,6 +143,26 @@ function readInitialJoinCode(): string | null {
   }
 }
 
+function readInitialVerifyCode(): string | null {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const rawParam = params.get("verify");
+    if (rawParam !== null) {
+      const cleanUrl = window.location.pathname + window.location.hash;
+      window.history.replaceState({}, "", cleanUrl);
+      const valid = sanitizeStatementCode(rawParam);
+      if (valid) {
+        sessionStorage.setItem(PENDING_VERIFY_KEY, valid);
+        return valid;
+      }
+      return null;
+    }
+    return sanitizeStatementCode(sessionStorage.getItem(PENDING_VERIFY_KEY));
+  } catch {
+    return null;
+  }
+}
+
 export function App() {
   const store = useKeeperStore();
   const [activeTab, setActiveTab] = useState<ActiveTab>("overview");
@@ -149,8 +176,17 @@ export function App() {
   const [pendingJoinCode, setPendingJoinCode] = useState<string | null>(() =>
     readInitialJoinCode(),
   );
+  const [pendingVerifyCode, setPendingVerifyCode] = useState<string | null>(() =>
+    readInitialVerifyCode(),
+  );
+  const [verifyModalOpen, setVerifyModalOpen] = useState(false);
+  const [verifyInitialCode, setVerifyInitialCode] = useState<string | null>(null);
   const [authView, setAuthView] = useState<"onboarding" | "signin" | "signup">(() =>
-    pendingJoinCode ? "signup" : hasCompletedOnboarding() ? "signin" : "onboarding",
+    pendingJoinCode
+      ? "signup"
+      : pendingVerifyCode || hasCompletedOnboarding()
+        ? "signin"
+        : "onboarding",
   );
   const autoJoinedCodeRef = useRef<string | null>(null);
   const [lastSeenAt, setLastSeenAt] = useState<string | null>(null);
@@ -312,12 +348,77 @@ export function App() {
         } catch {
           // Ignore malformed callback URL
         }
+        return;
+      }
+      const verifyCode = sanitizeStatementCode(url);
+      if (verifyCode) {
+        try {
+          sessionStorage.setItem(PENDING_VERIFY_KEY, verifyCode);
+        } catch {
+          // Ignore storage errors
+        }
+        setPendingVerifyCode(verifyCode);
       }
     });
     return () => {
       void listener.then((handle) => handle.remove());
     };
   }, []);
+
+  // Automatically open Statement Verification modal once a household member is signed in
+  useEffect(() => {
+    if (!store.household || !pendingVerifyCode) return;
+    setVerifyInitialCode(pendingVerifyCode);
+    setVerifyModalOpen(true);
+    setPendingVerifyCode(null);
+    try {
+      sessionStorage.removeItem(PENDING_VERIFY_KEY);
+    } catch {
+      // Ignore storage errors
+    }
+  }, [pendingVerifyCode, store.household]);
+
+  const handleExportLedgerPdf = useCallback(
+    async (exportedTransactions: Transaction[], filterLabel: string) => {
+      if (!store.household || !store.profile || exportedTransactions.length === 0) return;
+      try {
+        const verification = await store.createStatementVerification(
+          exportedTransactions,
+          filterLabel,
+        );
+        const now = new Date();
+        const bytes = buildLedgerPdfBytes({
+          householdName: store.household.name,
+          preparedBy: store.profile.full_name,
+          filterLabel,
+          generatedAt: now,
+          transactions: exportedTransactions,
+          verificationCode: verification.code,
+          contentHash: verification.contentHash,
+        });
+        const slug = store.household.name
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "");
+        const filename = `keeper-${slug || "household"}-${toISODate(now)}.pdf`;
+        const delivered = await deliverPdfFile(filename, bytes);
+        if (verification.verified) {
+          showToast(
+            delivered.shared
+              ? delivered.savedToDownloads
+                ? "Verified PDF saved to Downloads & ready to share"
+                : "Verified PDF ready to share"
+              : "Verified PDF statement downloaded",
+          );
+        } else {
+          showToast("Offline PDF draft exported (connect online for QR verification)");
+        }
+      } catch {
+        showToast("Could not export PDF statement");
+      }
+    },
+    [showToast, store],
+  );
 
   // Native Android status bar & hardware Back button handling
   useEffect(() => {
@@ -1259,6 +1360,11 @@ export function App() {
                   newTransactionIds={newTransactionIds}
                   onEdit={handleOpenEdit}
                   onDelete={handleDeleteTransaction}
+                  onExportPdf={handleExportLedgerPdf}
+                  onOpenVerifyPdf={() => {
+                    setVerifyInitialCode(null);
+                    setVerifyModalOpen(true);
+                  }}
                 />
               )}
             </div>
@@ -1457,6 +1563,18 @@ export function App() {
         onClose={handleCloseModal}
         onSubmit={handleAddTransaction}
         onUpdate={handleUpdateTransaction}
+      />
+
+      {/* Statement QR / ID Authenticity Verifier */}
+      <StatementVerifyModal
+        open={verifyModalOpen}
+        initialCode={verifyInitialCode}
+        householdName={store.household.name}
+        onVerify={store.verifyStatementCode}
+        onClose={() => {
+          setVerifyModalOpen(false);
+          setVerifyInitialCode(null);
+        }}
       />
 
       {/* First-install / post-update version welcome card */}
