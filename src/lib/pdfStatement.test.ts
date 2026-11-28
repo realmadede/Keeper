@@ -78,6 +78,8 @@ describe("pdfStatement", () => {
     const text = new TextDecoder("latin1").decode(pdfBytes);
     expect(text.startsWith("%PDF-1.4")).toBe(true);
     expect(text.trimEnd().endsWith("%%EOF")).toBe(true);
+    expect(text).toContain("h f*");
+    expect(text).not.toContain("(K) Tj");
     expect(text).toContain("STATEMENT ID: KPR-8F3A-29C1");
     expect(text).toContain("AUTHENTICITY VERIFICATION");
     expect(text).toContain("Page 1 of 2");

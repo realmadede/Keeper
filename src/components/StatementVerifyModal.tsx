@@ -1,8 +1,24 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { Button, Glass } from "glisse";
-import { AlertTriangle, CheckCircle2, ShieldAlert, ShieldCheck, X } from "lucide-react";
+import {
+  AlertTriangle,
+  Camera,
+  CheckCircle2,
+  Flashlight,
+  Image as ImageIcon,
+  ShieldAlert,
+  ShieldCheck,
+  X,
+} from "lucide-react";
 import { formatTZS } from "../lib/format";
 import { sanitizeStatementCode } from "../lib/pdfStatement";
+import {
+  createBrowserBarcodeDetector,
+  decodeQrFromVideoFrame,
+  hasNativeMlKitScanner,
+  scanQrFromImageFile,
+  scanQrWithNativeMlKit,
+} from "../lib/qrScanner";
 import type { StatementVerificationRecord } from "../types";
 import { SoftButton, SoftInput } from "./LightControls";
 
@@ -30,60 +46,200 @@ export function StatementVerifyModal({
 }: StatementVerifyModalProps) {
   const [codeInput, setCodeInput] = useState(initialCode ?? "");
   const [checking, setChecking] = useState(false);
+  const [scanningCamera, setScanningCamera] = useState(false);
+  const [scanningImage, setScanningImage] = useState(false);
+  const [webCameraActive, setWebCameraActive] = useState(false);
+  const [torchOn, setTorchOn] = useState(false);
+  const [torchSupported, setTorchSupported] = useState(false);
   const [result, setResult] = useState<StatementVerifyResult | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
 
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const scanTimerRef = useRef<number | null>(null);
+
+  const stopWebCamera = useCallback(() => {
+    if (scanTimerRef.current) {
+      window.clearTimeout(scanTimerRef.current);
+      scanTimerRef.current = null;
+    }
+    if (streamRef.current) {
+      for (const track of streamRef.current.getTracks()) {
+        track.stop();
+      }
+      streamRef.current = null;
+    }
+    setWebCameraActive(false);
+    setTorchOn(false);
+    setTorchSupported(false);
+  }, []);
+
+  const runVerification = useCallback(
+    async (rawCode: string) => {
+      setLocalError(null);
+      const cleaned = sanitizeStatementCode(rawCode);
+      if (!cleaned) {
+        setLocalError(
+          "Not a valid Keeper PDF code. Scan a Keeper PDF QR code or enter a code like KPR-8F3A-29C1.",
+        );
+        return;
+      }
+      setCodeInput(cleaned);
+      setChecking(true);
+      setResult(null);
+      try {
+        const res = await onVerify(cleaned);
+        setResult(res);
+      } catch {
+        setLocalError("Could not reach the server to verify this statement right now.");
+      } finally {
+        setChecking(false);
+      }
+    },
+    [onVerify],
+  );
+
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      stopWebCamera();
+      return;
+    }
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose, open]);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      stopWebCamera();
+    };
+  }, [onClose, open, stopWebCamera]);
 
   useEffect(() => {
     if (!open) return;
     setLocalError(null);
     const cleaned = sanitizeStatementCode(initialCode);
     if (cleaned) {
-      setCodeInput(cleaned);
-      setChecking(true);
-      setResult(null);
-      void onVerify(cleaned)
-        .then((res) => setResult(res))
-        .catch(() => {
-          setLocalError("Could not reach the server to verify this statement right now.");
-        })
-        .finally(() => setChecking(false));
+      void runVerification(cleaned);
     } else {
       setCodeInput(initialCode ?? "");
       setResult(null);
     }
-  }, [initialCode, onVerify, open]);
+  }, [initialCode, open, runVerification]);
 
-  if (!open) return null;
+  const handleToggleTorch = async () => {
+    const track = streamRef.current?.getVideoTracks()[0];
+    if (!track) return;
+    const next = !torchOn;
+    try {
+      await track.applyConstraints({
+        advanced: [{ torch: next } as MediaTrackConstraintSet],
+      });
+      setTorchOn(next);
+    } catch {
+      setTorchSupported(false);
+    }
+  };
+
+  const handleScanCamera = async () => {
+    setLocalError(null);
+    if (hasNativeMlKitScanner()) {
+      setScanningCamera(true);
+      try {
+        const outcome = await scanQrWithNativeMlKit();
+        if (outcome.status === "scanned") {
+          await runVerification(outcome.value);
+        } else if (outcome.status === "error") {
+          setLocalError(outcome.message);
+        }
+      } finally {
+        setScanningCamera(false);
+      }
+      return;
+    }
+
+    if (webCameraActive) {
+      stopWebCamera();
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setLocalError("Camera is not available here. Use Scan image or paste the code.");
+      return;
+    }
+    setWebCameraActive(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
+      });
+      streamRef.current = stream;
+      const track = stream.getVideoTracks()[0];
+      const caps = track?.getCapabilities?.() as { torch?: boolean } | undefined;
+      setTorchSupported(Boolean(caps?.torch));
+
+      const video = videoRef.current;
+      if (video) {
+        video.srcObject = stream;
+        await video.play();
+      }
+
+      const detector = createBrowserBarcodeDetector();
+      const tick = async () => {
+        if (!streamRef.current || !videoRef.current || !canvasRef.current) return;
+        try {
+          const decoded = await decodeQrFromVideoFrame(
+            videoRef.current,
+            canvasRef.current,
+            detector,
+          );
+          if (decoded) {
+            stopWebCamera();
+            await runVerification(decoded);
+            return;
+          }
+        } catch {
+          // Continue scanning next frame
+        }
+        scanTimerRef.current = window.setTimeout(() => void tick(), 180);
+      };
+      scanTimerRef.current = window.setTimeout(() => void tick(), 220);
+    } catch {
+      stopWebCamera();
+      setLocalError("Could not open camera. Allow camera permission or use Scan image.");
+    }
+  };
+
+  const handlePickImage = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setLocalError(null);
+    stopWebCamera();
+    setScanningImage(true);
+    try {
+      const decoded = await scanQrFromImageFile(file);
+      if (!decoded) {
+        setLocalError(
+          "No QR code found in that image. Make sure the QR code on the PDF is clear and visible.",
+        );
+        return;
+      }
+      await runVerification(decoded);
+    } catch {
+      setLocalError("Could not read that image. Try another screenshot or enter the code manually.");
+    } finally {
+      setScanningImage(false);
+    }
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    setLocalError(null);
-    const cleaned = sanitizeStatementCode(codeInput);
-    if (!cleaned) {
-      setLocalError("Enter a valid Statement ID like KPR-8F3A-29C1 or paste the QR link.");
-      return;
-    }
-    setCodeInput(cleaned);
-    setChecking(true);
-    setResult(null);
-    try {
-      const res = await onVerify(cleaned);
-      setResult(res);
-    } catch {
-      setLocalError("Could not reach the server to verify this statement right now.");
-    } finally {
-      setChecking(false);
-    }
+    stopWebCamera();
+    await runVerification(codeInput);
   };
+
+  if (!open) return null;
 
   return (
     <div
@@ -100,7 +256,7 @@ export function StatementVerifyModal({
           <div>
             <h2 className="text-base font-semibold text-[#1C1C1E]">Verify PDF statement</h2>
             <p className="text-xs text-[#52525B] mt-0.5">
-              Checks against official {householdName} records only
+              Scan the QR code or check against {householdName} records
             </p>
           </div>
           <Button
@@ -110,6 +266,76 @@ export function StatementVerifyModal({
             icon={<X className="h-4 w-4 text-[#52525B]" />}
             className="!h-9 !w-9 shrink-0"
           />
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <SoftButton
+            variant="filled"
+            disabled={checking || scanningCamera || scanningImage}
+            onClick={() => void handleScanCamera()}
+            icon={<Camera className="h-4 w-4 text-[#E4CCA0]" />}
+            className="w-full !h-11 text-xs font-semibold"
+          >
+            {scanningCamera
+              ? "Opening..."
+              : webCameraActive
+                ? "Stop camera"
+                : "Scan QR"}
+          </SoftButton>
+
+          <SoftButton
+            disabled={checking || scanningCamera || scanningImage}
+            onClick={() => fileInputRef.current?.click()}
+            icon={<ImageIcon className="h-4 w-4 text-[#8F703F]" />}
+            className="w-full !h-11 text-xs font-medium"
+          >
+            {scanningImage ? "Reading..." : "Scan image"}
+          </SoftButton>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={(e) => void handlePickImage(e)}
+            className="hidden"
+          />
+        </div>
+
+        {webCameraActive && (
+          <div className="relative overflow-hidden rounded-2xl border border-stone-900/15 bg-black">
+            <video
+              ref={videoRef}
+              playsInline
+              muted
+              className="h-56 w-full object-cover"
+            />
+            <canvas ref={canvasRef} className="hidden" />
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              <div className="h-36 w-36 rounded-2xl border-2 border-[#E4CCA0] shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]" />
+            </div>
+            <div className="absolute bottom-2.5 inset-x-3 flex items-center justify-between gap-2">
+              <span className="rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-medium text-white">
+                Point at the PDF QR code
+              </span>
+              {torchSupported && (
+                <button
+                  type="button"
+                  onClick={() => void handleToggleTorch()}
+                  className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium cursor-pointer ${
+                    torchOn ? "bg-[#E4CCA0] text-[#1C1C1E]" : "bg-black/60 text-white"
+                  }`}
+                >
+                  <Flashlight className="h-3.5 w-3.5" />
+                  <span>{torchOn ? "Light on" : "Light"}</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="flex items-center gap-2.5">
+          <div className="h-px flex-1 bg-stone-900/[0.08]" />
+          <span className="text-[11px] text-[#8E8E93]">or enter code manually</span>
+          <div className="h-px flex-1 bg-stone-900/[0.08]" />
         </div>
 
         <form onSubmit={(e) => void handleSubmit(e)} className="flex items-center gap-2">
